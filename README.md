@@ -2,8 +2,8 @@
 
 # Person 2: legacy runtime and golden recordings
 
-Segments 1–4 are implemented: GnuCOBOL setup, compilation/execution helpers,
-the interest COBOL sample, 15 handwritten inputs, and actual golden outputs.
+Segments 1–8 are implemented: COBOL compilation/execution, the interest sample,
+15 real golden outputs, generated pytest tests, and structured equivalence results.
 No NVIDIA key, model call, teammate agent, or Python rewrite is needed for this batch.
 
 ## Quick start on macOS
@@ -194,5 +194,50 @@ checks, and reference-drift CLI checks in a relocated directory with spaces.
 See `validation/REVIEW.md` for the findings and requirement mapping.
 
 These are runtime checks, not the generated Python-rewrite equivalence tests.
-Segments 5–8 implement `testing.golden_to_pytest` and `testing.run_equivalence`.
-Payroll and invoice are segments 9–10. See `PROGRESS.md` for the resume point.
+Segments 5–8 below supply `testing.golden_to_pytest` and `testing.run_equivalence`.
+Payroll and invoice remain segments 9–10. See `PROGRESS.md` for the resume point.
+
+## Segments 5–8: equivalence harness
+
+The two remaining shared functions are implemented in `testing.py`:
+
+```python
+import testing
+
+# Safe before modern/interest.py exists: this writes tests without importing it.
+test_path = testing.golden_to_pytest("interest", "modern/interest.py")
+# Call only after Person 4 has written the rewrite.
+result = testing.run_equivalence("interest")
+# {"passed": 15, "total": 15, "failures": []}
+```
+
+Paths supplied by callers resolve against their working directory. Rewrites
+inside this project are referenced relative to the project in generated tests,
+so moving the complete project keeps those tests usable. External paths stay
+absolute. Generated files live in `tests/equivalence/` and are ordinary pytest
+files, also runnable with `python -m pytest tests/equivalence/test_interest.py`.
+No generated test is committed before a real rewrite is available; normal test
+runs therefore do not fail because a teammate's rewrite is still missing.
+
+Tests embed the validated golden cases and their SHA-256. If the golden file
+changes, `run_equivalence` refuses to run until tests are regenerated. One case
+is generated per record, including duplicates. Whitespace, quotes, Unicode,
+empty strings, and output newlines are compared exactly.
+
+The runner invokes pytest in a fresh Python subprocess with a private reporting
+plugin (`testing_reporter.py`). Case counts and failures come from pytest hooks,
+not scraped terminal text. It disables third-party plugin autoload and inherited
+pytest options. Rewrite source is compiled directly on import, avoiding stale
+bytecode after rapid same-size edits. Sibling imports and dataclasses are
+supported. The runner has a 30-second whole-run timeout with process-group cleanup.
+
+Mismatches and rewrite/import exceptions return failed cases. An exception's
+`actual` string includes its traceback. Collection failures, missing generated
+tests, stale recordings, timeouts, skipped/incomplete runs, and missing reports
+raise `EquivalenceError`; they never produce a successful zero-test result.
+The return dictionary has exactly `passed`, `total`, and `failures`, each failure
+containing `input`, `expected`, and `actual`. Non-string results fail the test.
+
+The additional harness tests run in temporary projects. A handwritten Decimal
+fixture passes all 15 actual interest golden cases, independently of Person 4's
+agent. It is a test fixture, not the team's generated Python rewrite.

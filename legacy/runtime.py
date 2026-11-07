@@ -43,12 +43,14 @@ def _kill_process_group(process: subprocess.Popen) -> None:
         pass
 
 
-def _run_process(command: list[str], timeout: float, data: bytes | None = None):
+def _run_process(command: list[str], timeout: float, data: bytes | None = None,
+                 *, extra_env: dict | None = None, cwd=None):
     # Inherit PATH and linker settings, but make numeric/diagnostic locale stable.
     environment = dict(os.environ, LC_ALL="C", LANG="C")
+    environment.update(extra_env or {})
     with subprocess.Popen(
         command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE, start_new_session=True, env=environment,
+        stderr=subprocess.PIPE, start_new_session=True, env=environment, cwd=cwd,
     ) as process:
         try:
             stdout, stderr = process.communicate(input=data, timeout=timeout)

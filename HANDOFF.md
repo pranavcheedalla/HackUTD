@@ -3,8 +3,8 @@
 ## Status and integration boundary
 
 The supplied workspace was empty and was not a Git repository. There was no
-team `contract.py` or existing stub to replace. This is a standalone package
-using the supplied shared function names; it has not been pushed or merged.
+team `contract.py` or existing stub to replace. This package uses the supplied shared function names and is now published on
+the Person 2 branch in HackUTD, with PR #1 open. It has not been merged.
 Hemant remains the integration owner. Do not treat this as a completed team
 pipeline or Python rewrite.
 
@@ -41,7 +41,7 @@ the reference. A deliberate update uses `--update`. `check_setup.py` repeats
 the hello-world setup check on the integration machine. Runtime timeouts clean
 up POSIX process groups, including ordinary compiler/runtime descendants.
 
-Person 2's test generator/runner will arrive in the next batch. The shared
+Person 2's test generator/runner is included in the second commit. The shared
 pipeline orders test generation before rewriting: the generator must create
 test source without importing a not-yet-created rewrite. Imports happen when
 the generated tests execute.
@@ -67,6 +67,21 @@ the generated tests execute.
 
 ## Scope remaining
 
-Not included in this first handoff: generated equivalence tests, the
-`testing` module, model calls, orchestration, payroll, invoice, UI, or Git merge.
-Only segments 1–4 were requested for this batch.
+The two equivalence functions are now delivered in the second commit.
+Model calls, orchestration, payroll, invoice, UI, and the final Git merge remain
+outside this delivery. Generated tests are created when the pipeline runs.
+
+## Update: segments 5–8 delivered
+
+`testing.py` now supplies `golden_to_pytest` and `run_equivalence` with unchanged
+shared signatures. Include `testing_reporter.py` when merging. Generate tests
+before rewriting; run them after the Python file exists. Keep the returned
+failure list intact for Person 4's repair prompt. A missing rewrite is reported
+as failed cases; collection/infrastructure errors raise `EquivalenceError`.
+
+Repository: https://github.com/pranavcheedalla/HackUTD
+Branch: person2/legacy-runtime-harness
+PR: https://github.com/pranavcheedalla/HackUTD/pull/1
+The initial runtime/sample delivery is a separate commit. Hemant owns merging.
+The historical scope/status notes above describe the first handoff; this update
+adds the equivalence harness. Payroll and invoice remain the next batch.
