@@ -1,0 +1,10 @@
+.env
+__pycache__/
+.pytest_cache/
+.cache/
+runs/state.json
+modern/*.py
+specs/*.json
+tests/equivalence/test_*.py
+tests/unit/test_*.py
+.venv*/
