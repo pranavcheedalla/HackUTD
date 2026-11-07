@@ -275,6 +275,49 @@ def leaves(f: Field) -> list[Field]:
     return [leaf for c in f.children if not c.redefines for leaf in leaves(c)]
 
 
+# --------------------------------------------------------------------------- subprogram parameters
+
+_USING = re.compile(kw("PROCEDURE") + r"\s+DIVISION\s+USING\s+(.*?)(?:\.(?=\s|$)|" + kw("RETURNING") + ")",
+                    re.I | re.S)
+_USING_NOISE = {"BY", "REFERENCE", "VALUE", "CONTENT", "OPTIONAL"}
+
+
+def using_names(src: str) -> list[str]:
+    """Names after PROCEDURE DIVISION USING, in order (BY REFERENCE/VALUE words dropped)."""
+    m = _USING.search(strip_comments(src))
+    if not m:
+        return []
+    return [t.upper() for t in re.findall(NAME, m.group(1)) if t.upper() not in _USING_NOISE]
+
+
+def param_of(f: Field) -> dict:
+    """contract.Param for one LINKAGE item. Group items are text of their total length."""
+    if f.kind == "numeric":
+        return {"name": f.name, "pic": f.pic, "kind": "numeric", "int_digits": f.int_digits,
+                "dec_digits": f.decimals, "length": f.int_digits + f.decimals, "signed": f.signed}
+    return {"name": f.name, "pic": f.pic or f"X({f.length})", "kind": "text", "int_digits": 0,
+            "dec_digits": 0, "length": f.length, "signed": False}
+
+
+def linkage_params(src: str) -> list[dict]:
+    """PROCEDURE DIVISION USING parameters as contract.Param dicts; [] for a main program."""
+    names = using_names(src)
+    if not names:
+        return []
+    _, index = parse_data_division(strip_comments(src))
+    missing = [n for n in names if n not in index]
+    if missing:
+        raise ValueError(f"USING names not declared in the DATA DIVISION: {missing}")
+    return [param_of(index[n]) for n in names]
+
+
+def edited_pic(p: dict) -> str:
+    """Display PIC the test driver shows a numeric param with: 9(i).9(d), 9(i), .9(d), leading '-' if signed."""
+    i, d = p["int_digits"], p["dec_digits"]
+    body = (f"9({i})" if i else "") + (f".9({d})" if d else "")
+    return ("-" if p["signed"] else "") + (body or "9")
+
+
 # --------------------------------------------------------------------------- procedure division
 
 @dataclass
@@ -411,6 +454,8 @@ class Analysis:
     copies: list
     delimiter: str | None = None
     delimited_fields: list = field(default_factory=list)
+    kind: str = "program"  # "subprogram" = PROCEDURE DIVISION USING ...
+    params: list = field(default_factory=list)  # contract.Param dicts, USING order
 
     @property
     def truncation_targets(self) -> list[str]:
@@ -471,6 +516,16 @@ def analyze(src: str) -> Analysis:
             out.append((line_of(clean, base + m.start()), proc[m.start():eol if eol > 0 else None].strip()))
         return out
 
+    using = using_names(src)
+    params = [param_of(index[n]) for n in using if n in index]
+    kind = "subprogram" if using else "program"
+    if kind == "subprogram" and delimiter is None:
+        # Tested through make_driver: one "|"-separated token per param, USING order.
+        delimiter = "|"
+        delimited_fields = [{"name": p["name"], "raw": f"T{i}", "pic": p["pic"],
+                             "type": ("decimal" if p["dec_digits"] else "integer") if p["kind"] == "numeric" else "string",
+                             "meaning": index[p["name"]].describe()} for i, p in enumerate(params, 1)]
+
     calls, dynamic = find_calls(src)
     return Analysis(
         program_id=program_id(src), fields=tops, index=index, accept_targets=accepts,
@@ -478,14 +533,27 @@ def analyze(src: str) -> Analysis:
         arithmetic=find_arithmetic(proc, base, clean, index),
         branches=raw_lines(kw("IF|WHEN|EVALUATE|UNTIL")), displays=raw_lines(kw("DISPLAY")),
         calls=calls, dynamic_calls=dynamic, copies=find_copies(src),
-        delimiter=delimiter, delimited_fields=delimited_fields,
+        delimiter=delimiter, delimited_fields=delimited_fields, kind=kind, params=params,
     )
 
 
 def render_summary(a: Analysis, max_fields: int = 60) -> str:
     """Compact plain-text fact sheet that goes into the prompts."""
     out = [f"PROGRAM-ID: {a.program_id or '?'}"]
-    if a.delimiter is not None:
+    if a.kind == "subprogram":
+        names = [p["name"] for p in a.params]
+        out.append(f"\nSUBPROGRAM: no ACCEPT of its own; CALLed with USING {' '.join(names)}.")
+        out.append("It is tested through a generated test driver that reads ONE line of '|'-separated tokens,")
+        out.append("one per parameter (numbers typed with a literal decimal point, read with NUMVAL;")
+        out.append("an empty numeric token is 0, an empty text token is spaces), CALLs it, and prints the")
+        out.append("parameters after the call.")
+        out.append(f"INPUT LINE (test driver): {'|'.join(names)}")
+        for i, p in enumerate(a.params, 1):
+            out.append(f"  token {i}: {p['name']} - {a.index[p['name']].describe()}")
+        shown = [f"{p['name']}={edited_pic(p)}" if p["kind"] == "numeric" else f"{p['name']}=<{p['length']} chars as stored>"
+                 for p in a.params]
+        out.append(f"OUTPUT LINE (test driver): {'|'.join(shown)}")
+    elif a.delimiter is not None:
         out.append(f"\nINPUT LINE: variable-length tokens separated by {a.delimiter!r}; literal decimal points are typed.")
         out.append("The ACCEPT text buffer is capacity, NOT a required line length. Do not pad to it.")
         for i, f in enumerate(a.delimited_fields, 1):
