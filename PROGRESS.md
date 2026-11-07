@@ -1,6 +1,6 @@
 # Person 2 resume checkpoint
 
-Completed: segments 1–8. Next: segment 9 (payroll), then 10 (invoice).
+Completed: segments 1–9. Next: segment 10 (invoice and truncation quirk).
 
 - GnuCOBOL 3.2.0, Python 3.11.15, pytest 9.2.0 installed and verified on this Mac.
 - Runtime helpers, hello-world checker, 99-line interest program, 15 inputs,
@@ -24,3 +24,16 @@ virtual environment is the enclosing workspace's work/.venv.
 
 Before starting segments 9–10, use an updated screenshot to check allowance;
 the old usage screenshot does not provide live remaining usage.
+
+## Segment 9 completed
+
+- Payroll original: 104 lines, one input line, three exact output amounts.
+- Fictional progressive tax, 1.5x overtime, explicit gross-then-tax rounding.
+- Fifteen handwritten inputs and actual original golden outputs.
+- Independent Decimal audit: 165 additional inputs.
+- Correct fixture passes the harness; double-time and flat-tax fixtures fail.
+- CLI supports create, drift check, and deliberate update from any cwd.
+- Detailed rules and teammate handoff: docs/payroll.md.
+
+No invoice source has been added yet. The payroll change is isolated in its
+own commit on the existing Person 2 branch for Hemant to review.

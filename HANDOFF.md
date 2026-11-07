@@ -68,7 +68,7 @@ the generated tests execute.
 ## Scope remaining
 
 The two equivalence functions are now delivered in the second commit.
-Model calls, orchestration, payroll, invoice, UI, and the final Git merge remain
+Model calls, orchestration, invoice, UI, and the final Git merge remain
 outside this delivery. Generated tests are created when the pipeline runs.
 
 ## Update: segments 5–8 delivered
@@ -84,4 +84,14 @@ Branch: person2/legacy-runtime-harness
 PR: https://github.com/pranavcheedalla/HackUTD/pull/1
 The initial runtime/sample delivery is a separate commit. Hemant owns merging.
 The historical scope/status notes above describe the first handoff; this update
-adds the equivalence harness. Payroll and invoice remain the next batch.
+adds the equivalence harness. Payroll is delivered in segment 9; invoice remains next.
+
+
+## Segment 9: payroll delivered
+
+Use module ID `payroll`; it has no CALL/COPY dependencies.
+Read [docs/payroll.md](docs/payroll.md) for exact input syntax, progressive
+tax rules, rounding order, output padding, cases, and pipeline examples.
+`record_payroll.py --check` verifies its reference. The actual model rewrite
+will go in `modern/payroll.py`; the handwritten file under tests/fixtures/
+is only an audit fixture. All five shared functions work unchanged.

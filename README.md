@@ -2,8 +2,9 @@
 
 # Person 2: legacy runtime and golden recordings
 
-Segments 1–8 are implemented: COBOL compilation/execution, the interest sample,
-15 real golden outputs, generated pytest tests, and structured equivalence results.
+Segments 1–9 are implemented: COBOL compilation/execution, interest and payroll
+samples with 15 real golden outputs each, generated pytest tests, and structured
+equivalence results.
 No NVIDIA key, model call, teammate agent, or Python rewrite is needed for this batch.
 
 ## Quick start on macOS
@@ -17,6 +18,7 @@ source .venv/bin/activate
 python -m pip install -r requirements-dev.lock
 python check_setup.py
 python record_interest.py
+python record_payroll.py --check
 python -m pytest -q
 ```
 
@@ -52,9 +54,12 @@ legacy/
   __init__.py                 # shared imports: import legacy
   runtime.py                 # compile_cobol, run_cobol, record_golden
   interest.cbl               # 99-line original COBOL sample
-  inputs/interest.json       # 15 handwritten input strings
+  payroll.cbl                # 104-line payroll with overtime and progressive tax
+  inputs/interest.json       # 15 handwritten interest input strings
+  inputs/payroll.json        # 15 handwritten payroll input strings
   bin/                       # generated local executables, gitignored
-golden/interest.jsonl         # 15 outputs recorded by executing COBOL
+golden/interest.jsonl         # 15 interest outputs recorded by executing COBOL
+golden/payroll.jsonl          # 15 payroll outputs recorded by executing COBOL
 tests/runtime/test_runtime.py
 examples/hello.cbl             # outside the agent's scanned legacy directory
 check_setup.py                 # repeatable Python/compiler/runtime smoke check
@@ -195,7 +200,7 @@ See `validation/REVIEW.md` for the findings and requirement mapping.
 
 These are runtime checks, not the generated Python-rewrite equivalence tests.
 Segments 5–8 below supply `testing.golden_to_pytest` and `testing.run_equivalence`.
-Payroll and invoice remain segments 9–10. See `PROGRESS.md` for the resume point.
+Payroll (segment 9) is complete; invoice remains segment 10. See `PROGRESS.md` for the resume point.
 
 ## Segments 5–8: equivalence harness
 
@@ -241,3 +246,20 @@ containing `input`, `expected`, and `actual`. Non-string results fail the test.
 The additional harness tests run in temporary projects. A handwritten Decimal
 fixture passes all 15 actual interest golden cases, independently of Person 4's
 agent. It is a test fixture, not the team's generated Python rewrite.
+
+
+## Segment 9: payroll
+
+The second original is `legacy/payroll.cbl`, with 15 inputs in
+`legacy/inputs/payroll.json` and real outputs in `golden/payroll.jsonl`.
+It implements 40-hour regular pay, 1.5x overtime, and fictional progressive
+weekly tax brackets at $500 and $1,000. All arithmetic and formatting details,
+15 annotated cases, and teammate integration examples are in
+[the payroll handoff](docs/payroll.md).
+
+```bash
+python record_payroll.py --check
+python -m pytest -q tests/runtime/test_payroll.py
+```
+
+The interest sample and all five shared function signatures are unchanged.
