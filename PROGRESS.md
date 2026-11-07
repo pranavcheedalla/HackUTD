@@ -1,39 +1,28 @@
 # Person 2 resume checkpoint
 
-Completed: segments 1–9. Next: segment 10 (invoice and truncation quirk).
+All assigned components are implemented. Final team integration remains pending
+the agent/orchestration code described in docs/final-handoff.md.
 
-- GnuCOBOL 3.2.0, Python 3.11.15, pytest 9.2.0 installed and verified on this Mac.
-- Runtime helpers, hello-world checker, 99-line interest program, 15 inputs,
-  and 15 real golden outputs complete.
-- Runtime review covers process-group cleanup, exact stdout, atomic recording,
-  source-name collisions, locale, portable paths, and golden drift checks.
-- Equivalence generator and structured pytest runner complete, with unchanged
-  signatures and fresh-process execution. Generated tests precede the rewrite.
-- Independent Decimal audit includes 132 additional COBOL calculations.
-- Tests cover the original cases, matching/broken rewrites, formatting differences,
-  missing imports, rapid edits, stale golden data, skipped cases, and timeouts.
+- Three originals: interest (99 lines), payroll (104), invoice (101).
+- Fifteen handwritten inputs and actual golden outputs each: 45 cases.
+- All five shared-contract functions and parameter names preserved.
+- Exact formatting, subprocess timeouts/child cleanup, atomic recording, and
+  source reload verified.
+- Additional Decimal audits: interest 132, payroll 165, invoice 235.
+- Invoice PIC truncation produces 12.34 where a rounding rewrite gives 12.35.
+- The integration smoke passes 45/45, catches two rounding mismatches, and
+  passes invoice 15/15 after restoring truncation. It uses handwritten fixtures.
 
 Repository: https://github.com/pranavcheedalla/HackUTD
 Branch: person2/legacy-runtime-harness
 PR: https://github.com/pranavcheedalla/HackUTD/pull/1
 
-The first delivery (segments 1–4) is a separate commit from the equivalence
-harness (segments 5–8). Hemant retains merge ownership. No NVIDIA credentials
-were needed. Tests and validation reports are in this package. The development
-virtual environment is the enclosing workspace's work/.venv.
+Segments 10 and 12 are complete. Segment 11's local contract integration is
+verified; real model/orchestrator integration is pending teammate code.
+Fetched origin/main and origin/Pranav contained only initial README at 78ce59a.
+Hemant retains merge ownership. No model credentials were needed or accessed.
+Do not regenerate completed work or alter golden data to fix a Python mismatch.
 
-Before starting segments 9–10, use an updated screenshot to check allowance;
-the old usage screenshot does not provide live remaining usage.
-
-## Segment 9 completed
-
-- Payroll original: 104 lines, one input line, three exact output amounts.
-- Fictional progressive tax, 1.5x overtime, explicit gross-then-tax rounding.
-- Fifteen handwritten inputs and actual original golden outputs.
-- Independent Decimal audit: 165 additional inputs.
-- Correct fixture passes the harness; double-time and flat-tax fixtures fail.
-- CLI supports create, drift check, and deliberate update from any cwd.
-- Detailed rules and teammate handoff: docs/payroll.md.
-
-No invoice source has been added yet. The payroll change is isolated in its
-own commit on the existing Person 2 branch for Hemant to review.
+Next work is coordination: integrate the real agents, graph, and module-state
+reporting using the checklist in docs/final-handoff.md. Local setup, examples,
+and all program rules are documented in README.md and docs/.

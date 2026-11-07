@@ -2,9 +2,10 @@
 
 # Person 2: legacy runtime and golden recordings
 
-Segments 1–9 are implemented: COBOL compilation/execution, interest and payroll
-samples with 15 real golden outputs each, generated pytest tests, and structured
-equivalence results.
+All Person 2 components are implemented: three COBOL originals with 15 real
+golden outputs each, compilation/execution, generated pytest tests, and structured
+equivalence results. The final integration smoke demonstrates the truncation
+failure and repair. Real model/orchestrator integration awaits teammate code.
 No NVIDIA key, model call, teammate agent, or Python rewrite is needed for this batch.
 
 ## Quick start on macOS
@@ -19,6 +20,7 @@ python -m pip install -r requirements-dev.lock
 python check_setup.py
 python record_interest.py
 python record_payroll.py --check
+python record_invoice.py --check
 python -m pytest -q
 ```
 
@@ -55,11 +57,14 @@ legacy/
   runtime.py                 # compile_cobol, run_cobol, record_golden
   interest.cbl               # 99-line original COBOL sample
   payroll.cbl                # 104-line payroll with overtime and progressive tax
+  invoice.cbl                # 101-line invoice with PIC decimal truncation
   inputs/interest.json       # 15 handwritten interest input strings
   inputs/payroll.json        # 15 handwritten payroll input strings
+  inputs/invoice.json        # 15 handwritten invoice input strings
   bin/                       # generated local executables, gitignored
 golden/interest.jsonl         # 15 interest outputs recorded by executing COBOL
 golden/payroll.jsonl          # 15 payroll outputs recorded by executing COBOL
+golden/invoice.jsonl          # 15 invoice outputs recorded by executing COBOL
 tests/runtime/test_runtime.py
 examples/hello.cbl             # outside the agent's scanned legacy directory
 check_setup.py                 # repeatable Python/compiler/runtime smoke check
@@ -200,7 +205,7 @@ See `validation/REVIEW.md` for the findings and requirement mapping.
 
 These are runtime checks, not the generated Python-rewrite equivalence tests.
 Segments 5–8 below supply `testing.golden_to_pytest` and `testing.run_equivalence`.
-Payroll (segment 9) is complete; invoice remains segment 10. See `PROGRESS.md` for the resume point.
+Payroll and invoice are complete. The final handoff documents remaining team integration. See `PROGRESS.md` for the resume point.
 
 ## Segments 5–8: equivalence harness
 
@@ -263,3 +268,21 @@ python -m pytest -q tests/runtime/test_payroll.py
 ```
 
 The interest sample and all five shared function signatures are unchanged.
+
+
+## Invoice and final integration handoff
+
+The third original is `legacy/invoice.cbl` with 15 inputs and actual outputs.
+Its `PIC 9(5)V99` silently truncates fractional cents. For `1|12.35|0.01`,
+COBOL returns `TOTAL=00012.34`; a rounding rewrite incorrectly returns
+`TOTAL=00012.35`. [Invoice rules and cases](docs/invoice.md).
+
+```bash
+python record_invoice.py --check
+python check_integration.py --output runs/person2-smoke.json
+```
+
+The smoke verifies all 45 cases using handwritten fixtures, catches the invoice
+rounding mutation, and verifies the repair. It uses temporary recordings and
+tests, preserving committed references and team state. It does not run models
+or LangGraph. [Final handoff and integration checklist](docs/final-handoff.md).

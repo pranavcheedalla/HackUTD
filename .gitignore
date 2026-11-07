@@ -5,3 +5,4 @@ __pycache__/
 legacy/bin/
 *.tmp
 runs/equivalence/
+runs/person2-smoke.json

@@ -68,7 +68,7 @@ the generated tests execute.
 ## Scope remaining
 
 The two equivalence functions are now delivered in the second commit.
-Model calls, orchestration, invoice, UI, and the final Git merge remain
+Model calls, orchestration, UI, and the final Git merge remain
 outside this delivery. Generated tests are created when the pipeline runs.
 
 ## Update: segments 5–8 delivered
@@ -84,7 +84,7 @@ Branch: person2/legacy-runtime-harness
 PR: https://github.com/pranavcheedalla/HackUTD/pull/1
 The initial runtime/sample delivery is a separate commit. Hemant owns merging.
 The historical scope/status notes above describe the first handoff; this update
-adds the equivalence harness. Payroll is delivered in segment 9; invoice remains next.
+adds the equivalence harness. Payroll and invoice are delivered; the final handoff records remaining team integration.
 
 
 ## Segment 9: payroll delivered
@@ -95,3 +95,13 @@ tax rules, rounding order, output padding, cases, and pipeline examples.
 `record_payroll.py --check` verifies its reference. The actual model rewrite
 will go in `modern/payroll.py`; the handwritten file under tests/fixtures/
 is only an audit fixture. All five shared functions work unchanged.
+
+
+## Final update: invoice and handoff ready
+
+All three originals, 45 golden cases, and five shared functions are delivered.
+See [the final handoff](docs/final-handoff.md) for setup, merge guidance, and
+the actual integration boundary. Run `python check_integration.py` for a
+Person 2-only fixture smoke including the invoice divergence and repair.
+Real Nemotron/LangGraph integration could not be exercised: fetched main and
+Pranav refs contained only the initial README. Hemant owns the final merge.
