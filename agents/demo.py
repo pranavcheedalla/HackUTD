@@ -52,7 +52,7 @@ def install(agents, scenario='repair'):
     """Select demo functions only in the dedicated CLI process's fake mode."""
     if scenario not in ('repair', 'exhaust'):
         raise ValueError('Unknown demo scenario')
-    def rewrite(spec, source, failures):
+    def rewrite(spec, source, failures, **kwargs):  # kwargs: previous_src, deps (unused offline)
         mid = _id(source)
         fixture = (ROOT / f'tests/fixtures/{mid}_reference.py').read_text()
         if mid == 'invoice' and (scenario == 'exhaust' or not failures):

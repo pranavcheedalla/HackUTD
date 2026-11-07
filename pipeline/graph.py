@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SPECS_DIR = ROOT / "specs"
 MODERN_DIR = ROOT / "modern"
 UNIT_DIR = ROOT / "tests" / "unit"
+DRIVERS_DIR = ROOT / "runs" / "drivers"  # generated test drivers for subprograms
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "3"))
 
 
@@ -46,6 +47,14 @@ class GraphState(TypedDict, total=False):
     divergences: list
     error: Optional[str]
     unit_tests_status: str
+    # codebase support: LangGraph drops undeclared keys, so every key run.py passes must be here
+    kind: str                # "program" | "subprogram"
+    program_id: str
+    link: list               # absolute callee .cbl paths, callees first
+    copy_dirs: list          # absolute copybook dirs
+    params: list             # LINKAGE params (subprograms only)
+    depends_on: list
+    dep_modules: list        # [{module_id, program_id, params, status}] per dependency
 
 
 def _safe(node_name: str):
@@ -78,10 +87,28 @@ def extract_spec(state: GraphState) -> GraphState:
     return out
 
 
+def _compile(path: str, link: list, copy_dirs: list) -> str:
+    try:
+        return legacy.compile_program(path, link=link, copy_dirs=copy_dirs)
+    except NotImplementedError:
+        # P2's compile_program not merged yet: single-file programs still compile the old way
+        if link or copy_dirs:
+            raise
+        return legacy.compile_cobol(path)
+
+
 @_safe("record")
 def record(state: GraphState) -> GraphState:
     inputs = agents.generate_inputs(state["spec"], state["cobol_src"])
-    binary = legacy.compile_cobol(state["cobol_path"])
+    link, copy_dirs = list(state.get("link") or []), list(state.get("copy_dirs") or [])
+    if state.get("kind") == "subprogram":
+        # a subprogram has no input of its own; a generated driver CALLs it (inputs are driver-format)
+        DRIVERS_DIR.mkdir(parents=True, exist_ok=True)
+        driver = DRIVERS_DIR / f"{state['id']}_driver.cbl"
+        driver.write_text(agents.make_driver(state["cobol_src"]))
+        binary = _compile(str(driver), [state["cobol_path"], *link], copy_dirs)
+    else:
+        binary = _compile(state["cobol_path"], link, copy_dirs)
     golden = legacy.record_golden(state["id"], binary, inputs)
     out = {**state, "golden_path": golden, "status": "recorded", "tests_total": len(inputs)}
     status.update(out, "record", f"recorded {len(inputs)} golden cases")
@@ -90,9 +117,24 @@ def record(state: GraphState) -> GraphState:
 
 @_safe("rewrite")
 def rewrite(state: GraphState) -> GraphState:
+    dep_modules = state.get("dep_modules") or []
+    for dep in dep_modules:
+        if dep.get("status") != "done":
+            # returned, not raised: _safe would prefix the error with "rewrite: ..."
+            out = {**state, "status": "failed",
+                   "error": f"blocked: dependency {dep['module_id']} not verified"}
+            status.update(out, "rewrite", out["error"])
+            return out
+    deps = [{"module_id": d["module_id"], "program_id": d.get("program_id", ""),
+             "params": d.get("params", []),
+             "python_src": (MODERN_DIR / f"{d['module_id']}.py").read_text()}
+            for d in dep_modules]
     attempts = state.get("attempts", 0) + 1
     failures = state.get("last_failures") or None
-    src = agents.rewrite(state["spec"], state["cobol_src"], failures)
+    if deps:
+        src = agents.rewrite(state["spec"], state["cobol_src"], failures, deps=deps)
+    else:
+        src = agents.rewrite(state["spec"], state["cobol_src"], failures)
     MODERN_DIR.mkdir(exist_ok=True)
     py_path = MODERN_DIR / f"{state['id']}.py"
     py_path.write_text(src)
