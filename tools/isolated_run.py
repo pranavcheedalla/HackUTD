@@ -1,6 +1,6 @@
 """Run the public pipeline in a disposable session, preserving committed goldens.
 
-python tools/isolated_run.py --mode real [--only invoice]
+python tools/isolated_run.py --mode real [--only invoice] [--legacy-dir samples/legacy]
 Credentials stay in the parent environment; session directories contain no .env.
 """
 from __future__ import annotations
@@ -22,8 +22,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', choices=('fake', 'real'), default='real')
-    parser.add_argument('--only', choices=('interest', 'payroll', 'invoice'))
+    parser.add_argument('--only', help='any module id; its dependencies run first')
+    parser.add_argument('--legacy-dir', default='legacy',
+                        help='COBOL codebase folder, relative to the repo (default: legacy)')
     args = parser.parse_args()
+    if Path(args.legacy_dir).is_absolute() or not (ROOT / args.legacy_dir).is_dir():
+        parser.error(f'--legacy-dir must be a folder inside the repo: {args.legacy_dir}')
     from dotenv import load_dotenv
     load_dotenv(ROOT / '.env')
     if args.mode == 'real' and not os.getenv('NVIDIA_API_KEY', '').startswith('nvapi-'):
@@ -40,14 +44,15 @@ def main():
         shutil.copytree(ROOT, session, ignore=shutil.ignore_patterns(
             '.git', '.env', '.env.*', '__pycache__', '.pytest_cache', '.cache', '.venv*',
             'runs', 'bin', 'modern', 'specs', 'equivalence', 'unit', 'validation'))
-        metadata = {'session': name, 'mode': args.mode, 'only': args.only, 'status': 'running',
+        metadata = {'session': name, 'mode': args.mode, 'only': args.only, 'legacy_dir': args.legacy_dir,
+                    'status': 'running',
                     'started_at': time.strftime('%Y-%m-%dT%H:%M:%S')}
         metadata_path = session / 'session.json'
         metadata_path.write_text(json.dumps(metadata, indent=2))
         temporary = runs / 'latest_session.tmp'
         temporary.write_text(json.dumps({'session': name}))
         os.replace(temporary, runs / 'latest_session.json')
-        command = [sys.executable, '-u', str(session / 'run.py')]
+        command = [sys.executable, '-u', str(session / 'run.py'), str(session / args.legacy_dir)]
         if args.only:
             command += ['--only', args.only]
         environment = dict(os.environ, LLM_MODE=args.mode, LANGCHAIN_TRACING_V2='false', LANGSMITH_TRACING='false')

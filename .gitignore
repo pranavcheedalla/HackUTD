@@ -24,6 +24,7 @@ runs/jobs/
 runs/sessions/
 runs/latest_session.json
 runs/session.lock
+runs/drivers/
 runs/reviewed-specs/
 .env.*
 !.env.example

@@ -3,6 +3,7 @@ P1 (Hemant) — entry point.
 
     python run.py                 # all modules in legacy/
     python run.py legacy/ --only payroll
+    python run.py samples/legacy --only invoice   # also runs invoice's dependencies first
     LLM_MODE=fake python run.py   # stub run, no API calls
 """
 from __future__ import annotations
@@ -74,8 +75,16 @@ def main() -> int:
             print('Real run blocked: install requirements.txt in your virtual environment.', file=sys.stderr)
             return 2
     modules = agents.understand(args.legacy_dir)
+    by_id = {m["module_id"]: m for m in modules}
     if args.only:
-        modules = [m for m in modules if m["module_id"] == args.only]
+        # also run X's dependencies (transitively), else X is always blocked
+        wanted, todo = set(), [args.only]
+        while todo:
+            mid = todo.pop()
+            if mid in by_id and mid not in wanted:
+                wanted.add(mid)
+                todo += by_id[mid].get("depends_on", [])
+        modules = [m for m in modules if m["module_id"] in wanted]
     if not modules:
         print(f"No .cbl modules found in {args.legacy_dir}")
         return 1
@@ -91,7 +100,23 @@ def main() -> int:
         print(f"\n=== {m['module_id']} ===")
         init = {"id": m["module_id"], "cobol_path": m["cobol_path"],
                 "cobol_src": load_cobol_source(m["cobol_path"]),  # copybooks pasted inline (P3)
-                "attempts": 0, "divergences": [], "last_failures": []}
+                "attempts": 0, "divergences": [], "last_failures": [],
+                # codebase support (P3 keys; defaults keep pre-merge understand() working)
+                "kind": m.get("kind", "program"), "program_id": m.get("program_id", ""),
+                "link": m.get("link", []), "copy_dirs": m.get("copy_dirs", []),
+                "params": m.get("params", []), "depends_on": m.get("depends_on", []),
+                "dep_modules": [{"module_id": d, "program_id": by_id.get(d, {}).get("program_id", ""),
+                                 "params": by_id.get(d, {}).get("params", []),
+                                 "status": results.get(d, {}).get("status", "not run")}
+                                for d in m.get("depends_on", [])]}
+        blocked = next((d["module_id"] for d in init["dep_modules"] if d["status"] != "done"), None)
+        if blocked:
+            # skip the graph entirely: no model calls for a module whose callee isn't verified
+            final = {**init, "status": "failed", "error": f"blocked: dependency {blocked} not verified"}
+            status.update(final, "blocked", final["error"])
+            results[m["module_id"]] = final
+            print(f"  -> failed  {final['error']}")
+            continue
         final = graph.invoke(init)
         results[m["module_id"]] = final
         print(f"  -> {final['status']}  ({final.get('tests_passed', 0)}/{final.get('tests_total', 0)} tests, "

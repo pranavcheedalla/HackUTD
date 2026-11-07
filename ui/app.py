@@ -13,11 +13,16 @@ import streamlit as st
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ui.dashboard_data import artifact, calls, read_json, session_root
+from ui.dashboard_data import (artifact, blocked_on, calls, cobol_source, copybooks, migration_chains,
+                               read_json, session_root)
 
 st.set_page_config(page_title='Legacy → Verified', page_icon='✓', layout='wide')
 st.markdown('''<style>
 .stApp { background: #10151b; color: #edf1f5; }
+.chain { font-family: ui-monospace, monospace; font-size: 1.05em; margin: 2px 0 10px; }
+.chain b { background: #19232d; border: 1px solid #304251; border-radius: 6px; padding: 3px 9px; }
+.badge { font-size: .75em; border-radius: 4px; padding: 1px 7px; margin-left: 6px; }
+.sub { background: #2b3a55; color: #b9cdf2; } .blocked { background: #3a3f45; color: #b8bec6; }
 [data-testid="stMetric"] { background: #19232d; border: 1px solid #304251; padding: 18px; border-radius: 10px; }
 h1 { letter-spacing: -.04em; } code { font-size: .88em; }
 </style>''', unsafe_allow_html=True)
@@ -41,13 +46,18 @@ with st.sidebar:
     st.header('Run controls')
     st.caption('Each run gets its own source and output folder. Saved goldens stay intact.')
     mode = st.selectbox('Execution', ['real', 'fake'], format_func=lambda x: 'Live NVIDIA models' if x == 'real' else 'Offline fixture demo')
-    only = st.selectbox('Modules', ['All three', 'interest', 'invoice', 'payroll'])
+    codebases = [d for d in ('legacy', 'samples/legacy') if (ROOT / d).is_dir()]
+    legacy_dir = st.selectbox('Codebase', codebases)
+    module_ids = sorted(p.stem.lower() for p in (ROOT / legacy_dir).glob('*.cbl'))
+    only = st.selectbox('Modules', ['All modules'] + module_ids,
+                        help='A single module also runs the modules it calls, first.')
     if st.button('Start pipeline', type='primary', disabled=busy_at_render):
         jobs = ROOT / 'runs/jobs'
         jobs.mkdir(parents=True, exist_ok=True)
         log_path = jobs / (uuid.uuid4().hex + '.log')
-        command = [sys.executable, '-u', str(ROOT / 'tools/isolated_run.py'), '--mode', mode]
-        if only != 'All three':
+        command = [sys.executable, '-u', str(ROOT / 'tools/isolated_run.py'), '--mode', mode,
+                   '--legacy-dir', legacy_dir]
+        if only != 'All modules':
             command += ['--only', only]
         with log_path.open('w') as log:
             subprocess.Popen(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -94,11 +104,38 @@ def live_view():
     d.metric('Live model calls', sum(r['source'] == 'live' and r['ok'] for r in trace))
     st.progress(verified / max(1, len(modules)))
     st.caption('UNDERSTAND → SPEC → RECORD → REWRITE → VERIFY → ACCEPT')
+    chains, standalone = migration_chains(modules)
+    st.markdown('**Migration order**')
+    for chain in chains:
+        st.markdown('<div class="chain">' + '  →  '.join(f'<b>{m.upper()}</b>' for m in chain) + '</div>',
+                    unsafe_allow_html=True)
+    if standalone:
+        st.markdown('<div class="chain">' + ('Standalone: ' if chains else '')
+                    + '  ·  '.join(f'<b>{m.upper()}</b>' for m in standalone) + '</div>', unsafe_allow_html=True)
     for module_id, module in modules.items():
-        label = f"{module_id.upper()} · {module.get('status', 'pending').upper()} · {module.get('tests_passed', 0)}/{module.get('tests_total', 0)} matches"
-        with st.expander(label, expanded=module.get('status') == 'failed'):
-            if module.get('error'):
+        waiting = blocked_on(module)
+        shown = 'BLOCKED ⏸' if waiting else module.get('status', 'pending').upper()
+        kind = ' · SUBPROGRAM' if module.get('kind') == 'subprogram' else ''
+        label = f"{module_id.upper()}{kind} · {shown} · {module.get('tests_passed', 0)}/{module.get('tests_total', 0)} matches"
+        with st.expander(label, expanded=module.get('status') == 'failed' and not waiting):
+            badges = ''
+            if module.get('kind') == 'subprogram':
+                badges += '<span class="badge sub">subprogram · tested through a generated driver</span>'
+            if waiting:
+                badges += f'<span class="badge blocked">BLOCKED · waiting on {waiting}</span>'
+            if badges:
+                st.markdown(badges, unsafe_allow_html=True)
+            if waiting:
+                st.caption(f'Not attempted: {waiting} must be verified first, so no model calls were made.')
+            elif module.get('error'):
                 st.error(module['error'])
+            source = cobol_source(directory, module, module_id)
+            calls_out = [Path(p).stem.upper() for p in module.get('link') or []]
+            used = copybooks(source)
+            if calls_out or used or module.get('depends_on'):
+                st.caption(f"Calls / links: {', '.join(calls_out) or '—'}  ·  "
+                           f"Copybooks: {', '.join(used) or '—'}  ·  "
+                           f"Depends on: {', '.join(d.upper() for d in module.get('depends_on') or []) or '—'}")
             if module.get('unit_tests_status') == 'needs_review':
                 st.warning('Golden equivalence passed. Supplementary generated unit tests need review; no failing assertions were silently removed.')
             st.write(f"Attempts: {module.get('attempts', 0)}")
@@ -112,7 +149,7 @@ def live_view():
                 left, right = st.columns(2)
                 with left:
                     st.caption('Original COBOL')
-                    st.code(artifact(directory, 'legacy', module_id, '.cbl'), language='cobol')
+                    st.code(source, language='cobol')
                 with right:
                     st.caption('Generated Python')
                     st.code(artifact(directory, 'modern', module_id, '.py'), language='python')

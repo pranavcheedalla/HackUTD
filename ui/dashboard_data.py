@@ -55,3 +55,49 @@ def calls(root: Path) -> list[dict]:
         except ValueError:
             continue
     return result
+
+
+def blocked_on(module: dict) -> str:
+    """Dependency id a module is waiting on, or '' (run.py/graph error: 'blocked: dependency X not verified')."""
+    match = re.match(r'blocked: dependency (\S+) not verified', module.get('error') or '')
+    return match.group(1) if match else ''
+
+
+def migration_chains(modules: dict) -> tuple[list[list[str]], list[str]]:
+    """Split modules into dependency chains (callees first, e.g. [discount, invoice]) and standalone ids."""
+    deps = {mid: [d for d in m.get('depends_on') or [] if d in modules] for mid, m in modules.items()}
+    called = {d for ds in deps.values() for d in ds}
+    chains = []
+    for top in (mid for mid in modules if deps[mid] and mid not in called):
+        order, seen = [], set()
+
+        def visit(mid):
+            if mid in seen:
+                return
+            seen.add(mid)
+            for d in deps[mid]:
+                visit(d)
+            order.append(mid)
+        visit(top)
+        chains.append(order)
+    standalone = [mid for mid in modules if not deps[mid] and mid not in called]
+    return chains, standalone
+
+
+def cobol_source(root: Path, module: dict, module_id: str) -> str:
+    """Original COBOL from the module's cobol_path (any legacy dir), kept inside the session root."""
+    path = module.get('cobol_path')
+    if path:
+        resolved = Path(path).resolve()
+        if resolved.suffix == '.cbl' and resolved.is_relative_to(root.resolve()):
+            try:
+                return resolved.read_text() if resolved.stat().st_size <= 1_000_000 else 'Artifact is too large to display'
+            except OSError:
+                pass
+    return artifact(root, 'legacy', module_id, '.cbl')
+
+
+def copybooks(source: str) -> list[str]:
+    """Copybook names a COBOL source COPYs, in order."""
+    names = re.findall(r'^[^*]{0,6}\s*COPY\s+["\']?([A-Za-z0-9-]+)', source, flags=re.I | re.M)
+    return list(dict.fromkeys(n.upper() for n in names))
