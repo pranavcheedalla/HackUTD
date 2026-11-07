@@ -139,3 +139,14 @@ Resolve the root README/.gitignore/testing.py merge content explicitly. The
 optional requirements-integration.txt installs the tested LangGraph version;
 tools/check_team_pipeline.py runs against a disposable merged checkout with
 fixture agents. It never tests live Nemotron or real agent prompts.
+
+
+## Combined branch update
+
+Hemant's ee58f2f branch is now merged into this branch, with both histories
+preserved. Stub legacy.py is removed and HELLO is relocated; the documented
+merge cleanup has been performed. See [combined-integration.md](combined-integration.md)
+for the authoritative current setup. The actual CLI runs all three originals
+through the real graph with explicitly labeled fixture agents. Real mode stops
+while P3/P4 stubs remain. Full combined tests use requirements-combined.lock;
+requirements-dev.lock remains the P2-only profile. Hemant still owns main.

@@ -35,7 +35,8 @@ unchecked. This checklist does not certify arbitrary Python as safe to execute.
 
 ## Team actions still pending
 
-- [ ] Hemant reviews and merges PR #1. His branch's stub legacy.py must be removed when adopting the legacy/ package; relocate legacy/HELLO.cbl outside demo discovery. Resolve README/.gitignore/testing.py merge content deliberately.
+- [x] Combine Hemant's branch with P2, remove the stub clash, relocate HELLO, and resolve README/.gitignore/testing.py conflicts (docs/combined-integration.md).
+- [ ] Hemant reviews the combined PR #1 and merges main.
 - [ ] Run actual P3/P4 agents via llm.call_llm and Nemotron; verify real specs, generated inputs, Python rewrites, and divergence explanations.
 - [ ] Run the complete real-model pipeline and inspect its final state/dashboard before the demo.
 
@@ -45,3 +46,6 @@ finite test set is not a proof for all inputs or a security sandbox. Generated
 code still executes with the account's filesystem privileges; use OS isolation
 for genuinely untrusted programs. Hash manifests detect drift, not a same-user
 attacker who can rewrite the harness and every integrity file together.
+
+The combined branch now includes direct CLI and mocked LLM-wrapper checks. See
+[combined integration](combined-integration.md) for current run modes and next steps.

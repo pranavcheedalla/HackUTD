@@ -114,3 +114,11 @@ See docs/ACCEPTANCE_CHECKLIST.md and docs/ADVERSARIAL_REVIEW.md. Remove his
 legacy.py stub and relocate HELLO.cbl when adopting our package. Generated
 tests now include an integrity manifest and should be regenerated once. Live
 model calls and real agent behavior remain pending.
+
+
+## P1 + P2 combined
+
+Hemant's pipeline branch is combined here, including contract, LLM wrapper, graph,
+CLI, and state writer. All namespace and file conflicts are resolved. Use the
+root README and docs/combined-integration.md. The offline CLI verifies all 45
+cases, including invoice repair; real mode refuses remaining agent stubs.

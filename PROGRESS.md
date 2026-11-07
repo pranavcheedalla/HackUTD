@@ -35,3 +35,12 @@ validation, bounded output, reference stability, and executable fingerprints.
 600 seeded mutation trials supplement the 532 Decimal comparisons.
 Hemant's graph at ee58f2f passed five scenarios with handwritten agents in a
 disposable overlay. New checklist: docs/ACCEPTANCE_CHECKLIST.md.
+
+## Combined backend update
+
+Hemant's ee58f2f branch is combined with P2; graph/contract/LLM wrapper are preserved.
+Conflicts resolved, obsolete legacy.py removed, HELLO moved outside discovery.
+Public CLI fake mode runs all three with labeled fixtures; invoice repairs on
+attempt 2. Real mode blocks remaining P3/P4 stubs. Client retries/cache/repair
+are tested with mocked responses. Current guide: docs/combined-integration.md.
+Next: Hemant reviews/merges, integrate real P3/P4 agents, then live-model smoke.
