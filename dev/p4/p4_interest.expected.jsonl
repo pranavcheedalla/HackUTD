@@ -1,0 +1,8 @@
+{"input": "000100000050003", "output": "INTEREST=      150.00 TOTAL=     1,150.00"}
+{"input": "000123456033307", "output": "INTEREST=      287.77 TOTAL=     1,522.33"}
+{"input": "000000000050005", "output": "INTEREST=        0.00 TOTAL=         0.00"}
+{"input": "000100000000010", "output": "INTEREST=        0.00 TOTAL=     1,000.00"}
+{"input": "000100000050000", "output": "ERROR: YEARS MUST BE GREATER THAN ZERO"}
+{"input": "999999999010001", "output": "INTEREST=   99,999.99 TOTAL=10,099,999.98"}
+{"input": "000000001000101", "output": "INTEREST=        0.00 TOTAL=         0.01"}
+{"input": "001000000125012", "output": "INTEREST=   15,000.00 TOTAL=    25,000.00"}

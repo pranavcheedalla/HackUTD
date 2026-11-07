@@ -1,0 +1,20 @@
+{
+  "module_id": "p4_interest",
+  "summary": "Computes simple interest and the total amount owed from principal, annual rate and number of years.",
+  "inputs": [
+    {"name": "WS-PRINCIPAL", "type": "PIC 9(7)V99", "format": "cols 1-9, 9 digits, implied 2 decimals"},
+    {"name": "WS-RATE", "type": "PIC 9(2)V99", "format": "cols 10-13, percent, 4 digits, implied 2 decimals"},
+    {"name": "WS-YEARS", "type": "PIC 9(2)", "format": "cols 14-15, 2 digits"}
+  ],
+  "outputs": [
+    {"name": "result line", "type": "text", "format": "INTEREST=<Z,ZZZ,ZZ9.99> TOTAL=<ZZ,ZZZ,ZZ9.99>"},
+    {"name": "error line", "type": "text", "format": "ERROR: YEARS MUST BE GREATER THAN ZERO"}
+  ],
+  "business_rules": [
+    "If years is 0, print the error line and nothing else.",
+    "interest = principal * rate * years / 100, stored in PIC 9(7)V99.",
+    "total = principal + interest, stored in PIC 9(8)V99."
+  ],
+  "edge_cases": ["years = 0", "principal = 0", "rate = 0", "max principal 9999999.99", "results below one cent"],
+  "quirks": ["COMPUTE without ROUNDED truncates interest to 2 decimals (287.775936 -> 287.77, not 287.78)."]
+}
