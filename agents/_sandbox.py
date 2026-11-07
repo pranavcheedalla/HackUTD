@@ -16,8 +16,13 @@ from pathlib import Path
 
 from legacy.runtime import _run_process, OutputLimitExceeded
 
+MODERN_DIR = Path(__file__).resolve().parent.parent / "modern"  # accepted rewrites
+
 _DRIVER = r"""
-import json, sys, traceback, importlib.util
+import json, os, sys, traceback, importlib.util
+# `python -I` does not put the script's folder on sys.path: add the candidate's folder so
+# verified dependency modules written next to it (`import discount`) can be imported
+sys.path.insert(0, os.path.dirname(os.path.abspath(sys.argv[1])))
 spec = importlib.util.spec_from_file_location("candidate", sys.argv[1])
 results = []
 try:
@@ -39,11 +44,16 @@ print(json.dumps({"results": results}))
 """
 
 
-def run_main(code: str, inputs: list[str], timeout: float = 20) -> dict:
-    """Run main(line) for each input. Returns
+def run_main(code: str, inputs: list[str], timeout: float = 20,
+             modules: dict[str, str] | None = None) -> dict:
+    """Run main(line) for each input. `modules` = {module_id: python_src} of dependencies,
+    written next to the candidate so it can `import <module_id>`. Returns
     {"import_error": str} | {"timeout": True} | {"results": [{ok, output|error, ...}, ...]}"""
     with tempfile.TemporaryDirectory(prefix="p4_sbx_") as d:
         mod, inp, drv = Path(d, "candidate.py"), Path(d, "inputs.json"), Path(d, "driver.py")
+        for module_id, src in (modules or {}).items():
+            if module_id not in ("candidate", "driver", "inputs"):
+                Path(d, f"{module_id}.py").write_text(src)
         mod.write_text(code)
         inp.write_text(json.dumps(inputs))
         drv.write_text(_DRIVER)
@@ -64,16 +74,25 @@ def run_main(code: str, inputs: list[str], timeout: float = 20) -> dict:
             return {"import_error": (r.stderr or r.stdout).decode(errors='replace')[-1500:]}
 
 
-def run_pytest(module_id: str, code: str, test_src: str, timeout: float = 90) -> dict:
+def run_pytest(module_id: str, code: str, test_src: str, timeout: float = 90,
+               modern_dir: str | Path | None = None) -> dict:
     """Run a generated test file against the module, laid out as modern/<module_id>.py.
+    Every other accepted module in the project's modern/ is copied in too, and <tmp>/modern is
+    on PYTHONPATH, so a caller that does `import discount` works (callees are accepted first).
     Returns {"ok": bool, "collected_error": bool, "failed": [test names], "output": tail}"""
     with tempfile.TemporaryDirectory(prefix="p4_pyt_") as d:
         (Path(d) / "modern").mkdir()
         (Path(d) / "modern" / "__init__.py").write_text("")
+        src_dir = Path(modern_dir) if modern_dir else MODERN_DIR
+        if src_dir.is_dir():
+            for f in src_dir.glob("*.py"):
+                if f.stem not in (module_id, "__init__"):
+                    (Path(d) / "modern" / f.name).write_text(f.read_text())
         (Path(d) / "modern" / f"{module_id}.py").write_text(code)
         test_file = Path(d) / f"test_{module_id}.py"
         test_file.write_text(test_src)
-        env = {'PYTHONPATH': d, 'PYTEST_DISABLE_PLUGIN_AUTOLOAD': '1', 'PYTEST_ADDOPTS': ''}
+        env = {'PYTHONPATH': d + os.pathsep + str(Path(d) / "modern"),
+               'PYTEST_DISABLE_PLUGIN_AUTOLOAD': '1', 'PYTEST_ADDOPTS': ''}
         try:
             r = _run_process(
                 [sys.executable, "-m", "pytest", "-q", '-c', os.devnull, '--noconftest', '--capture=no',
