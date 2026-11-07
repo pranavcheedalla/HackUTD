@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 from agents import _llm
-from agents.cobol_static import analyze, numbered, render_summary
+from agents.cobol_static import analyze, kw, numbered, render_summary, strip_comments
 
 MODEL = "super"
 MIN_CASES, MAX_CASES = 20, 30
@@ -30,6 +32,10 @@ Every input line MUST match the program's exact input format:
   The line length must equal the record width unless the case is deliberately short/long.
 - Text fields (PIC X) are padded on the right with spaces to their width.
 - If the program parses a delimited line instead, follow that delimiter exactly.
+- A SUBPROGRAM (no ACCEPT; PROCEDURE DIVISION USING) is run through a test driver: each
+  line is the parameters in USING order separated by "|" (exactly one fewer "|" than
+  parameters), numbers typed with a literal decimal point ("1000.00"), text as-is.
+  An empty token is allowed (number -> 0, text -> spaces).
 
 Cover ALL of these (one case can cover several):
 1. 3-5 typical, realistic business cases.
@@ -141,6 +147,88 @@ def _baseline(analysis) -> list[dict]:
             {"input": "9" * w, "covers": "baseline: every field at its maximum"}]
 
 
+_CMP = (r"\s*(?:IS\s+)?(?:NOT\s+)?(?:>=|<=|=|>|<|EQUAL(?:\s+TO)?|GREATER(?:\s+THAN)?(?:\s+OR\s+EQUAL(?:\s+TO)?)?"
+        r"|LESS(?:\s+THAN)?(?:\s+OR\s+EQUAL(?:\s+TO)?)?)\s*('[^'\n]*'|\"[^\"\n]*\"|[+-]?\d+(?:\.\d+)?)")
+
+
+def _compared_values(src: str, name: str) -> list[str]:
+    """Literals a param is compared against in IF/WHEN conditions (and its 88-level values)."""
+    text = strip_comments(src)
+    pm = re.search(kw("PROCEDURE") + r"\s+DIVISION", text, re.I)
+    proc = text[pm.end():] if pm else ""
+    out = [m.group(1) for m in re.finditer(kw(re.escape(name)) + _CMP, proc, re.I)]
+    out += [m.group(1) for m in re.finditer(r"('[^'\n]*'|\"[^\"\n]*\"|[+-]?\d+(?:\.\d+)?)\s*(?:<=|>=|=|<|>)\s*"
+                                            + kw(re.escape(name)), proc, re.I)]
+    return list(dict.fromkeys(out))
+
+
+def _num(value: Decimal, p: dict) -> str:
+    return f"{value:.{p['dec_digits']}f}"
+
+
+def _driver_cases(analysis, src: str) -> list[dict]:
+    """No-LLM driver-format cases for a subprogram: every compared literal, each threshold
+    just below / at / just above, zero, maximum, invalid/lowercase codes and empty tokens."""
+    params = analysis.params
+    if analysis.kind != "subprogram" or not params:
+        return []
+    found = {p["name"]: _compared_values(src, p["name"]) for p in params}
+    for p in params:  # 88-level values count as compared literals too
+        f = analysis.index.get(p["name"])
+        for _, raw in (f.conditions if f else []):
+            found[p["name"]] += re.findall(r"'[^']*'|\"[^\"]*\"|[+-]?\d+(?:\.\d+)?", raw)
+
+    def text_values(p):
+        return [v[1:-1][:p["length"]] for v in found[p["name"]] if v[:1] in "'\""]
+
+    def invalid_code(p):
+        codes = text_values(p)
+        return next((c for c in ("X", "Z", "Q", "9") if c not in codes), "?") * min(p["length"], 1)
+
+    # Held-constant values fall THROUGH every code check, so a numeric threshold branch
+    # (e.g. WHEN LK-SUBTOTAL >= 1000.00 after WHEN LK-TIER = 'G') is actually reached.
+    base = {}
+    for p in params:
+        if p["kind"] == "text":
+            base[p["name"]] = invalid_code(p)
+        else:
+            base[p["name"]] = _num(Decimal(1), p) if p["int_digits"] else _num(Decimal("0.5"), p)
+
+    cases: list[tuple[str, dict]] = [("every param typical", {}), ("every token empty", {p["name"]: "" for p in params})]
+    for p in params:
+        name = p["name"]
+        if p["kind"] == "text":
+            codes = text_values(p)
+            cases += [(f"{name} = {c!r} branch", {name: c}) for c in codes]
+            if codes and codes[0].lower() != codes[0]:
+                cases.append((f"{name} lowercase {codes[0].lower()!r} (codes are case-sensitive)", {name: codes[0].lower()}))
+            cases.append((f"{name} invalid code {invalid_code(p)!r} (OTHER branch)", {name: invalid_code(p)}))
+            cases.append((f"{name} empty (spaces)", {name: ""}))
+            continue
+        ulp = Decimal(1).scaleb(-p["dec_digits"])
+        maximum = Decimal("9" * p["int_digits"] + ("." + "9" * p["dec_digits"] if p["dec_digits"] else "") or "0")
+        for raw in found[name]:
+            if raw[:1] in "'\"":
+                continue
+            t = Decimal(raw)
+            for v, label in ((t - ulp, "just below"), (t, "at"), (t + ulp, "just above")):
+                if 0 <= v <= maximum or (p["signed"] and -maximum <= v <= maximum):
+                    cases.append((f"{name} {label} threshold {raw}", {name: _num(v, p)}))
+        cases += [(f"{name} zero", {name: _num(Decimal(0), p)}), (f"{name} maximum", {name: _num(maximum, p)}),
+                  (f"{name} empty (NUMVAL -> 0)", {name: ""})]
+        if p["signed"]:
+            cases.append((f"{name} negative", {name: _num(-Decimal(1), p)}))
+    out = []
+    for covers, override in cases:
+        line = "|".join(override.get(p["name"], base[p["name"]]) for p in params)
+        out.append({"input": line, "covers": f"driver: {covers}"})
+    return out
+
+
+def _driver_format_ok(line: str, analysis) -> bool:
+    return analysis.kind != "subprogram" or line.count("|") == len(analysis.params) - 1
+
+
 def _fallback_cases(analysis) -> list[dict]:
     """No-LLM boundary cases: vary one field at a time (min / one / max, or blank / filled)."""
     lay, w = analysis.input_layout, analysis.input_width
@@ -180,6 +268,14 @@ def _anchors(analysis) -> list[dict]:
     return [{"input": value, "covers": "reviewed handwritten regression case"} for value in values]
 
 
+def _keep_driver_format(cases: list[dict], analysis, warnings: list[str]) -> list[dict]:
+    kept = [c for c in cases if _driver_format_ok(c["input"], analysis)]
+    for c in cases:
+        if c not in kept:
+            warnings.append(f"dropped {c['input']!r}: driver lines need exactly {len(analysis.params) - 1} '|'")
+    return kept
+
+
 def _call(system: str, user: str, schema: dict):
     """call_llm, but a failed call (timeout, bad JSON, 5xx) becomes "" so the fallbacks run."""
     try:
@@ -207,6 +303,7 @@ def generate_inputs(spec: dict, cobol_src: str) -> list[str]:
     if analysis.delimiter:
         # Keep deliberately malformed cases, but reject the old padded-buffer fallback.
         proposals = [c for c in proposals if len(c['input']) < 256]
+    proposals = _keep_driver_format(proposals, analysis, warnings)
     if os.getenv('LLM_MODE', 'real').lower() == 'real' and not proposals:
         raise ValueError('Model returned no usable input proposals')
     cases = _clean(anchors + proposals, analysis.input_width, warnings)
@@ -215,16 +312,18 @@ def generate_inputs(spec: dict, cobol_src: str) -> list[str]:
         more_user = user + GENERATE_INPUTS_MORE.format(
             count=len(cases), min_cases=MIN_CASES, need=need,
             existing="\n".join(f"- {c['input']!r}  ({c['covers']})" for c in cases) or "(none)")
-        extra = _cases(_call(system, more_user, INPUTS_SCHEMA))
+        extra = _keep_driver_format(_cases(_call(system, more_user, INPUTS_SCHEMA)), analysis, warnings)
         cases = _clean(cases + extra, analysis.input_width, warnings)
         if len(cases) < MIN_CASES:
             warnings.append(f"only {len(cases)} cases after retry")
 
-    if not cases:
+    driver_cases = _driver_cases(analysis, cobol_src)  # [] unless this is a subprogram
+    if not cases and not driver_cases:
         warnings.append("model gave no usable cases; using deterministic boundary cases")
         cases = _clean(_fallback_cases(analysis), analysis.input_width, warnings)
-    # Baselines belong inside the limit, and reviewed cases cannot be displaced.
-    cases = _clean(anchors + _baseline(analysis) + cases, analysis.input_width, warnings)[:MAX_CASES]
+    # Baselines belong inside the limit, and reviewed cases cannot be displaced. A subprogram's
+    # branch/threshold cases come first so its coverage never depends on the model.
+    cases = _clean(anchors + _baseline(analysis) + driver_cases + cases, analysis.input_width, warnings)[:MAX_CASES]
     if os.getenv("LLM_MODE", "real").lower() == "real" and len(cases) < MIN_CASES:
         raise ValueError(f"Only {len(cases)} distinct inputs; require {MIN_CASES}-{MAX_CASES}")
 

@@ -5,6 +5,9 @@
 Scans every COBOL program under legacy_dir, finds CALL and COPY dependencies with regex,
 and returns the modules in dependency order (a module always comes after everything it
 CALLs). Extra keys per module, safe to ignore: program_id, copybooks, unresolved_calls.
+Codebase keys (contract.CodebaseModule): kind ("program"/"subprogram"), link (absolute
+callee .cbl paths, transitive, callees first), copy_dirs (absolute copybook dirs, for
+cobc -I), params (contract.Param list in USING order; [] for programs).
 
 Also exports load_cobol_source(cobol_path): the source with COPY statements expanded,
 which is what extract_spec should be given so it can see the copybook fields.
@@ -15,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 
-from agents.cobol_static import find_calls, find_copies, kw, program_id, strip_comments
+from agents.cobol_static import find_calls, find_copies, kw, linkage_params, program_id, strip_comments, using_names
 
 PROGRAM_EXTS = {".cbl", ".cob", ".cobol"}
 COPYBOOK_EXTS = {".cpy", ".copy", ".cbl", ".cob", ""}
@@ -134,4 +137,44 @@ def understand(legacy_dir) -> list[dict]:
             print(f"[understand] {mid}: unresolved {unresolved}", file=sys.stderr)
         info.update(depends_on=sorted(set(depends)), copybooks=copybooks, unresolved_calls=unresolved)
 
+    for mid, info in mods.items():
+        # Params may be declared in a copybook, so read them from the expanded source.
+        expanded = load_cobol_source(info["cobol_path"], root)
+        info["kind"] = "subprogram" if using_names(expanded) else "program"
+        try:
+            info["params"] = linkage_params(expanded)
+        except ValueError as error:
+            print(f"[understand] WARNING: {mid}: {error}; params left empty", file=sys.stderr)
+            info["params"] = []
+        info["copy_dirs"] = _dedupe_paths(str(Path(c).resolve().parent) for c in info["copybooks"])
+        info["link"] = [str(Path(mods[d]["cobol_path"]).resolve()) for d in _callees(mid, mods)]
+
     return [mods[m] for m in _toposort(mods)]
+
+
+def _dedupe_paths(paths) -> list[str]:
+    seen: list[str] = []
+    for p in paths:
+        if p not in seen:
+            seen.append(p)
+    return seen
+
+
+def _callees(mid: str, mods: dict[str, dict]) -> list[str]:
+    """Every module mid CALLs, transitively, callees before callers, without mid (cycle-safe).
+
+    A -> B -> C gives [C, B] for A.
+    """
+    order: list[str] = []
+    visiting: set[str] = {mid}
+
+    def walk(m: str) -> None:
+        for dep in mods[m]["depends_on"]:
+            if dep in visiting or dep in order:
+                continue
+            visiting.add(dep)
+            walk(dep)
+            order.append(dep)
+
+    walk(mid)
+    return order
