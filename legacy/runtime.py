@@ -271,9 +271,83 @@ def record_golden(module_id, binary_path, inputs: list[str]) -> str:
     return str(destination)
 
 
-def compile_program(cobol_path, link=(), copy_dirs=(), source_format="auto") -> str:
-    """Codebase support (owner: P2). Contract: contract.py "CODEBASE SUPPORT".
+SOURCE_FORMATS = ("auto", "free", "fixed")
+_FIXED_INDICATOR = re.compile(r"^[ 0-9]{6}[*/]", re.M)
 
-    PLACEHOLDER until P2's branch merges; tests/codebase/test_p2_runtime.py defines done.
+
+def _source_file(path) -> Path:
+    source = Path(path).expanduser().resolve()
+    if not source.is_file():
+        raise FileNotFoundError(f"COBOL source does not exist: {source}")
+    if source.suffix.lower() not in (".cbl", ".cob"):
+        raise ValueError(f"Expected a .cbl or .cob source file: {source}")
+    return source
+
+
+def _cobc(compiler: str, args: list[str], source: Path) -> None:
+    try:
+        result = _run_process([compiler, *args], COMPILE_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as exc:
+        raise CobolCompileError(f"Compilation timed out after {COMPILE_TIMEOUT_SECONDS}s: {source}"
+                                f"\n{_diagnostic(exc.stderr)}") from exc
+    except OutputLimitExceeded as exc:
+        raise CobolCompileError(str(exc)) from exc
+    except OSError as exc:
+        raise CobolCompileError(f"Cannot start compiler: {exc}") from exc
+    if result.returncode != 0:
+        raise CobolCompileError(f"Compilation failed ({result.returncode}): {source}\n"
+                                f"{_diagnostic(result.stdout)}{_diagnostic(result.stderr)}")
+
+
+def _cobc_any_format(compiler: str, args: list[str], source: Path, source_format: str) -> None:
+    """Run cobc on one file; "auto" tries free format, then fixed, and reports the likelier error."""
+    if source_format != "auto":
+        return _cobc(compiler, [f"-{source_format}", *args], source)
+    errors = {}
+    for fmt in ("free", "fixed"):
+        try:
+            return _cobc(compiler, [f"-{fmt}", *args], source)
+        except CobolCompileError as exc:
+            errors[fmt] = exc
+    looks_fixed = bool(_FIXED_INDICATOR.search(source.read_text(errors="replace")))
+    raise errors["fixed" if looks_fixed else "free"]
+
+
+def compile_program(cobol_path, link=(), copy_dirs=(), source_format="auto") -> str:
+    """Build a main program plus the subprograms it CALLs into one executable.
+
+    `link` lists .cbl subprograms (compiled to objects, each in its own format) and
+    `copy_dirs` lists copybook folders (-I) used for every file. Returns the absolute
+    executable path. A failed build never replaces the last good binary, and the binary
+    name depends on the main source, the link list (in order) and the copy dirs.
     """
-    raise NotImplementedError("pending: P2 compile_program")
+    if source_format not in SOURCE_FORMATS:
+        raise ValueError(f"source_format must be one of {SOURCE_FORMATS}: {source_format!r}")
+    source = _source_file(cobol_path)
+    links = [_source_file(path) for path in link]
+    folders = [Path(d).expanduser().resolve() for d in copy_dirs]
+    for folder in folders:
+        if not folder.is_dir():
+            raise FileNotFoundError(f"Copybook directory does not exist: {folder}")
+    compiler = shutil.which("cobc")
+    if compiler is None:
+        raise CobolCompileError("cobc is missing; install with: brew install gnucobol")
+
+    includes = [arg for folder in folders for arg in ("-I", str(folder))]
+    identity = "\0".join([str(source), *map(str, links), "--", *map(str, folders), source_format])
+    binary = BIN_DIR / f"{source.stem}-{hashlib.sha256(os.fsencode(identity)).hexdigest()[:12]}"
+    BIN_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".link-", dir=BIN_DIR) as folder:
+        objects = []
+        for number, dependency in enumerate(links):
+            target = Path(folder) / f"{number}-{dependency.stem}.o"
+            _cobc_any_format(compiler, ["-c", *includes, "-o", str(target), str(dependency)],
+                             dependency, source_format)
+            objects.append(str(target))
+        staged = Path(folder) / source.stem
+        _cobc_any_format(compiler, ["-x", *includes, "-o", str(staged), str(source), *objects],
+                         source, source_format)
+        if not staged.is_file() or not os.access(staged, os.X_OK):
+            raise CobolCompileError(f"Compiler produced no executable: {source}")
+        os.replace(staged, binary)
+    return str(binary)
