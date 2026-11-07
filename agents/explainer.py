@@ -1,4 +1,4 @@
-"""P4 · Divergence explainer: one failing case -> {verdict, reason}.
+"""P4 · Divergence explainer (Nemotron 3 Super): one failing case -> {verdict, reason}.
 
 Contract: explain_divergence(spec, cobol_src, python_src, failure) -> {verdict, reason}
   verdict: "new_code_bug"  — the Python is simply wrong (logic, formatting, parsing)
@@ -82,13 +82,17 @@ def explain_divergence(spec: dict, cobol_src: str, python_src: str, failure: dic
         python=python_src,
     )
     try:
-        out = _llm.call_llm("nano", EXPLAIN_SYSTEM, user, EXPLAIN_SCHEMA)
+        # Super (not Nano): this verdict is the demo's key moment, and it needs real reasoning
+        with _llm.agent("explain_divergence", (spec or {}).get("module_id")):
+            out = _llm.call_llm("super", EXPLAIN_SYSTEM, user, EXPLAIN_SCHEMA)
         if isinstance(out, str):
             out = _llm.extract_json(out)
-        verdict = str(out.get("verdict", "")).strip().lower().replace(" ", "_")
+        verdict = str(out.get("verdict", "")).strip().lower().replace(" ", "_").replace("-", "_")
         reason = _one_sentence(str(out.get("reason", "")))
         if verdict not in VERDICTS or not reason:
             raise ValueError(f"bad explainer output: {out!r}")
+        if verdict != analysis["verdict"] and analysis["notes"]:
+            print(f"[explainer] Nemotron says {verdict}, diff heuristic says {analysis['verdict']}; using Nemotron")
         return {"verdict": verdict, "reason": reason}
     except Exception as e:  # never break the pipeline over an explanation
         print(f"[explainer] falling back to heuristic: {e}")

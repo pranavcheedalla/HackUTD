@@ -21,7 +21,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agents import explain_divergence, rewrite, write_unit_tests  # noqa: E402
+from agents import _llm, explain_divergence, rewrite, write_unit_tests  # noqa: E402
 
 OUT = HERE / "out"
 
@@ -76,6 +76,7 @@ def main() -> int:
     py_path.parent.mkdir(parents=True, exist_ok=True)
     (py_path.parent / "__init__.py").touch()
 
+    trace_start = _llm.TRACE_PATH.stat().st_size if _llm.TRACE_PATH.is_file() else 0
     failures, res, src = None, None, ""
     for attempt in range(1, args.attempts + 1):
         print(f"\n== attempt {attempt}: rewrite {module_id}" + (" (fixing failures)" if failures else ""))
@@ -111,7 +112,24 @@ def main() -> int:
                            cwd=OUT, capture_output=True, text=True, env={**__import__("os").environ, "PYTHONPATH": str(OUT)})
         print(r.stdout[-2000:] or r.stderr[-2000:])
 
+    if not args.offline:
+        print_nemotron_summary(trace_start)
     return 0 if not res["failures"] else 1
+
+
+def print_nemotron_summary(start: int) -> None:
+    """Show which Nemotron models did the work in this run (from runs/nemotron_trace.jsonl)."""
+    path = _llm.TRACE_PATH
+    if not path.is_file():
+        return
+    with path.open() as f:
+        f.seek(start)
+        recs = [json.loads(l) for l in f if l.strip()]
+    print("\n== Nemotron calls this run")
+    for r in recs:
+        status = "cache" if r.get("cached") else f"{r['seconds']}s"
+        print(f"  {r['agent']:<20} {r['model_id']:<40} {status:>7}"
+              + (f"  ERROR {r['error']}" if r.get("error") else ""))
 
 
 if __name__ == "__main__":

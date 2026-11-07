@@ -1,10 +1,15 @@
-"""P4 · Unit-test writer agent: spec + Python -> pytest source.
+"""P4 · Unit-test writer agent (Nemotron 3 Super): spec + Python -> pytest source.
 
 Contract: write_unit_tests(spec, python_src) -> test_src
 
 Deliberately independent of the rewrite agent: it sees only the spec and the final code,
 never the rewrite prompt or reasoning, so it can't inherit the same blind spots.
 Generated tests import the module as `modern.<module_id>`.
+
+After Nemotron writes the tests they are RUN in a sandbox against the code:
+  - collection/import errors or failing tests -> one repair call with the pytest output
+  - tests that still fail are removed (the code is already proven equal to COBOL by the
+    golden tests, so a failing unit test here means the test's guess was wrong)
 """
 from __future__ import annotations
 
@@ -12,7 +17,7 @@ import ast
 import json
 import re
 
-from agents import _llm
+from agents import _llm, _sandbox
 
 # ----------------------------------------------------------------------------- prompts
 TEST_WRITER_SYSTEM = """You are a QA engineer writing pytest unit tests for a Python module
@@ -48,28 +53,64 @@ TEST_WRITER_USER = """## Spec
 
 Write tests/unit/test_{module_id}.py now."""
 
-TEST_FIX_USER = """That test file is invalid: {error}
-Return the complete corrected file in a single ```python code block.
+TEST_FIX_USER = """## Spec
+{spec}
 
+## Module under test: modern/{module_id}.py
+```python
+{python_src}
+```
+
+## Your test file
 ```python
 {code}
-```"""
+```
+
+## Problem
+{problem}
+
+The module's outputs are already verified identical to the legacy COBOL, so when a test
+fails, the test's expectation is what's wrong: fix or loosen that assertion. Return the
+complete corrected test file in a single ```python code block."""
 
 
 # ----------------------------------------------------------------------------- agent
 def write_unit_tests(spec: dict, python_src: str) -> str:
     module_id = spec.get("module_id", "module")
     system = TEST_WRITER_SYSTEM.replace("{module_id}", module_id)
-    user = TEST_WRITER_USER.format(spec=json.dumps(spec, indent=2), module_id=module_id, python_src=python_src)
+    spec_json = json.dumps(spec, indent=2)
 
-    code = _extract(_llm.call_llm("super", system, user, None))
+    with _llm.agent("write_unit_tests", module_id):
+        code = _extract(_llm.call_llm("super", system, TEST_WRITER_USER.format(
+            spec=spec_json, module_id=module_id, python_src=python_src), None))
+
+        problem, run = _check(code, module_id, python_src)
+        if problem:
+            print(f"[test_writer] {module_id}: repairing tests ({problem.splitlines()[0]})")
+            fixed = _extract(_llm.call_llm("super", system, TEST_FIX_USER.format(
+                spec=spec_json, module_id=module_id, python_src=python_src, code=code, problem=problem), None))
+            fixed_problem, fixed_run = _check(fixed, module_id, python_src)
+            if validate_tests(fixed, module_id) is None:
+                code, problem, run = fixed, fixed_problem, fixed_run
+
+    if run and run["failed"] and not run["collected_error"]:
+        code = drop_tests(code, run["failed"])
+        print(f"[test_writer] {module_id}: dropped wrong tests {run['failed']}")
+    elif problem:
+        print(f"[test_writer] {module_id}: tests still have problems: {problem.splitlines()[0]}")
+    return code
+
+
+def _check(code: str, module_id: str, python_src: str) -> tuple[str | None, dict | None]:
     err = validate_tests(code, module_id)
     if err:
-        code = _extract(_llm.call_llm("super", system, TEST_FIX_USER.format(error=err, code=code), None))
-        err = validate_tests(code, module_id)
-        if err:
-            print(f"[test_writer] {module_id}: still invalid after retry: {err}")
-    return code
+        return err, None
+    run = _sandbox.run_pytest(module_id, python_src, code)
+    if run["ok"]:
+        return None, run
+    if run["collected_error"]:
+        return "pytest could not run the file:\n" + run["output"], run
+    return f"These tests fail: {', '.join(run['failed'])}\n" + run["output"], run
 
 
 def _extract(text) -> str:
@@ -88,3 +129,17 @@ def validate_tests(code: str, module_id: str) -> str | None:
     if f"modern.{module_id}" not in code:
         return f"tests must import main with: from modern.{module_id} import main"
     return None
+
+
+def drop_tests(code: str, names: list[str]) -> str:
+    """Remove top-level test functions (with their decorators) by name, keeping comments."""
+    tree = ast.parse(code)
+    lines = code.splitlines(keepends=True)
+    spans = []
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in names:
+            start = min([d.lineno for d in node.decorator_list] + [node.lineno])
+            spans.append((start, node.end_lineno))
+    for start, end in sorted(spans, reverse=True):
+        del lines[start - 1 : end]
+    return "".join(lines)

@@ -60,7 +60,7 @@ def test_rewrite_inlines_helpers_and_retries_on_syntax_error(monkeypatch):
     calls = []
     monkeypatch.setattr(_llm, "call_llm", lambda *a: (calls.append(a), next(replies))[1])
     src = rewrite_mod.rewrite({"module_id": "m1"}, "COBOL", None)
-    assert len(calls) == 2 and "SyntaxError" in calls[1][2]
+    assert len(calls) == 2 and "SyntaxError" in calls[1][2]  # self-check fed the error back
     ns = {}
     exec(src, ns)
     assert ns["main"]("") == " 1.00"
@@ -117,3 +117,87 @@ def test_test_writer_retries_when_import_missing(monkeypatch):
     monkeypatch.setattr(_llm, "call_llm", lambda *a: next(replies))
     src = test_writer.write_unit_tests({"module_id": "m3"}, "def main(s): return s")
     assert "from modern.m3 import main" in src
+
+
+def test_rewrite_self_check_replays_failures_until_fixed(monkeypatch):
+    replies = iter([
+        "```python\ndef main(input_line):\n    return 'A'\n```",          # still wrong
+        "```python\ndef main(input_line):\n    return 'B'\n```",          # fixed
+    ])
+    seen = []
+    monkeypatch.setattr(_llm, "call_llm", lambda m, s, u, j: (seen.append(u), next(replies))[1])
+    src = rewrite_mod.rewrite({"module_id": "m4"}, "COBOL", [{"input": "1", "expected": "B", "actual": "A"}])
+    assert "'B'" in src and len(seen) == 2
+    assert "still fail" in seen[1] and "'A'" in seen[1]
+
+
+def test_rewrite_self_check_catches_crash(monkeypatch):
+    replies = iter([
+        "```python\ndef main(input_line):\n    return str(int(input_line))\n```",   # crashes on ''
+        "```python\ndef main(input_line):\n    return str(int(input_line or 0))\n```",
+    ])
+    seen = []
+    monkeypatch.setattr(_llm, "call_llm", lambda m, s, u, j: (seen.append(u), next(replies))[1])
+    src = rewrite_mod.rewrite({"module_id": "m5"}, "COBOL", None)
+    assert "or 0" in src and "ValueError" in seen[1]
+
+
+def test_rewrite_returns_best_candidate_after_max_calls(monkeypatch):
+    fails = [{"input": str(i), "expected": "X", "actual": "?"} for i in range(3)]
+    replies = iter([
+        "```python\ndef main(s):\n    return '?'\n```",                         # 3 wrong
+        "```python\ndef main(s):\n    return 'X' if s != '2' else '?'\n```",   # 1 wrong (best)
+        "```python\ndef main(s):\n    return 'X' if s == '9' else '?'\n```",   # 3 wrong
+    ])
+    monkeypatch.setattr(_llm, "call_llm", lambda *a: next(replies))
+    src = rewrite_mod.rewrite({"module_id": "m6"}, "COBOL", fails)
+    assert "s != '2'" in src
+
+
+# ---------------------------------------------------------------- Nemotron client + trace
+def test_trace_records_agent_and_nemotron_model(monkeypatch, tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    monkeypatch.setattr(_llm, "TRACE_PATH", trace)
+    monkeypatch.setattr(_llm, "_backend", lambda: (lambda *a: "ok", "fake"))
+    with _llm.agent("rewrite", "mod1"):
+        assert _llm.call_llm("super", "s", "u", None) == "ok"
+    import json
+    rec = json.loads(trace.read_text().splitlines()[-1])
+    assert rec["agent"] == "rewrite" and rec["module_id"] == "mod1"
+    assert rec["model_id"] == "nvidia/nemotron-3-super-120b-a12b"
+
+
+def test_local_client_captures_reasoning_caches_and_parses_json(monkeypatch, tmp_path):
+    monkeypatch.setattr(_llm, "_CACHE_DIR", tmp_path)
+    calls = []
+    monkeypatch.setattr(_llm, "_invoke", lambda m, s, u: (calls.append(m), ('{"verdict": "legacy_quirk"}', "because cents"))[1])
+    schema = {"type": "object"}
+    assert _llm._local_call_llm("super", "s", "u", schema) == {"verdict": "legacy_quirk"}
+    assert _llm.last_reasoning() == "because cents"
+    assert _llm._local_call_llm("super", "s", "u", schema) == {"verdict": "legacy_quirk"}
+    assert len(calls) == 1  # second call served from cache
+
+
+def test_explainer_uses_nemotron_super(monkeypatch):
+    models = []
+    monkeypatch.setattr(_llm, "call_llm", lambda m, *a: (models.append(m), {"verdict": "new_code_bug", "reason": "x."})[1])
+    explainer.explain_divergence({}, "C", "P", {"input": "i", "expected": "a", "actual": "b"})
+    assert models == ["super"]
+
+
+# ---------------------------------------------------------------- test writer runs its tests
+def test_test_writer_repairs_then_drops_tests_that_still_fail(monkeypatch):
+    bad = ("```python\nfrom modern.m7 import main\n\n"
+           "def test_ok():\n    assert main('') == 'Z'\n\n"
+           "def test_wrong_guess():\n    assert main('') == 'nope'\n```")
+    monkeypatch.setattr(_llm, "call_llm", lambda *a: bad)     # repair returns the same file
+    src = test_writer.write_unit_tests({"module_id": "m7"}, "def main(s):\n    return 'Z'\n")
+    assert "test_ok" in src and "test_wrong_guess" not in src
+
+
+def test_test_writer_accepts_passing_tests_without_repair(monkeypatch):
+    good = "```python\nfrom modern.m8 import main\n\ndef test_ok():\n    assert main('') == 'Z'\n```"
+    calls = []
+    monkeypatch.setattr(_llm, "call_llm", lambda *a: (calls.append(1), good)[1])
+    test_writer.write_unit_tests({"module_id": "m8"}, "def main(s):\n    return 'Z'\n")
+    assert len(calls) == 1

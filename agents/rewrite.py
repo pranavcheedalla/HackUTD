@@ -1,19 +1,29 @@
-"""P4 · Rewrite agent: spec + COBOL -> standalone Python module with main(input_line) -> str.
+"""P4 · Rewrite agent (Nemotron 3 Super): spec + COBOL -> standalone Python module
+with main(input_line) -> str.
 
 Contract: rewrite(spec, cobol_src, failures: list|None) -> python_src
+
+Loop inside one rewrite() call (max P4_REWRITE_CALLS Nemotron calls, default 3):
+  Nemotron writes the module -> static check (syntax, main signature, no print/input)
+  -> sandbox run (no crash on any failing input or blank input)
+  -> replay the failing cases we were given: still wrong? feed the new diff back to Nemotron.
+The best candidate seen is returned, so the pipeline's verify step gets the strongest attempt.
 """
 from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 from pathlib import Path
 
-from agents import _llm
+from agents import _llm, _sandbox
 
 HELPERS_SRC = (Path(__file__).parent / "cobol_helpers.py").read_text()
 HELPER_NAMES = ("pic_store", "pic_from_text", "split_fixed", "display_num", "edit_picture")
 MAX_FAILURES_IN_PROMPT = 8
+MAX_LLM_CALLS = int(os.environ.get("P4_REWRITE_CALLS", "3"))
+SMOKE_INPUTS = [""]  # COBOL never crashes on short input (ACCEPT pads with spaces); Python mustn't either
 
 # ----------------------------------------------------------------------------- prompts
 REWRITE_SYSTEM = """You are a senior engineer migrating COBOL programs to Python 3.11.
@@ -26,8 +36,9 @@ with DISPLAY. Your module must define:
     def main(input_line: str) -> str
 
 which returns everything the COBOL program would print, with lines joined by "\\n" and
-NO trailing newline. No stdin/stdout, no files, no network, no randomness, no globals that
-keep state between calls.
+NO trailing newline. main must never raise (COBOL doesn't crash on odd input). No
+stdin/stdout inside functions, no files, no network, no randomness, no state kept
+between calls. An `if __name__ == "__main__":` block is allowed.
 
 COBOL semantics you MUST replicate (GnuCOBOL defaults):
 1. Money and all PIC 9 numbers use decimal.Decimal. Never float.
@@ -39,7 +50,8 @@ COBOL semantics you MUST replicate (GnuCOBOL defaults):
    happens when stored into the target field.
 4. ACCEPT into a group item splits the line by fixed column widths from the PIC sizes
    (short input padded with spaces). A PIC 9(5)V99 input field is 7 digits with an
-   IMPLIED decimal point: "0012345" -> 123.45.
+   IMPLIED decimal point: "0012345" -> 123.45. UNSTRING ... DELIMITED BY SPACE splits on
+   spaces; FUNCTION NUMVAL parses a human-readable number like "123.45".
 5. DISPLAY of an un-edited numeric field prints all digits with leading zeros and a "."
    for the implied decimal (PIC 9(3)V99 = 1.5 -> "001.50"); signed fields get a leading
    "+" or "-". DISPLAY of an alphanumeric PIC X(n) field prints it padded to n chars.
@@ -87,13 +99,18 @@ truncation vs rounding, field widths, leading zeros/spaces, sign handling, and d
 lost to field overflow. Keep everything that already works unchanged.
 """
 
-SYNTAX_FIX_USER = """Your module is invalid: {error}
-
-Return the complete corrected module in a single ```python code block.
-
+SELF_CHECK_SECTION = """
+## Your previous Python version
 ```python
-{code}
-```"""
+{previous}
+```
+
+## An automatic check of that version found this problem
+{problem}
+
+Fix it. Keep everything that already works unchanged.
+"""
+
 
 # ----------------------------------------------------------------------------- agent
 _last_src: dict[str, str] = {}  # module_id -> most recent rewrite (for fix-only-what's-wrong)
@@ -103,34 +120,67 @@ def rewrite(spec: dict, cobol_src: str, failures: list | None = None, previous_s
     """Return Python source for the module. `previous_src` is optional; if omitted on a
     retry, the last rewrite produced for this module_id in this process is used."""
     module_id = spec.get("module_id", "module")
+    system = REWRITE_SYSTEM.replace("{helpers}", HELPERS_SRC)
+
     fix_section = ""
     if failures:
         prev = previous_src or _last_src.get(module_id)
         fix_section = FIX_SECTION.format(
-            previous=prev or "(not available — rewrite from scratch)",
+            previous=prev or "(not available, rewrite from scratch)",
             failures=format_failures(failures),
         )
 
-    system = REWRITE_SYSTEM.replace("{helpers}", HELPERS_SRC)
-    user = REWRITE_USER.format(
-        module_id=module_id,
-        spec=json.dumps(spec, indent=2),
-        cobol=cobol_src,
-        fix_section=fix_section,
-    )
-    code = finalize(extract_code(_llm.call_llm("super", system, user, None)))
+    best: tuple[tuple, str] | None = None
+    with _llm.agent("rewrite", module_id):
+        for call in range(1, MAX_LLM_CALLS + 1):
+            user = REWRITE_USER.format(module_id=module_id, spec=json.dumps(spec, indent=2),
+                                       cobol=cobol_src, fix_section=fix_section)
+            code = finalize(extract_code(_llm.call_llm("super", system, user, None)))
+            problem, score = self_check(code, failures)
+            if best is None or score < best[0]:
+                best = (score, code)
+            if problem is None:
+                break
+            print(f"[rewrite] {module_id}: Nemotron call {call} -> {problem.splitlines()[0]}")
+            fix_section = SELF_CHECK_SECTION.format(previous=code, problem=problem)
 
-    err = validate(code)
-    if err:  # one retry with the error
-        code = finalize(
-            extract_code(_llm.call_llm("super", system, SYNTAX_FIX_USER.format(error=err, code=code), None))
-        )
-        err = validate(code)
-        if err:
-            print(f"[rewrite] {module_id}: still invalid after retry: {err}")
-
+    code = best[1]
     _last_src[module_id] = code
     return code
+
+
+def self_check(code: str, failures: list | None) -> tuple[str | None, tuple]:
+    """Return (problem description or None, score). Lower score = better candidate."""
+    err = validate(code)
+    if err:
+        return f"The module is invalid: {err}", (3, 0)
+
+    failures = failures or []
+    inputs = [str(f.get("input", "")) for f in failures] + SMOKE_INPUTS
+    res = _sandbox.run_main(code, inputs)
+    if "timeout" in res:
+        return "main() did not finish within 20 seconds (infinite loop?).", (2, 0)
+    if "import_error" in res:
+        return f"Importing the module failed:\n{res['import_error']}", (2, 0)
+
+    results = res["results"]
+    crashes = [
+        f"main({line!r}) " + (f"raised {r['error']}\n{r.get('trace', '')}" if not r["ok"] else "did not return a str")
+        for line, r in zip(inputs, results)
+        if not r["ok"] or not r.get("type_ok", True)
+    ]
+    if crashes:
+        return "main() crashed:\n" + "\n".join(crashes[:5]), (1, len(crashes))
+
+    still = [
+        {"input": f.get("input"), "expected": f.get("expected"), "actual": r["output"]}
+        for f, r in zip(failures, results)
+        if r["output"] != f.get("expected")
+    ]
+    if still:
+        return ("These equivalence cases still fail (expected = real COBOL output):\n"
+                + format_failures(still)), (0, len(still))
+    return None, (0, 0)
 
 
 # ----------------------------------------------------------------------------- helpers
