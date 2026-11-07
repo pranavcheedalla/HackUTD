@@ -5,7 +5,7 @@
 All Person 2 components are implemented: three COBOL originals with 15 real
 golden outputs each, compilation/execution, generated pytest tests, and structured
 equivalence results. The final integration smoke demonstrates the truncation
-failure and repair. Real model/orchestrator integration awaits teammate code.
+failure and repair. The actual Hemant graph is fixture-tested; real model-agent behavior remains pending.
 No NVIDIA key, model call, teammate agent, or Python rewrite is needed for this batch.
 
 ## Quick start on macOS
@@ -286,3 +286,22 @@ The smoke verifies all 45 cases using handwritten fixtures, catches the invoice
 rounding mutation, and verifies the repair. It uses temporary recordings and
 tests, preserving committed references and team state. It does not run models
 or LangGraph. [Final handoff and integration checklist](docs/final-handoff.md).
+
+
+## Acceptance and adversarial audit
+
+[Acceptance checklist](docs/ACCEPTANCE_CHECKLIST.md) lists every delivered item
+and leaves Hemant's merge and live-model checks pending.
+[Adversarial review](docs/ADVERSARIAL_REVIEW.md) documents reproduced false-pass
+bugs and their regression fixes: lying equality, changed tests, stale helper
+bytecode, runtime case mutation, malformed JSON/reports, and environment leakage.
+
+Generated tests now have a `.manifest.json` file; regenerate them after adopting
+this version. Use `testing.run_equivalence` for final acceptance. The worker
+isolates pytest settings/plugins, freezes references, and validates reports.
+Successful stdout is exact; more than 2 MiB combined output fails rather than
+returning truncated text. Inherited COB_* overrides are cleared. A stable
+executable is required throughout each recording batch. Optional actual-graph
+fixture checks use `requirements-integration.txt`; the core suite still needs
+only `requirements-dev.lock`. Same-user malicious code requires OS isolation;
+these correctness checks are not a security sandbox.

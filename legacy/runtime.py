@@ -8,15 +8,19 @@ import os
 from pathlib import Path
 import re
 import shutil
+import selectors
 import signal
 import subprocess
+import sys
 import tempfile
+import time
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BIN_DIR = PROJECT_ROOT / "legacy" / "bin"
 GOLDEN_DIR = PROJECT_ROOT / "golden"
 COMPILE_TIMEOUT_SECONDS = 30
 RUN_TIMEOUT_SECONDS = 5
+MAX_CAPTURE_BYTES = 2 * 1024 * 1024
 
 
 class LegacyError(RuntimeError):
@@ -43,41 +47,83 @@ def _kill_process_group(process: subprocess.Popen) -> None:
         pass
 
 
+class OutputLimitExceeded(LegacyError):
+    """A child produced too much stdout/stderr to capture safely."""
+
+
 def _run_process(command: list[str], timeout: float, data: bytes | None = None,
                  *, extra_env: dict | None = None, cwd=None):
-    # Inherit PATH and linker settings, but make numeric/diagnostic locale stable.
-    environment = dict(os.environ, LC_ALL="C", LANG="C")
+    # Ambient COB_* settings can redirect DISPLAY or alter numeric behavior.
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith("COB_")}
+    environment.update(LC_ALL="C", LANG="C")
     environment.update(extra_env or {})
     with subprocess.Popen(
         command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, start_new_session=True, env=environment, cwd=cwd,
     ) as process:
+        output, errors = bytearray(), bytearray()
+        pending = memoryview(data or b"")
+        offset = 0
+        deadline = time.monotonic() + timeout
         try:
-            stdout, stderr = process.communicate(input=data, timeout=timeout)
+            # Read both streams and write stdin without blocking on any pipe.
+            # Memory is bounded even if a rewrite floods stdout or stderr.
+            with selectors.DefaultSelector() as selector:
+                for stream, buffer in ((process.stdout, output), (process.stderr, errors)):
+                    os.set_blocking(stream.fileno(), False)
+                    selector.register(stream, selectors.EVENT_READ, buffer)
+                if pending:
+                    os.set_blocking(process.stdin.fileno(), False)
+                    selector.register(process.stdin, selectors.EVENT_WRITE, None)
+                else:
+                    process.stdin.close()
+                while selector.get_map():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(command, timeout)
+                    for key, _ in selector.select(remaining):
+                        stream = key.fileobj
+                        try:
+                            if key.data is None:
+                                offset += os.write(stream.fileno(), pending[offset:offset + 65536])
+                                if offset == len(pending):
+                                    selector.unregister(stream)
+                                    stream.close()
+                            else:
+                                chunk = os.read(stream.fileno(), 65536)
+                                if not chunk:
+                                    selector.unregister(stream)
+                                    stream.close()
+                                else:
+                                    if len(output) + len(errors) + len(chunk) > MAX_CAPTURE_BYTES:
+                                        raise OutputLimitExceeded(
+                                            f"Subprocess output exceeded {MAX_CAPTURE_BYTES} bytes"
+                                        )
+                                    key.data.extend(chunk)
+                        except BrokenPipeError:
+                            selector.unregister(stream)
+                            stream.close()
+                        except BlockingIOError:
+                            continue
+            process.wait(timeout=max(0, deadline - time.monotonic()))
         except subprocess.TimeoutExpired:
-            # Killing just cobc can leave its C compiler alive. A runtime child
-            # can also hold stdout open even after its parent has exited.
-            _kill_process_group(process)
-            try:
-                stdout, stderr = process.communicate(timeout=1)
-            except subprocess.TimeoutExpired as cleanup:
-                # A descendant that deliberately changed sessions is outside
-                # this process group. Do not wait forever on its inherited pipe.
-                stdout, stderr = cleanup.output or b"", cleanup.stderr or b""
-                process.stdout.close()
-                process.stderr.close()
-                process.wait()
-            raise subprocess.TimeoutExpired(command, timeout, stdout, stderr) from None
-        except BaseException:
-            _kill_process_group(process)
+            raise subprocess.TimeoutExpired(command, timeout, bytes(output), bytes(errors)) from None
+        finally:
+            # A leader may have exited while its children still hold a pipe.
+            # On failures, terminate its remaining ordinary descendants too.
+            if sys.exc_info()[0] is not None or process.poll() is None:
+                _kill_process_group(process)
+            for stream in (process.stdin, process.stdout, process.stderr):
+                stream.close()
             process.wait()
-            raise
-    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    return subprocess.CompletedProcess(command, process.returncode, bytes(output), bytes(errors))
 
 
 def _encode_input(input_line: str) -> bytes:
     if not isinstance(input_line, str):
         raise TypeError("input_line must be a string")
+    input_line = str.__str__(input_line)
     if "\n" in input_line or "\r" in input_line:
         raise ValueError("input_line must contain exactly one line, without CR/LF")
     try:
@@ -116,6 +162,8 @@ def compile_cobol(cobol_path) -> str:
                 f"Compilation timed out after {COMPILE_TIMEOUT_SECONDS}s: {source}"
                 f"\n{_diagnostic(exc.stderr)}"
             ) from exc
+        except OutputLimitExceeded as exc:
+            raise CobolCompileError(str(exc)) from exc
         except OSError as exc:
             raise CobolCompileError(f"Cannot start compiler: {exc}") from exc
         if result.returncode != 0:
@@ -145,6 +193,8 @@ def run_cobol(binary_path, input_line: str) -> str:
             f"input={input_line!r}"
             f"\nstderr: {_diagnostic(exc.stderr)}"
         ) from exc
+    except OutputLimitExceeded as exc:
+        raise CobolRunError(str(exc)) from exc
     except OSError as exc:
         raise CobolRunError(f"Cannot execute {binary}: {exc}") from exc
     if result.returncode != 0:
@@ -176,14 +226,24 @@ def record_golden(module_id, binary_path, inputs: list[str]) -> str:
         r"[A-Za-z_][A-Za-z0-9_]*", module_id
     ):
         raise ValueError("module_id must be an identifier, e.g. 'interest'")
+    module_id = str.__str__(module_id)
     if not isinstance(inputs, list) or not inputs:
         raise ValueError("inputs must be a nonempty list of strings")
     if not all(isinstance(item, str) for item in inputs):
         raise TypeError("every input must be a string")
     # Validate the complete batch before starting any original executable.
-    inputs = list(inputs)
+    inputs = [str.__str__(item) for item in inputs]
     for input_line in inputs:
         _encode_input(input_line)
+
+    binary = Path(binary_path).expanduser().resolve()
+    def fingerprint():
+        try:
+            with binary.open('rb') as stream:
+                return hashlib.file_digest(stream, 'sha256').hexdigest()
+        except OSError as exc:
+            raise CobolRunError(f'Cannot read executable {binary}: {exc}') from exc
+    before = fingerprint()
 
     GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
     destination = GOLDEN_DIR / f"{module_id}.jsonl"
@@ -195,12 +255,14 @@ def record_golden(module_id, binary_path, inputs: list[str]) -> str:
         ) as stream:
             temporary = Path(stream.name)
             for input_line in inputs:
-                output = run_cobol(binary_path, input_line)
+                output = run_cobol(binary, input_line)
                 stream.write(json.dumps(
                     {"input": input_line, "output": output}, ensure_ascii=False
                 ) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
+        if fingerprint() != before:
+            raise CobolRunError('Executable changed while recording; previous reference preserved')
         os.replace(temporary, destination)
     finally:
         if temporary is not None:

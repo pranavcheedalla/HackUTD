@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -10,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 
-from legacy.runtime import _run_process
+from legacy.runtime import OutputLimitExceeded, _encode_input, _run_process
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 GOLDEN_DIR = PROJECT_ROOT / 'golden'
@@ -23,10 +24,19 @@ class EquivalenceError(RuntimeError):
     """The test infrastructure could not produce a trustworthy result."""
 
 
+def _unique_object(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f'duplicate JSON key: {key}')
+        value[key] = item
+    return value
+
+
 def _module_id(value):
     if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', value):
         raise ValueError('module_id must be an identifier')
-    return value
+    return str.__str__(value)
 
 
 def _cases(module_id):
@@ -35,13 +45,18 @@ def _cases(module_id):
     cases = []
     for number, line in enumerate(raw.splitlines(), 1):
         try:
-            case = json.loads(line)
+            case = json.loads(line, object_pairs_hook=_unique_object)
         except ValueError as exc:
-            raise ValueError(f'{path}: invalid JSON on line {number}') from exc
+            raise ValueError(f'{path}: invalid JSON on line {number}: {exc}') from exc
         if not isinstance(case, dict) or set(case) != {'input', 'output'} or not all(
             isinstance(case[key], str) for key in ('input', 'output')
         ):
             raise ValueError(f'{path}: line {number} must contain input/output strings')
+        try:
+            _encode_input(case['input'])
+            case['output'].encode('utf-8')
+        except ValueError as exc:
+            raise ValueError(f'{path}: line {number} is not a valid UTF-8 input/output case') from exc
         cases.append(case)
     if not cases:
         raise ValueError(f'{path}: golden file must not be empty')
@@ -50,6 +65,7 @@ def _cases(module_id):
 
 def golden_to_pytest(module_id, py_module_path) -> str:
     """Generate tests without importing or requiring the not-yet-written rewrite."""
+    module_id = _module_id(module_id)
     cases, digest = _cases(module_id)
     target = Path(py_module_path).expanduser().resolve()
     try:
@@ -63,6 +79,7 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+import tempfile
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -77,19 +94,32 @@ def rewritten_module():
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     sys.path.insert(0, str(TARGET.parent))
+    cache = tempfile.TemporaryDirectory(prefix="rewrite-cache-")
+    old_cache = sys.pycache_prefix
+    old_write = sys.dont_write_bytecode
+    sys.pycache_prefix = cache.name
+    sys.dont_write_bytecode = True
     try:
         exec(compile(TARGET.read_bytes(), str(TARGET), "exec"), module.__dict__)
         yield module
     finally:
+        sys.pycache_prefix = old_cache
+        sys.dont_write_bytecode = old_write
+        cache.cleanup()
         sys.path.pop(0)
         sys.modules.pop(name, None)
 
 @pytest.mark.parametrize("case", CASES, ids=[f"case-{{i:03d}}" for i in range(len(CASES))])
 def test_golden(case, rewritten_module, record_property):
+    expected = case["output"]
     actual = rewritten_module.main(case["input"])
-    record_property("actual", actual if isinstance(actual, str) else repr(actual))
-    assert isinstance(actual, str), "main(input_line) must return str"
-    assert actual == case["output"]
+    if not isinstance(actual, str):
+        record_property("actual", f"<non-str {{type(actual).__name__}}> {{actual!r}}")
+        pytest.fail("main(input_line) must return str")
+    # Use the built-in character value, never a subclass's overloaded equality.
+    actual = str.__str__(actual)
+    record_property("actual", actual)
+    assert actual == expected
 '''
     TEST_DIR.mkdir(parents=True, exist_ok=True)
     destination = TEST_DIR / f'test_{module_id}.py'
@@ -102,40 +132,94 @@ def test_golden(case, rewritten_module, record_property):
     finally:
         if temporary:
             temporary.unlink(missing_ok=True)
+    # Pin generated content as well as the golden snapshot. Publish the test
+    # first: interruption or concurrent regeneration makes the pair fail closed.
+    manifest = destination.with_suffix('.manifest.json')
+    integrity = {'golden_sha256': digest,
+                 'test_sha256': hashlib.sha256(source.encode('utf-8')).hexdigest()}
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile('w', encoding='utf-8', dir=TEST_DIR, delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump(integrity, stream)
+        os.replace(temporary, manifest)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
     return str(destination)
 
 
 def run_equivalence(module_id) -> dict:
     """Run one generated test file in a fresh process; never count zero as success."""
+    module_id = _module_id(module_id)
     cases, digest = _cases(module_id)
     test = TEST_DIR / f'test_{module_id}.py'
     if not test.is_file():
         raise EquivalenceError(f'Generate equivalence tests first: {test}')
     if f'# golden-sha256: {digest}\n' not in test.read_text(encoding='utf-8'):
         raise EquivalenceError('Golden file changed; regenerate equivalence tests')
+    try:
+        integrity = json.loads(test.with_suffix('.manifest.json').read_text(encoding='utf-8'))
+        valid = integrity == {'golden_sha256': digest,
+                              'test_sha256': hashlib.sha256(test.read_bytes()).hexdigest()}
+    except (OSError, ValueError):
+        valid = False
+    if not valid:
+        raise EquivalenceError('Generated test integrity changed; regenerate modified tests')
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=f'{module_id}-', dir=REPORT_DIR) as folder:
         report = Path(folder) / 'report.json'
-        command = [sys.executable, '-m', 'pytest', '-q', '--tb=short', '-p',
+        bootstrap = ('import sys; sys.path.insert(0, sys.argv[1]); import pytest; '
+                     'raise SystemExit(pytest.main(sys.argv[2:]))')
+        command = [sys.executable, '-I', '-c', bootstrap, str(PROJECT_ROOT),
+                   '-q', '--tb=short', '--capture=no', '-c', os.devnull, '--noconftest',
+                   '--rootdir', str(PROJECT_ROOT), '--assert=rewrite', '-p',
                    'testing_reporter', '--equivalence-report', str(report), str(test)]
         # Explicit plugin + clean pytest options keep results independent of the
         # developer's installed third-party plugins and terminal configuration.
         try:
             process = _run_process(command, EQUIVALENCE_TIMEOUT_SECONDS, extra_env={
-                'PYTEST_DISABLE_PLUGIN_AUTOLOAD': '1', 'PYTEST_ADDOPTS': '',
+                'PYTEST_DISABLE_PLUGIN_AUTOLOAD': '1', 'PYTEST_ADDOPTS': '', 'PYTEST_PLUGINS': '',
                 'PYTHONPATH': str(PROJECT_ROOT),
             }, cwd=PROJECT_ROOT)
         except subprocess.TimeoutExpired as exc:
             raise EquivalenceError(f'Equivalence run timed out after {EQUIVALENCE_TIMEOUT_SECONDS}s') from exc
+        except OutputLimitExceeded as exc:
+            raise EquivalenceError(str(exc)) from exc
         except OSError as exc:
             raise EquivalenceError(f'Cannot start pytest: {exc}') from exc
         if process.returncode not in (0, 1) or not report.is_file():
             diagnostic = (process.stdout + process.stderr).decode('utf-8', errors='replace')
             raise EquivalenceError(f'pytest infrastructure failed ({process.returncode}):\n{diagnostic}')
         try:
-            result = json.loads(report.read_text(encoding='utf-8'))
+            result = json.loads(report.read_text(encoding='utf-8'), object_pairs_hook=_unique_object)
         except (OSError, ValueError) as exc:
             raise EquivalenceError('pytest did not write a valid structured result') from exc
+    try:
+        stable = (
+            hashlib.sha256((GOLDEN_DIR / f'{module_id}.jsonl').read_bytes()).hexdigest() == digest
+            and hashlib.sha256(test.read_bytes()).hexdigest() == integrity['test_sha256']
+            and json.loads(test.with_suffix('.manifest.json').read_text()) == integrity
+        )
+    except (OSError, ValueError):
+        stable = False
+    if not stable:
+        raise EquivalenceError('Golden or generated tests changed during verification; regenerate')
+    if not isinstance(result, dict) or set(result) != {'passed', 'total', 'failures', 'collection_errors'}:
+        raise EquivalenceError('Invalid structured report schema')
+    if any(type(result[key]) is not int or result[key] < 0
+           for key in ('passed', 'total', 'collection_errors')) or not isinstance(result['failures'], list):
+        raise EquivalenceError('Invalid structured report counts')
+    remaining = Counter((case['input'], case['output']) for case in cases)
+    for failure in result['failures']:
+        if not isinstance(failure, dict) or set(failure) != {'input', 'expected', 'actual'} or not all(
+            isinstance(value, str) for value in failure.values()
+        ):
+            raise EquivalenceError('Invalid structured failure schema')
+        identity = (failure['input'], failure['expected'])
+        remaining[identity] -= 1
+        if remaining[identity] < 0:
+            raise EquivalenceError('Report contains an unknown or duplicated failure case')
     if result['collection_errors'] or result['total'] != len(cases):
         raise EquivalenceError('Collection failed or not every golden case executed')
     if result['passed'] + len(result['failures']) != result['total']:

@@ -60,7 +60,7 @@ def run_smoke() -> dict:
     finally:
         runtime.GOLDEN_DIR, testing.GOLDEN_DIR, testing.TEST_DIR, testing.REPORT_DIR = originals
     report.update(status="passed", passed=45, total=45,
-                  team_pipeline="Not exercised: teammate model/orchestration code is not present")
+                  team_pipeline="This smoke does not exercise team agents or graph; see the optional team-graph fixture report")
     return report
 
 
@@ -73,6 +73,12 @@ def main() -> int:
         payload = json.dumps(result, indent=2) + "\n"
         if args.output:
             destination = args.output.expanduser().resolve()
+            try:
+                relative = destination.relative_to(ROOT)
+            except ValueError:
+                relative = None
+            if relative is not None and (not relative.parts or relative.parts[0] not in ('runs', 'validation')):
+                raise ValueError('--output inside the project must be under runs/ or validation/')
             destination.parent.mkdir(parents=True, exist_ok=True)
             temporary = None
             try:

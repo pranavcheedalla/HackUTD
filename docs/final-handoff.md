@@ -62,15 +62,18 @@ It is a deterministic runtime/harness demo, not a Nemotron/LangGraph run.
 
 ## Segment 11: integration status
 
-At the integration check, fetched origin/main and origin/Pranav both contained
-only the initial README (commit 78ce59a). No team contract.py, agent code,
-LangGraph graph, or generated modern modules were available on those refs.
+The later adversarial audit found `origin/hemant/pipeline-skeleton` at ee58f2f,
+containing the real contract and LangGraph skeleton. Main and Pranav still held
+the initial README. In a disposable overlay we tested the actual contract, graph,
+and status writer with real P2 code and handwritten agent fixtures. Acceptance
+of all three modules, invoice retry/repair, retry exhaustion/explanation routing,
+empty inputs, output flooding, and persisted state all passed. The archive
+includes source hashes and the complete report in validation/team-integration.json.
 
 Verified locally: function parameter names, three-original discovery layout,
 compile/record/generate/verify calls, exact TestResult shape, and the invoice
-failure/repair loop. The actual model/orchestrator integration remains pending
-the teammate implementation. This handoff does not claim that unavailable code
-has passed. Hemant should run these checks after merging:
+failure/repair loop. The actual graph integration is verified with fixtures. Real model-agent
+behavior remains pending the teammate implementations. This handoff does not claim that live agent behavior has passed. Hemant should run these checks after merging:
 
 1. Discover the three module IDs in dependency order; all have no CALL/COPY deps.
 2. Extract specs and generate list[str] inputs using the documented formats.
@@ -114,3 +117,25 @@ Rules and all annotated cases: README.md, docs/payroll.md, docs/invoice.md.
 Raw local validation, source/golden hashes, and fresh-archive checks are in the
 downloadable archive's validation/ folder. Do not change golden answers to make
 a failing rewrite pass; --update is only for reviewed original/input changes.
+
+
+## Adversarial audit addendum
+
+The checklist is [ACCEPTANCE_CHECKLIST.md](ACCEPTANCE_CHECKLIST.md), with only
+verified work checked. [ADVERSARIAL_REVIEW.md](ADVERSARIAL_REVIEW.md) records
+reproduced false passes and their fixes. The generated test and its manifest
+must travel together; regenerate after upgrading from the earlier harness.
+Use run_equivalence for acceptance: ordinary direct pytest invocation does not
+apply all manifest, reference-snapshot, and report validation guards.
+
+Successful output remains exact; stdout plus stderr above 2 MiB raises an error.
+The runtime clears inherited COB_* settings and uses GnuCOBOL defaults. Keep a
+single writer per module checkout during verification. These resource and
+correctness controls do not sandbox same-user arbitrary Python.
+
+For Hemant's branch integration, remove its obsolete legacy.py stub and relocate
+legacy/HELLO.cbl outside legacy/. Keep testing_reporter.py with testing.py.
+Resolve the root README/.gitignore/testing.py merge content explicitly. The
+optional requirements-integration.txt installs the tested LangGraph version;
+tools/check_team_pipeline.py runs against a disposable merged checkout with
+fixture agents. It never tests live Nemotron or real agent prompts.

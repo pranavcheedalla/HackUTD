@@ -1,0 +1,3 @@
+# Optional: only for tools/check_team_pipeline.py against Hemant's graph.
+# Core runtime/equivalence tests need requirements-dev.lock instead.
+langgraph==1.2.20

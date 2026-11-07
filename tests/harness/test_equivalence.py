@@ -75,6 +75,11 @@ def test_collection_failure_is_never_success(project):
     prepare, _, _ = project
     path = prepare([{'input': 'x', 'output': 'x'}], 'def main(line): return line\n')
     path.write_text(path.read_text() + '\nthis is invalid!\n')
+    import hashlib
+    manifest = path.with_suffix('.manifest.json')
+    metadata = json.loads(manifest.read_text())
+    metadata['test_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest.write_text(json.dumps(metadata))
     with pytest.raises(testing.EquivalenceError, match='infrastructure'):
         testing.run_equivalence('sample')
 

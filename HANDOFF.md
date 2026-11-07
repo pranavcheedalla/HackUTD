@@ -105,3 +105,12 @@ the actual integration boundary. Run `python check_integration.py` for a
 Person 2-only fixture smoke including the invoice divergence and repair.
 Real Nemotron/LangGraph integration could not be exercised: fetched main and
 Pranav refs contained only the initial README. Hemant owns the final merge.
+
+
+## Audit update
+
+The latest audit exercised Hemant's actual graph at ee58f2f with fixture agents.
+See docs/ACCEPTANCE_CHECKLIST.md and docs/ADVERSARIAL_REVIEW.md. Remove his
+legacy.py stub and relocate HELLO.cbl when adopting our package. Generated
+tests now include an integrity manifest and should be regenerated once. Live
+model calls and real agent behavior remain pending.
