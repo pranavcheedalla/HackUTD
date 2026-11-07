@@ -15,3 +15,7 @@ tests/equivalence/test_*.py
 tests/equivalence/*.manifest.json
 tests/unit/test_*.py
 .venv*/
+
+# P4
+*.pyc
+runs/nemotron_trace.jsonl
