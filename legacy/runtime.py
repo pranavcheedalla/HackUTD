@@ -269,3 +269,11 @@ def record_golden(module_id, binary_path, inputs: list[str]) -> str:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
     return str(destination)
+
+
+def compile_program(cobol_path, link=(), copy_dirs=(), source_format="auto") -> str:
+    """Codebase support (owner: P2). Contract: contract.py "CODEBASE SUPPORT".
+
+    PLACEHOLDER until P2's branch merges; tests/codebase/test_p2_runtime.py defines done.
+    """
+    raise NotImplementedError("pending: P2 compile_program")

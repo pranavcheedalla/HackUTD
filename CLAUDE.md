@@ -12,7 +12,7 @@ Hackathon project. Deadline: Sunday Nov 8, 10:00 AM Central. Team of 4.
 - `pipeline/status.py`: atomically writes `runs/state.json` after every node (dashboard reads it).
 - `run.py`: `python run.py [legacy_dir] [--only id]`; runs `agents.understand` first to order modules.
 
-## Teammates (P2 integrated; P3/P4 files still have `STUB = True`)
+## Teammates (P2, P3 and P4 all integrated; no production stubs remain)
 - P2 `legacy/` package, `testing.py`, `testing_reporter.py`, `legacy/*.cbl`: GnuCOBOL compile/run, golden recording to `golden/<id>.jsonl`, golden->pytest, `run_equivalence(module_id) -> {passed,total,failures}`.
 - P3 `agents/understanding.py`: `understand`, `extract_spec` (Nano), `generate_inputs` (Super).
 - P4 `agents/building.py`: `rewrite` (Super), `write_unit_tests`, `explain_divergence` -> `{verdict: new_code_bug|legacy_quirk, reason}`.
@@ -32,7 +32,7 @@ Hackathon project. Deadline: Sunday Nov 8, 10:00 AM Central. Team of 4.
 
 ## Status
 - Stub pipeline verified: `LLM_MODE=fake python run.py` passes (retry path and explain path both tested).
-- Next for me: real Nemotron smoke test (`python llm.py`), then merges.
+- Real Nemotron run verified 3/3 (see docs/evidence/2026-11-07-final-real-run). Remaining: Hemant merges PR #1 to main.
 
 ## Combined integration update
 - P1 graph/status/LLM wrapper and P2 real runtime/harness are combined.

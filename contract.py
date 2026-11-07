@@ -130,3 +130,67 @@ DIVERGENCE_SCHEMA: dict = {
 #
 # Rewritten Python modules MUST expose:  def main(input_line: str) -> str
 # Money uses decimal.Decimal. Every LLM call goes through llm.call_llm.
+
+
+# ======================================================================================
+# CODEBASE SUPPORT (multi-file COBOL: copybooks + CALL).  Frozen 2026-11-07, see
+# docs/codebase-support-plan.md.  Owners build against these; do not change alone.
+# Acceptance tests: tests/codebase/  (CODEBASE_MERGE=1 turns "pending" skips into failures)
+# ======================================================================================
+
+class Param(TypedDict):
+    """One LINKAGE SECTION parameter of a subprogram, in PROCEDURE DIVISION USING order."""
+    name: str          # "LK-RATE"
+    pic: str           # "9(2)V99", "X", "S9(7)V99"
+    kind: Literal["numeric", "text"]
+    int_digits: int    # numeric: digits before the implied point; text: 0
+    dec_digits: int    # numeric: digits after the implied point; text: 0
+    length: int        # text: characters; numeric: int_digits + dec_digits
+    signed: bool
+
+
+class CodebaseModule(ModuleInfo, total=False):
+    """Extra keys agents.understand returns per module (all modules, old keys unchanged)."""
+    program_id: str
+    kind: Literal["program", "subprogram"]   # subprogram = PROCEDURE DIVISION USING ...
+    copy_dirs: list[str]                     # absolute dirs holding its copybooks (cobc -I)
+    link: list[str]                          # absolute .cbl paths of every callee, transitively,
+                                             # callees-first, excluding the module itself
+    params: list[Param]                      # subprograms only; [] for programs
+
+
+class DepInfo(TypedDict):
+    """What the rewrite agent gets for each already-verified callee."""
+    module_id: str      # also its Python module name: `import <module_id>`
+    program_id: str     # COBOL name used in CALL 'NAME'
+    python_src: str     # accepted modern/<module_id>.py
+    params: list[Param]
+
+
+# P2  legacy.compile_program(cobol_path: str, link: list[str] = (), copy_dirs: list[str] = (),
+#                            source_format: "auto"|"free"|"fixed" = "auto") -> str   # binary path
+#       Compiles cobol_path as the main program plus every file in `link` as called
+#       subprograms, each in its own detected format ("auto": try free, then fixed),
+#       with every copy_dirs entry on the copybook path. compile_cobol(p) keeps working.
+#
+# P3  agents.make_driver(subprogram_src: str) -> str          # free-format COBOL source
+#       Driver PROGRAM-ID is "DRV-<PROGRAM-ID>". It ACCEPTs one line, UNSTRINGs it on "|" into
+#       the params in USING order (numeric via FUNCTION NUMVAL, text MOVEd as-is), CALLs the
+#       subprogram, and DISPLAYs ONE line:  NAME=value|NAME=value|...  for every param after
+#       the call. Numeric values are shown as PIC 9(i).9(d) (zero-padded, "9(i)" if d = 0,
+#       leading "-" form "-9(i).9(d)" if signed); text values as stored (fixed length).
+#       Reference: tests/fixtures/codebase/drivers/discount_driver.cbl
+#
+# P3  agents.generate_inputs(spec, cobol_src) for a subprogram returns DRIVER-format lines.
+#
+# P4  agents.rewrite(spec, cobol_src, failures=None, previous_src=None,
+#                    deps: list[DepInfo] | None = None) -> str
+#       Every module exposes main(input_line) -> str. A subprogram's main() uses the driver
+#       format above, and it ALSO exposes call(*params) -> tuple (all params after the call;
+#       Decimal for numeric, str for text). A caller imports each callee by module_id and uses
+#       <module_id>.call(...). Reference: tests/fixtures/codebase/modern/*.py
+#
+# P1  pipeline: compile with link/copy_dirs; subprograms are recorded through make_driver;
+#     rewrite gets deps for every depends_on module; a module whose dependency is not "done"
+#     fails with error "blocked: dependency <id> not verified". run.py/isolated_run accept any
+#     legacy dir (python tools/isolated_run.py --mode real --legacy-dir samples/legacy).

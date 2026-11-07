@@ -5,11 +5,12 @@ from .runtime import (
     CobolRunError,
     LegacyError,
     compile_cobol,
+    compile_program,
     record_golden,
     run_cobol,
 )
 
 __all__ = [
-    "compile_cobol", "run_cobol", "record_golden",
+    "compile_cobol", "compile_program", "run_cobol", "record_golden",
     "LegacyError", "CobolCompileError", "CobolRunError",
 ]
