@@ -15,7 +15,7 @@ import json
 import re
 from decimal import Decimal, InvalidOperation
 
-from agents import _llm
+from agents import _nemotron as _llm
 
 VERDICTS = ("new_code_bug", "legacy_quirk")
 

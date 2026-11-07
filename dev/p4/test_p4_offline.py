@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT))
 
 import importlib  # noqa: E402
 
-from agents import _llm, explainer, test_writer  # noqa: E402
+from agents import _nemotron as _llm, explainer, test_writer  # noqa: E402
 
 rewrite_mod = importlib.import_module("agents.rewrite")  # attribute is shadowed by the function
 from agents.cobol_helpers import display_num, edit_picture, pic_from_text, pic_store, split_fixed  # noqa: E402

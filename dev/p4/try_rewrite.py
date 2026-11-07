@@ -21,7 +21,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agents import _llm, explain_divergence, rewrite, write_unit_tests  # noqa: E402
+from agents import _nemotron as _llm, explain_divergence, rewrite, write_unit_tests  # noqa: E402
 
 OUT = HERE / "out"
 

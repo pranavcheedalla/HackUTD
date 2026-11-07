@@ -17,7 +17,7 @@ import ast
 import json
 import re
 
-from agents import _llm, _sandbox
+from agents import _nemotron as _llm, _sandbox
 
 # ----------------------------------------------------------------------------- prompts
 TEST_WRITER_SYSTEM = """You are a QA engineer writing pytest unit tests for a Python module

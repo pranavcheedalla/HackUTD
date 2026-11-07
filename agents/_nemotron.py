@@ -1,4 +1,4 @@
-"""Nemotron access for Person 4's agents.
+"""Nemotron access for Person 4's agents (renamed from _llm.py to avoid clashing with P3's agents/_llm.py).
 
     call_llm(model: "nano"|"super", system: str, user: str, json_schema: dict|None) -> dict|str
 
@@ -115,7 +115,7 @@ def _trace(model: str, backend_name: str, seconds: float, error: str | None) -> 
         "agent": name,
         "module_id": module_id,
         "model": model,
-        "model_id": _used_model.get() or MODEL_IDS.get(model, model),
+        "model_id": _used_model.get() or _shared_model_id(model, backend_name) or MODEL_IDS.get(model, model),
         "backend": backend_name,
         "thinking": thinking_enabled(),
         "seconds": round(seconds, 2),
@@ -134,6 +134,17 @@ def _trace(model: str, backend_name: str, seconds: float, error: str | None) -> 
 
 
 _cache_hit = contextvars.ContextVar("p4_cache_hit", default=None)
+
+
+def _shared_model_id(model: str, backend_name: str) -> str | None:
+    """When the shared wrapper made the call, report the model id it is configured with."""
+    if not backend_name.startswith("shared"):
+        return None
+    try:
+        import llm  # type: ignore
+        return getattr(llm, "MODEL_IDS", {}).get(model)
+    except ImportError:
+        return None
 
 
 # ----------------------------------------------------------------------------- parsing helpers

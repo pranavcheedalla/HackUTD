@@ -17,7 +17,7 @@ import os
 import re
 from pathlib import Path
 
-from agents import _llm, _sandbox
+from agents import _nemotron as _llm, _sandbox
 
 HELPERS_SRC = (Path(__file__).parent / "cobol_helpers.py").read_text()
 HELPER_NAMES = ("pic_store", "pic_from_text", "split_fixed", "display_num", "edit_picture")
