@@ -80,7 +80,9 @@ def write_unit_tests(spec: dict, python_src: str) -> str:
     system = TEST_WRITER_SYSTEM.replace("{module_id}", module_id)
     spec_json = json.dumps(spec, indent=2)
 
-    with _llm.agent("write_unit_tests", module_id):
+    # thinking off: test writing is mechanical, and with reasoning on Nemotron can spend its
+    # whole token budget thinking (seen live: 38k chars of reasoning, empty answer)
+    with _llm.agent("write_unit_tests", module_id, thinking=False):
         code = _extract(_llm.call_llm("super", system, TEST_WRITER_USER.format(
             spec=spec_json, module_id=module_id, python_src=python_src), None))
 

@@ -27,27 +27,55 @@ _ROOT = Path(__file__).resolve().parent.parent
 _CACHE_DIR = _ROOT / "dev" / "p4" / ".cache" / "llm"
 TRACE_PATH = Path(os.environ.get("P4_TRACE_PATH", _ROOT / "runs" / "nemotron_trace.jsonl"))
 
-MODEL_IDS = {
-    "super": os.environ.get("NEMOTRON_SUPER", "nvidia/nemotron-3-super-120b-a12b"),
-    "nano": os.environ.get("NEMOTRON_NANO", "nvidia/nemotron-3-nano-30b-a3b"),
+# Fallback chains, tried in order. A model that answers 404/410 (retired, or not enabled
+# for this account) is skipped for the rest of the process. Checked live 2026-11-07:
+#   nemotron-3-nano-30b-a3b    -> 410, end of life 2026-09-01
+#   nemotron-3-super-120b-a12b -> 404 on some free accounts
+# Override the first choice with NEMOTRON_SUPER / NEMOTRON_NANO.
+MODEL_CHAINS = {
+    "super": [m for m in (
+        os.environ.get("NEMOTRON_SUPER"),
+        "nvidia/nemotron-3.5-super-vl-120b-a12b",
+        "nvidia/nemotron-3-super-120b-a12b",
+        "nvidia/nemotron-3-ultra-550b-a55b",
+    ) if m],
+    "nano": [m for m in (
+        os.environ.get("NEMOTRON_NANO"),
+        "nvidia/nemotron-3.5-lightning-30b-a3b",
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "nvidia/nemotron-3-nano-30b-a3b",
+    ) if m],
 }
+MODEL_IDS = {k: v[0] for k, v in MODEL_CHAINS.items()}  # preferred model per slot
+_dead_models: set[str] = set()
+_used_model = contextvars.ContextVar("p4_used_model", default=None)
 # Nemotron 3 reasoning mode (chat_template_kwargs.enable_thinking). On by default: the
 # reasoning goes to a separate channel, so the answer stays clean and we log the reasoning.
 THINKING = os.environ.get("NEMOTRON_THINKING", "1") != "0"
 MAX_TOKENS = int(os.environ.get("NEMOTRON_MAX_TOKENS", "16384"))  # reasoning + code must fit
+TIMEOUT = float(os.environ.get("NEMOTRON_TIMEOUT", "300"))  # seconds per request
 
 _agent = contextvars.ContextVar("p4_agent", default=("unknown", None))
+_thinking = contextvars.ContextVar("p4_thinking", default=None)  # per-agent override
 _last_reasoning = contextvars.ContextVar("p4_last_reasoning", default="")
 
 
 @contextlib.contextmanager
-def agent(name: str, module_id: str | None = None):
-    """Label Nemotron calls made inside this block (shows up in the trace)."""
+def agent(name: str, module_id: str | None = None, thinking: bool | None = None):
+    """Label Nemotron calls made inside this block (shows up in the trace).
+    `thinking` turns Nemotron reasoning on/off for these calls (None = global default)."""
     token = _agent.set((name, module_id))
+    t_token = _thinking.set(thinking)
     try:
         yield
     finally:
         _agent.reset(token)
+        _thinking.reset(t_token)
+
+
+def thinking_enabled() -> bool:
+    t = _thinking.get()
+    return THINKING if t is None else (t and THINKING)
 
 
 def last_reasoning() -> str:
@@ -87,15 +115,16 @@ def _trace(model: str, backend_name: str, seconds: float, error: str | None) -> 
         "agent": name,
         "module_id": module_id,
         "model": model,
-        "model_id": MODEL_IDS.get(model, model),
+        "model_id": _used_model.get() or MODEL_IDS.get(model, model),
         "backend": backend_name,
-        "thinking": THINKING,
+        "thinking": thinking_enabled(),
         "seconds": round(seconds, 2),
         "cached": _cache_hit.get(),
         "reasoning": _last_reasoning.get()[:4000],
         "error": error,
     }
     _cache_hit.set(None)
+    _used_model.set(None)
     try:
         TRACE_PATH.parent.mkdir(parents=True, exist_ok=True)
         with TRACE_PATH.open("a") as f:
@@ -150,17 +179,20 @@ def _local_call_llm(model: str, system: str, user: str, json_schema: dict | None
         )
 
     key = hashlib.sha256(
-        json.dumps([model, MODEL_IDS[model], THINKING, system, user], sort_keys=True).encode()
+        json.dumps([model, MODEL_CHAINS[model], thinking_enabled(), system, user], sort_keys=True).encode()
     ).hexdigest()
     cache_file = _CACHE_DIR / f"{key}.json"
     if cache_file.is_file():
         cached = json.loads(cache_file.read_text())
         text, reasoning = cached["text"], cached.get("reasoning", "")
+        _used_model.set(cached.get("model"))
         _cache_hit.set(True)
     else:
-        text, reasoning = _invoke(model, system, user)
-        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text(json.dumps({"model": MODEL_IDS[model], "text": text, "reasoning": reasoning}))
+        text, reasoning, used = _invoke(model, system, user)
+        if text.strip():  # never cache an empty answer
+            _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            cache_file.write_text(json.dumps({"model": used, "text": text, "reasoning": reasoning}))
+        _used_model.set(used)
         _cache_hit.set(False)
     _last_reasoning.set(reasoning)
 
@@ -180,19 +212,57 @@ def _local_call_llm(model: str, system: str, user: str, json_schema: dict | None
         return extract_json(repaired)
 
 
-def _invoke(model: str, system: str, user: str) -> tuple[str, str]:
+def _invoke(model: str, system: str, user: str) -> tuple[str, str, str]:
+    """Call the first live model in the slot's chain. Returns (content, reasoning, model_id)."""
     if not os.environ.get("NVIDIA_API_KEY"):
         raise RuntimeError("NVIDIA_API_KEY not set (put it in .env or export it)")
+    errors = []
+    for model_id in MODEL_CHAINS[model]:
+        if model_id in _dead_models:
+            continue
+        try:
+            thinking = thinking_enabled()
+            content, reasoning = _invoke_one(model_id, system, user, thinking)
+            if thinking and not _llm_strip(content):
+                # reasoning used the whole token budget before answering: ask again without it
+                print(f"[llm] {model_id} spent its budget reasoning ({len(reasoning)} chars), retrying with thinking off")
+                content, _ = _invoke_one(model_id, system, user, False)
+            return content, reasoning, model_id
+        except _ModelUnavailable as e:
+            _dead_models.add(model_id)
+            errors.append(f"{model_id}: {e}")
+            print(f"[llm] {model_id} unavailable ({str(e)[:80]}), falling back")
+        except _ModelBusy as e:  # timed out / overloaded this time; don't mark dead
+            errors.append(f"{model_id}: {e}")
+            print(f"[llm] {model_id} busy ({str(e)[:80]}), trying next Nemotron model")
+    raise RuntimeError(f"No Nemotron model available for '{model}': {errors}")
+
+
+class _ModelUnavailable(Exception):
+    """404/410: retired or not enabled for this account."""
+
+
+class _ModelBusy(Exception):
+    """Still timing out / overloaded after retries."""
+
+
+def _llm_strip(text: str) -> str:
+    return strip_thinking(text or "")
+
+
+def _invoke_one(model_id: str, system: str, user: str, thinking: bool) -> tuple[str, str]:
     import warnings
 
     from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        llm = ChatNVIDIA(model=MODEL_IDS[model], temperature=0.2, max_completion_tokens=MAX_TOKENS)
-        runnable = llm.with_thinking_mode(enabled=THINKING)
+        # long timeout: with reasoning on, a big rewrite can think for minutes
+        llm = ChatNVIDIA(model=model_id, temperature=0.2, max_completion_tokens=MAX_TOKENS, timeout=TIMEOUT)
+        # Nemotron 3 / 3.5 reasoning switch, sent as a request param for every model in the chain
+        runnable = llm.bind(chat_template_kwargs={"enable_thinking": thinking})
         last_err: Exception | None = None
-        for attempt in range(4):
+        for attempt in range(3):
             try:
                 resp = runnable.invoke([("system", system), ("user", user)])
                 content = resp.content if isinstance(resp.content, str) else str(resp.content)
@@ -201,7 +271,15 @@ def _invoke(model: str, system: str, user: str) -> tuple[str, str]:
                     m = re.search(r"<think>(.*?)</think>", content, flags=re.DOTALL)
                     reasoning = m.group(1).strip() if m else ""
                 return content, reasoning
-            except Exception as e:  # rate limits, timeouts
-                last_err = e
+            except Exception as e:
+                status = re.search(r"\[(\d{3})\]", str(e))
+                code = int(status.group(1)) if status else None
+                if code in (404, 410):
+                    raise _ModelUnavailable(str(e).splitlines()[-1]) from e
+                if code is not None and 400 <= code < 500 and code != 429:
+                    raise  # bad request / auth: retrying won't help
+                last_err = e  # 429, 5xx, timeouts: back off and retry
+                if "timed out" in str(e).lower() and attempt >= 1:
+                    break  # two timeouts in a row: let the next model in the chain try
                 time.sleep(2 ** attempt)
-    raise RuntimeError(f"Nemotron call failed after retries ({MODEL_IDS[model]}): {last_err}")
+    raise _ModelBusy(f"failed after retries: {last_err}")

@@ -164,13 +164,13 @@ def test_trace_records_agent_and_nemotron_model(monkeypatch, tmp_path):
     import json
     rec = json.loads(trace.read_text().splitlines()[-1])
     assert rec["agent"] == "rewrite" and rec["module_id"] == "mod1"
-    assert rec["model_id"] == "nvidia/nemotron-3-super-120b-a12b"
+    assert rec["model_id"] == _llm.MODEL_IDS["super"] and "nemotron" in rec["model_id"]
 
 
 def test_local_client_captures_reasoning_caches_and_parses_json(monkeypatch, tmp_path):
     monkeypatch.setattr(_llm, "_CACHE_DIR", tmp_path)
     calls = []
-    monkeypatch.setattr(_llm, "_invoke", lambda m, s, u: (calls.append(m), ('{"verdict": "legacy_quirk"}', "because cents"))[1])
+    monkeypatch.setattr(_llm, "_invoke", lambda m, s, u: (calls.append(m), ('{"verdict": "legacy_quirk"}', "because cents", "nvidia/x"))[1])
     schema = {"type": "object"}
     assert _llm._local_call_llm("super", "s", "u", schema) == {"verdict": "legacy_quirk"}
     assert _llm.last_reasoning() == "because cents"
@@ -201,3 +201,32 @@ def test_test_writer_accepts_passing_tests_without_repair(monkeypatch):
     monkeypatch.setattr(_llm, "call_llm", lambda *a: (calls.append(1), good)[1])
     test_writer.write_unit_tests({"module_id": "m8"}, "def main(s):\n    return 'Z'\n")
     assert len(calls) == 1
+
+
+def test_fallback_skips_retired_model(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "x")
+    monkeypatch.setattr(_llm, "MODEL_CHAINS", {"nano": ["dead/model", "live/model"]})
+    monkeypatch.setattr(_llm, "_dead_models", set())
+    tried = []
+    def fake_one(model_id, s, u, thinking):
+        tried.append(model_id)
+        if model_id == "dead/model":
+            raise _llm._ModelUnavailable("[410] Gone")
+        return "OK", "r"
+    monkeypatch.setattr(_llm, "_invoke_one", fake_one)
+    assert _llm._invoke("nano", "s", "u") == ("OK", "r", "live/model")
+    assert _llm._invoke("nano", "s", "u")[2] == "live/model"
+    assert tried == ["dead/model", "live/model", "live/model"]  # dead model not retried
+
+
+def test_empty_answer_after_reasoning_retries_without_thinking(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "x")
+    monkeypatch.setattr(_llm, "MODEL_CHAINS", {"super": ["m"]})
+    monkeypatch.setattr(_llm, "_dead_models", set())
+    modes = []
+    def fake_one(model_id, s, u, thinking):
+        modes.append(thinking)
+        return ("", "long reasoning...") if thinking else ("ANSWER", "")
+    monkeypatch.setattr(_llm, "_invoke_one", fake_one)
+    assert _llm._invoke("super", "s", "u")[0] == "ANSWER"
+    assert modes == [True, False]
