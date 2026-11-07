@@ -17,6 +17,18 @@ samples/legacy/
 - A generated "driver" program makes a subprogram testable with our one-line input convention.
 - The hand-written reference Python matches the real COBOL on all 30 shared test inputs.
 
+## Ready-to-paste prompts (one per person)
+
+Each file is a complete brief for your AI coding assistant: setup, files you own, exact
+behavior, known traps, and the commands that prove you're done.
+
+| Person | Prompt |
+|---|---|
+| Madhav (P2) | [`docs/codebase-prompts/P2-madhav-runtime.md`](codebase-prompts/P2-madhav-runtime.md) |
+| Abhinav (P3) | [`docs/codebase-prompts/P3-abhinav-analysis.md`](codebase-prompts/P3-abhinav-analysis.md) |
+| Pranav (P4) | [`docs/codebase-prompts/P4-pranav-rewrite.md`](codebase-prompts/P4-pranav-rewrite.md) |
+| Hemant (P1) | [`docs/codebase-prompts/P1-hemant-pipeline.md`](codebase-prompts/P1-hemant-pipeline.md) |
+
 ## How this stays independent
 
 - The interfaces are frozen in `contract.py`, in the section headed **CODEBASE SUPPORT**. Read it first.
@@ -77,7 +89,7 @@ The working cobc commands are in the "Already proven" section above.
 
 ## Task 3: Pranav (P4), rewrite with dependencies
 
-**Branch:** `codebase/p4-rewrite`  **Files:** `agents/rewrite.py`, `agents/_sandbox.py`
+**Branch:** `codebase/p4-rewrite`  **Files:** `agents/rewrite.py`, `agents/_sandbox.py`, `agents/test_writer.py`
 **Test:** `tests/codebase/test_p4_rewrite.py`
 
 1. Add `deps: list[DepInfo] | None = None` to `rewrite()`.
@@ -93,7 +105,7 @@ The working cobc commands are in the "Already proven" section above.
 ## Task 4: Hemant (P1), pipeline wiring, run tools, dashboard
 
 **Branch:** `codebase/p1-pipeline`
-**Files:** `pipeline/graph.py`, `run.py`, `tools/isolated_run.py`, `ui/*`
+**Files:** `pipeline/graph.py`, `run.py`, `tools/isolated_run.py`, `ui/*`, `agents/demo.py`, `.gitignore`
 **Test:** `tests/codebase/test_p1_pipeline.py`
 
 1. `run.py`: put the new `understand()` keys into each module's start state, plus
