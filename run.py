@@ -20,6 +20,7 @@ import legacy  # noqa: E402
 import testing  # noqa: E402
 from pipeline import status  # noqa: E402
 from pipeline.graph import build_graph  # noqa: E402
+from agents.understand import load_cobol_source  # noqa: E402
 
 
 def stub_report() -> list[str]:
@@ -77,7 +78,7 @@ def main() -> int:
     for m in modules:
         print(f"\n=== {m['module_id']} ===")
         init = {"id": m["module_id"], "cobol_path": m["cobol_path"],
-                "cobol_src": Path(m["cobol_path"]).read_text(errors="ignore"),
+                "cobol_src": load_cobol_source(m["cobol_path"]),  # copybooks pasted inline (P3)
                 "attempts": 0, "divergences": [], "last_failures": []}
         final = graph.invoke(init)
         results[m["module_id"]] = final
