@@ -14,12 +14,15 @@ import sys
 import tempfile
 from pathlib import Path
 
+from legacy.runtime import _run_process, OutputLimitExceeded
+
 _DRIVER = r"""
 import json, sys, traceback, importlib.util
 spec = importlib.util.spec_from_file_location("candidate", sys.argv[1])
 results = []
 try:
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
 except Exception:
     print(json.dumps({"import_error": traceback.format_exc(limit=3)}))
@@ -45,14 +48,20 @@ def run_main(code: str, inputs: list[str], timeout: float = 20) -> dict:
         inp.write_text(json.dumps(inputs))
         drv.write_text(_DRIVER)
         try:
-            r = subprocess.run([sys.executable, "-I", str(drv), str(mod), str(inp)],
-                               capture_output=True, text=True, timeout=timeout, cwd=d)
+            r = _run_process([sys.executable, "-I", str(drv), str(mod), str(inp)], timeout, cwd=d)
         except subprocess.TimeoutExpired:
             return {"timeout": True}
+        except OutputLimitExceeded:
+            return {'import_error': 'Candidate exceeded the output limit'}
+        if r.returncode:
+            return {'import_error': f'Candidate process exited {r.returncode}: {r.stderr.decode(errors="replace")[-1500:]}'}
         try:
-            return json.loads(r.stdout.strip().splitlines()[-1])
-        except (IndexError, json.JSONDecodeError):
-            return {"import_error": (r.stderr or r.stdout)[-1500:]}
+            result = json.loads(r.stdout.strip().splitlines()[-1])
+            if not isinstance(result, dict) or not ('import_error' in result or isinstance(result.get('results'), list)):
+                raise ValueError('Invalid candidate result')
+            return result
+        except (IndexError, ValueError):
+            return {"import_error": (r.stderr or r.stdout).decode(errors='replace')[-1500:]}
 
 
 def run_pytest(module_id: str, code: str, test_src: str, timeout: float = 90) -> dict:
@@ -64,15 +73,18 @@ def run_pytest(module_id: str, code: str, test_src: str, timeout: float = 90) ->
         (Path(d) / "modern" / f"{module_id}.py").write_text(code)
         test_file = Path(d) / f"test_{module_id}.py"
         test_file.write_text(test_src)
-        env = {**os.environ, "PYTHONPATH": d}
+        env = {'PYTHONPATH': d, 'PYTEST_DISABLE_PLUGIN_AUTOLOAD': '1', 'PYTEST_ADDOPTS': ''}
         try:
-            r = subprocess.run(
-                [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-o", "addopts=",
+            r = _run_process(
+                [sys.executable, "-m", "pytest", "-q", '-c', os.devnull, '--noconftest', '--capture=no',
+                 "-p", "no:cacheprovider", "-o", "addopts=",
                  "--rootdir", d, str(test_file)],
-                capture_output=True, text=True, timeout=timeout, cwd=d, env=env)
+                timeout, cwd=d, extra_env=env)
         except subprocess.TimeoutExpired:
             return {"ok": False, "collected_error": True, "failed": [], "output": "pytest timed out"}
-        out = r.stdout + r.stderr
+        except OutputLimitExceeded:
+            return {'ok': False, 'collected_error': True, 'failed': [], 'output': 'pytest exceeded the output limit'}
+        out = (r.stdout + r.stderr).decode(errors='replace')
         failed = sorted(set(re.findall(r"^FAILED \S*::(\w+)", out, flags=re.MULTILINE)))
         last = out.strip().splitlines()[-1] if out.strip() else ""
         # rc 2 = collection/import error, 5 = no tests; "N error(s)" in summary = setup errors

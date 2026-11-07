@@ -55,9 +55,20 @@ COBOL semantics you MUST replicate (GnuCOBOL defaults):
 5. DISPLAY of an un-edited numeric field prints all digits with leading zeros and a "."
    for the implied decimal (PIC 9(3)V99 = 1.5 -> "001.50"); signed fields get a leading
    "+" or "-". DISPLAY of an alphanumeric PIC X(n) field prints it padded to n chars.
-6. Numeric-EDITED pictures (Z, comma, period, $, -, CR...) suppress leading zeros with spaces
-   and keep a fixed width. Reproduce the width exactly.
+6. In numeric-EDITED pictures, Z suppresses zeros with spaces. A 9 preserves each digit:
+   PIC 9(7).99 prints 100.00 as "0000100.00". Reproduce the exact width.
 7. DISPLAY "A" B "C" concatenates items with NO separator. Each DISPLAY statement is one line.
+8. Preserve validation and control flow BEFORE NUMVAL or PIC storage. Do not normalize
+   malformed input into a valid number. UNSTRING uses its literal delimiter, including '|'.
+9. COBOL paragraphs share working-storage state. A validity flag initialized once and set
+   to 0 stays 0 across later PERFORM calls unless COBOL explicitly resets it. A valid second
+   field must never erase a failure in the first field. Every invalid character must remain
+   invalid, even if final digit counts look valid. Prefer an early error return or accumulate
+   validity with AND; never reset an invalid flag to 1 at the end of a validator.
+10. The source and actual failing-case outputs take precedence over any draft-spec mistake.
+11. FUNCTION TRIM removes ASCII spaces only. Use strip(' '), never bare strip(): tabs and
+   other whitespace remain characters and may be rejected by validation. ACCEPT into
+   PIC X(256) also limits the input buffer before inspecting or splitting delimiters.
 
 You may use these tested helpers. If you call them, copy them verbatim into your module
 OR just call them by name and they will be inlined automatically:

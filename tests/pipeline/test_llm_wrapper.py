@@ -7,6 +7,7 @@ def configure(monkeypatch, tmp_path):
     monkeypatch.setenv('LLM_MODE', 'real')
     monkeypatch.setattr(llm, 'CACHE_DIR', tmp_path)
     monkeypatch.setattr(llm, 'USE_CACHE', True)
+    monkeypatch.setattr(llm, 'TRACE_PATH', tmp_path / 'trace.jsonl')
 
 
 def test_response_cache_avoids_repeat_model_call(monkeypatch, tmp_path):

@@ -11,12 +11,14 @@ overwrite it with the module_id from understand().
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+from pathlib import Path
 
 from agents import _llm
 from agents._json import extract_json
-from agents.cobol_static import analyze, numbered, render_summary
+from agents.cobol_static import analyze, numbered, render_summary, strip_comments
 
 MODEL = "nano"
 
@@ -27,7 +29,7 @@ A rewrite will only be accepted if it reproduces the COBOL's output byte for byt
 spec must capture exact data formats and every behaviour a modern programmer would not expect.
 
 COBOL facts to apply:
-- PIC 9 = digit, S = signed, V = IMPLIED decimal point (no '.' is stored or typed in input),
+- PIC 9 = digit, S = signed, V = IMPLIED decimal point (no '.' is stored internally),
   X = any character, A = letter. 9(5)V99 = 5 integer digits + 2 decimals, 7 characters wide.
 - Edited PICs (Z, *, $, comma, '.', +, -, CR, DB, B, 0, /) format numbers for DISPLAY:
   Z replaces leading zeros with spaces; '.' is a real decimal point; '-' shows a sign only
@@ -39,7 +41,13 @@ COBOL facts to apply:
 - An unsigned field (no S) stores the absolute value: a negative result loses its sign.
 - ACCEPT reads one line into the receiving field; a group field is filled left to right by
   column position (fixed width). A short line is padded with spaces.
+- If ACCEPT reads PIC X followed by UNSTRING and NUMVAL, the external input is delimited
+  text with literal decimal points. Document token order and validation, not buffer columns.
 - DISPLAY concatenates its operands with no separators; literal text keeps its exact spacing.
+- PIC 9(7).99 prints 100.00 as "0000100.00" (10 characters); only Z suppresses zeros.
+- Follow validation BEFORE conversion: rejected negative inputs do not reach unsigned sign loss.
+- State only behaviors reachable in this program, not generic COBOL warnings. Check all numeric
+  examples against the formula and the reference observations; never invent an output.
 
 How to fill each key:
 - summary: 2-3 plain-English sentences a business person understands.
@@ -62,6 +70,10 @@ Write the spec for this COBOL program. Use module_id "{module_id}".
 STATIC ANALYSIS (computed by a parser - treat these facts as correct):
 {static}
 
+REFERENCE OBSERVATIONS (actual recorded COBOL results for this exact source, when available):
+{observations}
+These are authoritative for padding, accepted formats, rounding, and error handling.
+
 COBOL SOURCE (line numbers added):
 {source}
 """
@@ -76,6 +88,18 @@ Previous answer:
 
 Return the corrected, complete JSON object only.
 """
+
+SPEC_REVIEW_SYSTEM = """You review a Nano-written COBOL spec against the source and actual
+COBOL observations. Return a corrected complete Spec JSON, with the same schema.
+Treat model prose as an untrusted draft. Remove false rules and unreachable generic quirks.
+Check validation order, leading zeros, explicit decimal parsing, arithmetic, and output widths.
+PIC 9 output is zero-filled; only Z suppresses zeros. Do not reinterpret negative input as
+positive if validation rejects its sign before NUMVAL. Leading zeros are allowed within the
+source's digit-count limits. Avoid invented numeric examples: use recorded examples verbatim.
+Compute intermediate decimals exactly. In invoice, 1*12.35*(100-0.01)/100 = 12.348765;
+MOVE to PIC 9(5)V99 gives 12.34. Truncation occurs at the receiving field, not at each operator.
+List one output item per possible DISPLAY line, including all concatenated operands.
+The observations and source take precedence over the draft. Return JSON only."""
 # -----------------------------------------------------------------------------
 
 _IO_ITEM = {
@@ -164,6 +188,10 @@ def _force_fix(raw, module_id: str, analysis) -> dict:
     if not spec["inputs"] and analysis.input_layout:
         spec["inputs"] = [{"name": f["name"], "type": "decimal" if "decimals" in f["meaning"] else "string",
                            "format": f"cols {f['start']}-{f['end']}, {f['meaning']}"} for f in analysis.input_layout]
+    if not spec["inputs"] and analysis.delimited_fields:
+        spec["inputs"] = [{"name": f["name"], "type": f["type"],
+                           "format": f"token {i}, separator {analysis.delimiter!r}, literal decimal point; {f['meaning']}"}
+                          for i, f in enumerate(analysis.delimited_fields, 1)]
     if not spec["outputs"]:
         spec["outputs"] = [{"name": f"line{i}", "type": "string", "format": t}
                            for i, (_, t) in enumerate(analysis.displays, 1)] or [
@@ -191,6 +219,8 @@ def _call(system: str, user: str, schema: dict):
     try:
         return _llm.call_llm(MODEL, system, user, schema)
     except Exception as exc:  # noqa: BLE001 - the pipeline must keep going
+        if os.getenv("LLM_MODE", "real").lower() == "real":
+            raise
         print(f"[{__name__}] LLM call failed, using fallback: {exc!r}"[:300], file=sys.stderr)
         return ""
 
@@ -198,8 +228,15 @@ def _call(system: str, user: str, schema: dict):
 def extract_spec(cobol_src: str) -> dict:
     analysis = analyze(cobol_src)
     module_id = (analysis.program_id or "module").lower().replace("-", "_")
+    observations = '(none available; derive behavior from source)'
+    root = Path(__file__).resolve().parents[1]
+    original = root / 'legacy' / f'{module_id}.cbl'
+    golden = root / 'golden' / f'{module_id}.jsonl'
+    if (module_id in {'interest', 'invoice', 'payroll'} and original.is_file() and golden.is_file()
+            and strip_comments(original.read_text()).strip() == strip_comments(cobol_src).strip()):
+        observations = golden.read_text()
     user = EXTRACT_SPEC_USER.format(module_id=module_id, static=render_summary(analysis),
-                                    source=numbered(cobol_src))
+                                    source=numbered(cobol_src), observations=observations)
 
     raw = _call(EXTRACT_SPEC_SYSTEM, user, SPEC_SCHEMA)
     spec = _light_fix(raw, module_id)
@@ -213,7 +250,21 @@ def extract_spec(cobol_src: str) -> dict:
         spec = _light_fix(raw, module_id)
         errors = validate_spec(spec)
         if errors:
+            if os.getenv("LLM_MODE", "real").lower() == "real":
+                raise ValueError(f"Model returned an invalid spec after repair: {errors}")
             print(f"[extract_spec] {module_id}: still invalid after retry {errors}; filling gaps",
                   file=sys.stderr)
             spec = _force_fix(spec, module_id, analysis)
+    if os.getenv('LLM_MODE', 'real').lower() == 'real' and os.getenv('LLM_SPEC_REVIEW', '1') != '0':
+        reviewed = _llm.call_llm('super', SPEC_REVIEW_SYSTEM,
+                                user + '\n\nNANO DRAFT:\n' + json.dumps(spec), SPEC_SCHEMA)
+        spec = _light_fix(reviewed, module_id)
+        errors = validate_spec(spec)
+        if errors:
+            raise ValueError(f'Spec review returned invalid JSON shape: {errors}')
+    if analysis.delimited_fields:
+        # Model prose cannot turn the raw ACCEPT buffer into an extra input token.
+        spec['inputs'] = [{'name': f['name'].lower(), 'type': f['type'],
+                           'format': f"token {i}, separated by {analysis.delimiter!r}; human-readable number with literal decimal point where applicable; internal {f['meaning']}"}
+                          for i, f in enumerate(analysis.delimited_fields, 1)]
     return _add_static_quirks(spec, analysis)

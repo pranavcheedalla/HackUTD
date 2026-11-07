@@ -136,7 +136,7 @@ def test_payroll_through_generated_equivalence_tests(tmp_path, monkeypatch, muta
 def test_payroll_cli_preserves_drifted_golden_and_supports_update(tmp_path):
     copy = tmp_path / "payroll handoff with spaces"
     shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(
-        ".git", "bin", "__pycache__", ".pytest_cache", ".venv", "validation", "runs",
+        ".git", ".env", ".env.*", "bin", "__pycache__", ".pytest_cache", ".venv", "validation", "runs",
     ))
     golden = copy / "golden/payroll.jsonl"
     original = golden.read_bytes()

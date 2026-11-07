@@ -1,0 +1,16 @@
+{"ts": "2026-11-07T22:47:27.849979+00:00", "model": "nano", "model_id": "nvidia/nemotron-3.5-lightning-30b-a3b", "source": "live", "seconds": 8.006, "ok": true, "error": null}
+{"ts": "2026-11-07T22:47:35.965221+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 8.115, "ok": true, "error": null}
+{"ts": "2026-11-07T22:47:40.749618+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 4.78, "ok": true, "error": null}
+{"ts": "2026-11-07T22:47:53.987029+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 12.784, "ok": true, "error": null}
+{"ts": "2026-11-07T22:48:13.073521+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 18.874, "ok": true, "error": null}
+{"ts": "2026-11-07T22:48:54.980273+00:00", "model": "nano", "model_id": "nvidia/nemotron-3.5-lightning-30b-a3b", "source": "live", "seconds": 41.658, "ok": true, "error": null}
+{"ts": "2026-11-07T22:49:04.077950+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 9.096, "ok": true, "error": null}
+{"ts": "2026-11-07T22:49:11.566546+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 7.477, "ok": true, "error": null}
+{"ts": "2026-11-07T22:49:24.737582+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 12.47, "ok": true, "error": null}
+{"ts": "2026-11-07T22:49:41.369811+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 16.386, "ok": true, "error": null}
+{"ts": "2026-11-07T22:50:07.820491+00:00", "model": "nano", "model_id": "nvidia/nemotron-3.5-lightning-30b-a3b", "source": "live", "seconds": 26.212, "ok": true, "error": null}
+{"ts": "2026-11-07T22:50:17.459843+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 9.639, "ok": true, "error": null}
+{"ts": "2026-11-07T22:50:22.725971+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 5.255, "ok": true, "error": null}
+{"ts": "2026-11-07T22:50:38.128410+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 14.79, "ok": true, "error": null}
+{"ts": "2026-11-07T22:50:52.780941+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 14.429, "ok": true, "error": null}
+{"ts": "2026-11-07T22:51:25.409686+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 32.362, "ok": true, "error": null}

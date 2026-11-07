@@ -61,6 +61,18 @@ def main() -> int:
             print('Real run blocked: merge the real agent implementations first. '
                   'For the offline fixture demo use LLM_MODE=fake.', file=sys.stderr)
             return 2
+        if not os.getenv('NVIDIA_API_KEY') or os.getenv('NVIDIA_API_KEY') in ('nvapi-...', 'your-key-here'):
+            print('Real run blocked: configure NVIDIA_API_KEY in the local .env. '
+                  'Use LLM_MODE=fake for the labeled fixture demo.', file=sys.stderr)
+            return 2
+        if os.getenv('P4_FORCE_LOCAL_LLM') == '1':
+            print('Real run blocked: unset P4_FORCE_LOCAL_LLM so all agents use the shared client.', file=sys.stderr)
+            return 2
+        try:
+            import langchain_nvidia_ai_endpoints  # noqa: F401
+        except ImportError:
+            print('Real run blocked: install requirements.txt in your virtual environment.', file=sys.stderr)
+            return 2
     modules = agents.understand(args.legacy_dir)
     if args.only:
         modules = [m for m in modules if m["module_id"] == args.only]

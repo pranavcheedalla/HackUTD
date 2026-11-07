@@ -111,7 +111,7 @@ def test_rounding_divergence_and_repair_through_shared_harness(tmp_path, monkeyp
 def test_invoice_cli_drift_update_and_relocation(tmp_path):
     copy = tmp_path / "invoice handoff with spaces"
     shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(
-        ".git", "bin", "__pycache__", ".pytest_cache", ".venv", "validation", "runs",
+        ".git", ".env", ".env.*", "bin", "__pycache__", ".pytest_cache", ".venv", "validation", "runs",
     ))
     golden = copy / "golden/invoice.jsonl"
     original = golden.read_bytes()

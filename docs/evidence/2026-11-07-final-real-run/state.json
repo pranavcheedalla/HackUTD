@@ -1,0 +1,345 @@
+{
+  "run_id": "4f688d31",
+  "started_at": "2026-11-07T16:47:19",
+  "updated_at": "2026-11-07T16:51:25",
+  "modules": {
+    "interest": {
+      "id": "interest",
+      "status": "done",
+      "attempts": 1,
+      "tests_passed": 30,
+      "tests_total": 30,
+      "divergences": [],
+      "cobol_path": "<repo>/runs/sessions/20261107-164719-real-92234b/legacy/interest.cbl",
+      "last_failures": [],
+      "spec": {
+        "module_id": "interest",
+        "summary": "A COBOL program that reads three pipe-delimited tokens (principal, annual rate, years) from a single input line, validates them, computes simple interest as principal * rate * years / 100, and prints the result as a zero-padded 10-character edited number or an error message.",
+        "inputs": [
+          {
+            "name": "principal-amount",
+            "type": "decimal",
+            "format": "token 1, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(5)V99: unsigned number, 5 integer digits + 2 implied decimals (no decimal point stored), max 99999.99"
+          },
+          {
+            "name": "annual-rate",
+            "type": "decimal",
+            "format": "token 2, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(3)V99: unsigned number, 3 integer digits + 2 implied decimals (no decimal point stored), max 999.99"
+          },
+          {
+            "name": "years-count",
+            "type": "integer",
+            "format": "token 3, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 99: unsigned number, 2 integer digits, max 99"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "printed-interest",
+            "type": "string",
+            "format": "PIC 9(7).99 edited, exactly 10 characters, zero-padded, prefixed by literal 'INTEREST=' in one DISPLAY line"
+          },
+          {
+            "name": "error-invalid-input",
+            "type": "string",
+            "format": "literal 'ERROR:INVALID_INPUT' in one DISPLAY line"
+          },
+          {
+            "name": "error-overflow",
+            "type": "string",
+            "format": "literal 'ERROR:OVERFLOW' in one DISPLAY line"
+          }
+        ],
+        "business_rules": [
+          "The input line must contain exactly 2 pipe delimiters; otherwise ERROR:INVALID_INPUT is printed and the program stops.",
+          "Each token is trimmed and validated character-by-character: only digits and at most one decimal point are allowed; a decimal point must be followed by at least one digit; any other character invalidates the token.",
+          "Digit counts are enforced per field: principal whole digits 1-5 and fraction digits 0-2; rate whole digits 1-3 and fraction digits 0-2; years whole digits 1-2 and fraction digits must be 0.",
+          "Leading zeros are allowed within the source's digit-count limits.",
+          "A negative sign in any token produces ERROR:INVALID_INPUT before NUMVAL conversion.",
+          "The annual rate must not exceed 100; if it does, ERROR:INVALID_INPUT is printed and the program stops.",
+          "Simple interest is calculated as principal-amount * annual-rate * years-count / 100 using COMPUTE ROUNDED; intermediate decimals are computed exactly and rounding occurs only when storing into INTEREST-AMOUNT PIC 9(7)V99.",
+          "If a COMPUTE overflow occurs (ON SIZE ERROR), ERROR:OVERFLOW is printed and the program stops.",
+          "The raw interest value is moved to printed-interest (PIC 9(7).99), which zero-pads the internal value to a 10-character display field with exactly 2 decimals shown."
+        ],
+        "edge_cases": [
+          "Input with fewer or more than 2 delimiters produces ERROR:INVALID_INPUT.",
+          "A negative sign in any token (e.g., -100.00) produces ERROR:INVALID_INPUT.",
+          "A token with a decimal point but no following digits (e.g., 5.) invalidates the input.",
+          "A token with trailing characters after the digits/decimal produces ERROR:INVALID_INPUT.",
+          "Principal of 0.00 or rate of 0.00 produces INTEREST=0000000.00.",
+          "Years of 0 produces INTEREST=0000000.00.",
+          "Maximum valid values (99999.99, 100.00, 99) produce INTEREST=9899999.01.",
+          "Minimum positive values (0.01, 0.01, 1) produce INTEREST=0000000.00.",
+          "1.00 * 0.50 * 1 / 100 = 0.005 rounds to INTEREST=0000000.01.",
+          "99999.99 * 0.01 * 1 / 100 = 9.999999 rounds to INTEREST=0000010.00."
+        ],
+        "quirks": [
+          "ACCEPT reads the line into a 256-character buffer; the line is not padded to 256 chars; tokens are extracted via UNSTRING delimited by '|'.",
+          "NUMVAL converts the trimmed token text to a numeric value; the implied decimal is internal (no '.' stored), so '5.00' stores as 500 internally.",
+          "The COMPUTE ROUNDs half away from zero: 12.345 -> 12.35; without ROUNDED the truncation would give 12.34.",
+          "The overflow check uses ON SIZE ERROR; if the product principal*rate*years exceeds the 9(7)V99 capacity (9999999.99), ERROR:OVERFLOW is printed.",
+          "The PIC 9(7).99 edited output always has exactly 10 characters; leading zeros are preserved because no Z edit character is used.",
+          "The validation subroutine checks whole-digits against max-whole (5 for principal, 3 for rate, 2 for years) and fraction-digits against max-fraction (2 for principal and rate, 0 for years); a trailing decimal point with no fraction (e.g., '5.') sets valid-input to 0.",
+          "The program stops immediately (stop run) on any error, so no further tokens or calculations are processed."
+        ]
+      },
+      "golden_path": "<repo>/runs/sessions/20261107-164719-real-92234b/golden/interest.jsonl",
+      "py_path": "<repo>/runs/sessions/20261107-164719-real-92234b/modern/interest.py",
+      "unit_tests_status": "passed"
+    },
+    "invoice": {
+      "id": "invoice",
+      "status": "done",
+      "attempts": 1,
+      "tests_passed": 30,
+      "tests_total": 30,
+      "divergences": [],
+      "cobol_path": "<repo>/runs/sessions/20261107-164719-real-92234b/legacy/invoice.cbl",
+      "last_failures": [],
+      "spec": {
+        "module_id": "invoice",
+        "summary": "A COBOL invoice processor reads one pipe-delimited input line containing quantity, unit price, and discount percent. It validates each token digit-by-digit (digits and at most one decimal point, with field-specific whole/fraction limits), rejects invalid input or discount over 100 with ERROR:INVALID_INPUT, computes EXACT-TOTAL = quantity * price * (100 - discount) / 100 truncated to 6 decimal places, checks for overflow at 100000, then moves the truncated result to PIC 9(5)V99 and displays TOTAL= followed by an 8-character zero-padded total with two decimals.",
+        "inputs": [
+          {
+            "name": "quantity-count",
+            "type": "integer",
+            "format": "token 1, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(3): unsigned number, 3 integer digits, max 999"
+          },
+          {
+            "name": "unit-price",
+            "type": "decimal",
+            "format": "token 2, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(5)V99: unsigned number, 5 integer digits + 2 implied decimals (no decimal point stored), max 99999.99"
+          },
+          {
+            "name": "discount-percent",
+            "type": "decimal",
+            "format": "token 3, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(3)V99: unsigned number, 3 integer digits + 2 implied decimals (no decimal point stored), max 999.99"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "display-line",
+            "type": "text",
+            "format": "Either ERROR:INVALID_INPUT, ERROR:OVERFLOW, or TOTAL= followed by PIC 9(5).99 edited value, 8 characters wide, zero-padded, with a real decimal point and 2 decimal digits (e.g. TOTAL=00053.97)"
+          }
+        ],
+        "business_rules": [
+          "Accept one input line into INPUT-LINE (PIC X(256) is buffer capacity, not a required line length; do not pad).",
+          "Tally '|' delimiters; if delimiter-count is not exactly 2, display ERROR:INVALID_INPUT and stop.",
+          "Unstring INPUT-LINE delimited by '|' into RAW-QUANTITY, RAW-PRICE, RAW-DISCOUNT.",
+          "For each token, trim spaces into TOKEN-TEXT, then validate digit-by-digit: only digits 0-9 and at most one '.' are allowed; any other character sets VALID-INPUT to 0.",
+          "During validation, count digits before the decimal point as WHOLE-DIGITS and digits after as FRACTION-DIGITS; a second decimal point, or a decimal point when MAX-FRACTION is 0, sets VALID-INPUT to 0.",
+          "Quantity limits: WHOLE-DIGITS must be between 1 and 3 inclusive; FRACTION-DIGITS must be 0; a decimal point with zero fraction digits is invalid.",
+          "Price limits: WHOLE-DIGITS must be between 1 and 5 inclusive; FRACTION-DIGITS must be between 0 and 2 inclusive; a decimal point with zero fraction digits is invalid.",
+          "Discount limits: WHOLE-DIGITS must be between 1 and 3 inclusive; FRACTION-DIGITS must be between 0 and 2 inclusive; a decimal point with zero fraction digits is invalid.",
+          "If any token fails validation (VALID-INPUT = 0), display ERROR:INVALID_INPUT and stop before any NUMVAL conversion.",
+          "Convert validated tokens with NUMVAL: RAW-QUANTITY to QUANTITY-COUNT (PIC 9(3), max 999), RAW-PRICE to UNIT-PRICE (PIC 9(5)V99, max 99999.99), RAW-DISCOUNT to DISCOUNT-PERCENT (PIC 9(3)V99, max 999.99).",
+          "Reject negative inputs during validation because '-' is not a digit or '.'; do not reinterpret negative input as positive.",
+          "If DISCOUNT-PERCENT > 100 after conversion, display ERROR:INVALID_INPUT and stop.",
+          "Compute EXACT-TOTAL = QUANTITY-COUNT * UNIT-PRICE * (100 - DISCOUNT-PERCENT) / 100 using exact intermediate decimals; truncation occurs only at the receiving field (6 implied decimals), not at each operator.",
+          "No ON SIZE ERROR: if EXACT-TOTAL exceeds PIC 9(8)V9(6) capacity, high-order digits are silently lost; EXACT-TOTAL is unsigned so a negative result loses its sign.",
+          "If EXACT-TOTAL >= 100000, display ERROR:OVERFLOW and stop.",
+          "MOVE EXACT-TOTAL to INVOICE-TOTAL (PIC 9(5)V99): truncates beyond 2 decimal places without rounding; no ON SIZE ERROR, so overflow silently loses high-order digits.",
+          "MOVE INVOICE-TOTAL to PRINTED-TOTAL (PIC 9(5).99): produces an 8-character edited output with leading zeros preserved (zero-filled, not Z-suppressed), a real decimal point, and exactly 2 decimal digits.",
+          "Display TOTAL= concatenated with PRINTED-TOTAL as one line.",
+          "Leading zeros are allowed within the source's digit-count limits."
+        ],
+        "edge_cases": [
+          "Input \"3|19.99|10.00\" produces TOTAL=00053.97.",
+          "Input \"1|12.35|0.01\" produces TOTAL=00012.34 (exact intermediate 12.348765 truncated to 12.34 at the MOVE to INVOICE-TOTAL).",
+          "Input \"1|0.01|50.00\" produces TOTAL=00000.00.",
+          "Input \"1|99999.99|0.00\" produces TOTAL=99999.99.",
+          "Input \"999|100.00|0.00\" produces TOTAL=99900.00.",
+          "Input \"2|50000.00|0.00\" produces ERROR:OVERFLOW because EXACT-TOTAL = 100000.00.",
+          "Input \"0|19.99|10.00\" produces TOTAL=00000.00.",
+          "Input \"3|0.00|10.00\" produces TOTAL=00000.00.",
+          "Input \"3|19.99|0.00\" produces TOTAL=00059.97.",
+          "Input \"3|19.99|100.00\" produces TOTAL=00000.00.",
+          "Input \"999|99999.99|100.00\" produces TOTAL=00000.00.",
+          "Input \"-1|19.99|10.00\", \"1|-19.99|10.00\", or \"1|19.99|-1.00\" produces ERROR:INVALID_INPUT because '-' fails digit validation.",
+          "Input \"1|19.99|100.01\" produces ERROR:INVALID_INPUT because discount exceeds 100 after conversion."
+        ],
+        "quirks": [
+          "PRINTED-TOTAL PIC 9(5).99 displays leading zeros as zero-filled digits; the Z suppression described in generic edited-PIC rules does not apply to the observed output, which is always 8 characters wide (e.g. 00053.97).",
+          "COMPUTE into EXACT-TOTAL (PIC 9(8)V9(6)) truncates beyond 6 decimal places without rounding; e.g. a mathematical result of 12.3333339 is stored as 12.333333.",
+          "MOVE into INVOICE-TOTAL (PIC 9(5)V99) truncates beyond 2 decimal places without rounding; e.g. 12.348765 becomes 12.34, not 12.35.",
+          "No ON SIZE ERROR clauses exist, so overflow in EXACT-TOTAL or INVOICE-TOTAL silently loses high-order digits rather than raising an error.",
+          "All numeric storage fields are unsigned PIC 9; validation rejects '-' before NUMVAL, so negative values never reach arithmetic."
+        ]
+      },
+      "golden_path": "<repo>/runs/sessions/20261107-164719-real-92234b/golden/invoice.jsonl",
+      "py_path": "<repo>/runs/sessions/20261107-164719-real-92234b/modern/invoice.py",
+      "unit_tests_status": "passed"
+    },
+    "payroll": {
+      "id": "payroll",
+      "status": "done",
+      "attempts": 1,
+      "tests_passed": 30,
+      "tests_total": 30,
+      "divergences": [],
+      "cobol_path": "<repo>/runs/sessions/20261107-164719-real-92234b/legacy/payroll.cbl",
+      "last_failures": [],
+      "spec": {
+        "module_id": "payroll",
+        "summary": "A payroll calculator that reads hours worked and hourly rate from a pipe-delimited input, computes gross pay with overtime after 40 hours, applies progressive tax brackets, and outputs formatted pay totals. Invalid inputs or overflow conditions produce error messages and terminate the program.",
+        "inputs": [
+          {
+            "name": "hours-worked",
+            "type": "decimal",
+            "format": "token 1, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(3)V99: unsigned number, 3 integer digits + 2 implied decimals (no decimal point stored), max 999.99"
+          },
+          {
+            "name": "hourly-rate",
+            "type": "decimal",
+            "format": "token 2, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(3)V99: unsigned number, 3 integer digits + 2 implied decimals (no decimal point stored), max 999.99"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "printed-gross",
+            "type": "string",
+            "format": "PRINTED-GROSS PIC 9(7).99, 10 chars wide, display-edited with implied decimal, zero-leading unless Z edit"
+          },
+          {
+            "name": "printed-tax",
+            "type": "string",
+            "format": "PRINTED-TAX PIC 9(7).99, 10 chars wide, display-edited with implied decimal, zero-leading unless Z edit"
+          },
+          {
+            "name": "printed-net",
+            "type": "string",
+            "format": "PRINTED-NET PIC 9(7).99, 10 chars wide, display-edited with implied decimal, zero-leading unless Z edit"
+          }
+        ],
+        "business_rules": [
+          "The input line must contain exactly one pipe (|) delimiter; otherwise ERROR:INVALID_INPUT is displayed and the program stops.",
+          "Hours worked and hourly rate are parsed from their respective tokens using NUMVAL, which requires a valid numeric format with an implied decimal (PIC 9(3)V99). Invalid numeric format causes valid-input to be set to 0.",
+          "Validate-number checks that each token contains only digits and at most one decimal point, with whole-digits not exceeding 3 and fraction-digits not exceeding 2; if checks fail, valid-input is set to 0.",
+          "If hours-worked exceeds 40, gross-pay is computed as 40 * hourly-rate + (hours-worked - 40) * hourly-rate * 1.5, with ROUNDED rounding to 2 decimal places; otherwise gross-pay is hours-worked * hourly-rate.",
+          "Tax is computed on the rounded gross-pay using progressive brackets: 10% for gross-pay <= 500; 50 + (gross-pay - 500) * 0.20 for 500 < gross-pay <= 1000; 150 + (gross-pay - 1000) * 0.30 for gross-pay > 1000. Each computation uses ROUNDED and no ON SIZE ERROR, so results exceeding 9999999.99 silently lose high-order digits.",
+          "Net pay is calculated as gross-pay - tax-amount without ON SIZE ERROR; since NET-PAY is unsigned, any negative result loses its sign and stores the absolute value.",
+          "Gross-pay, tax-amount, and net-pay are moved to their respective display-edited fields (PIC 9(7).99) which always output 10 characters with 2 implied decimal places.",
+          "The display output line format is: \"GROSS=\" followed by the edited gross, \"|TAX=\" followed by the edited tax, and \"|NET=\" followed by the edited net, concatenated with no extra separators."
+        ],
+        "edge_cases": [
+          "Input \"-1.00|20.00\" produces ERROR:INVALID_INPUT because the hours token contains a negative sign, which fails NUMVAL validation for an unsigned PIC 9(3)V99 field.",
+          "Input \"40.00|-1.00\" produces ERROR:INVALID_INPUT because the rate token contains a negative sign, which fails NUMVAL validation.",
+          "Input \"999.99|999.99\" results in GROSS=1479970.20 due to overflow: 40*999.99 + (999.99-40)*999.99*1.5 = 39999.60 + 959990.005 truncated to 959990.00, but the reference shows 1479970.20 indicating the full intermediate sum before truncation to the 7-digit field, with the final GROSS value being 1479970.20 after the ROUNDED COMPUTE stores the truncated result.",
+          "Input \"1000.00|20.00\" produces ERROR:INVALID_INPUT because whole-digits = 4 exceeds the allowed maximum of 3 for the hours-worked validation.",
+          "Input \"0.00|20.00\" produces all-zero output GROSS=0000000.00 TAX=0000000.00 NET=0000000.00.",
+          "Input \"40.00|0.00\" produces all-zero output GROSS=0000000.00 TAX=0000000.00 NET=0000000.00.",
+          "Input \"1.00|499.99\" produces GROSS=0000499.99 TAX=0000050.00 NET=0000449.99, testing the lowest tax bracket.",
+          "Input \"1.00|500.01\" produces GROSS=0000500.01 TAX=0000050.00 NET=0000450.01, testing the bracket transition at gross-pay = 500.",
+          "Input \"40.01|25.00\" produces GROSS=0001000.38 TAX=0000150.11 NET=0000850.27, testing overtime calculation and bracket transition at gross-pay = 1000."
+        ],
+        "quirks": [
+          "COMPUTE without ROUNDED truncates extra decimal digits (12.349 -> 12.34); with ROUNDED it rounds half away from zero (12.345 -> 12.35). All gross and tax computations use ROUNDED.",
+          "GROSS-PAY, TAX-AMOUNT, and NET-PAY are PIC 9(7)V99 (unsigned, 7 integer digits + 2 implied decimals, 9 characters wide internally). When moved to PIC 9(7).99 display fields, the output is always exactly 10 characters with the implied decimal placed two positions from the right.",
+          "Without ON SIZE ERROR in the COMPUTE statements for GROSS-PAY, TAX-AMOUNT, and NET-PAY, if the result exceeds 9999999.99 the leftmost digits are silently lost. The program does have an ON SIZE ERROR check only for the gross-pay compute when hours-worked > 40, displaying ERROR:OVERFLOW and stopping.",
+          "Since NET-PAY is unsigned (PIC 9(7)V99 without S), a negative result from gross-pay - tax-amount loses its sign and stores the absolute value. This behavior is not corrected or warned about.",
+          "The ACCEPT statement reads one line into the 256-character buffer; a short line is padded with spaces on the right. The INSPECT tallying for delimiter-count operates on the full buffer including padding.",
+          "UNSTRING input-line delimited by \"|\" into raw-hours raw-rate places the first token into raw-hours and the second into raw-rate. No trimming occurs during the UNSTRING; trimming is applied later via MOVE trim(raw-hours) to token-text.",
+          "The validate-number perform loop scans token-text character by character. It counts whole-digits before any decimal point and fraction-digits after. A second decimal point or non-digit/non-dot character sets valid-input to 0. The final check at line 100-103 rejects if whole-digits = 0, whole-digits > 3, fraction-digits > 2, or if a decimal point was seen but fraction-digits = 0 (e.g., \"5.\").",
+          "Display of edited PIC 9(7).99 with value 0 prints as \"0000000.00\" (10 characters). The Z edit code is not used, so leading zeros are never suppressed in the output.",
+          "The reference observation \"999.99|999.99\" output GROSS=1479970.20 demonstrates that the COMPUTE with ROUNDED retains the truncated overflow result within the 9-digit display field, and the final printed gross is 1479970.20 rather than losing digits to the left."
+        ]
+      },
+      "golden_path": "<repo>/runs/sessions/20261107-164719-real-92234b/golden/payroll.jsonl",
+      "py_path": "<repo>/runs/sessions/20261107-164719-real-92234b/modern/payroll.py",
+      "unit_tests_status": "needs_review"
+    }
+  },
+  "events": [
+    {
+      "t": "2026-11-07T16:47:35",
+      "module": "interest",
+      "node": "extract_spec",
+      "msg": "A COBOL program that reads three pipe-delimited tokens (principal, annual rate, years) from a single input line, validates them, computes simple interest as principal * rate * years / 100, and prints the result as a zero-padded 10-character edited number or an error message."
+    },
+    {
+      "t": "2026-11-07T16:47:41",
+      "module": "interest",
+      "node": "record",
+      "msg": "recorded 30 golden cases"
+    },
+    {
+      "t": "2026-11-07T16:47:54",
+      "module": "interest",
+      "node": "rewrite",
+      "msg": "attempt 1"
+    },
+    {
+      "t": "2026-11-07T16:47:54",
+      "module": "interest",
+      "node": "verify",
+      "msg": "30/30 equivalence tests passed"
+    },
+    {
+      "t": "2026-11-07T16:48:13",
+      "module": "interest",
+      "node": "accept",
+      "msg": "verified identical. unit tests written"
+    },
+    {
+      "t": "2026-11-07T16:49:04",
+      "module": "invoice",
+      "node": "extract_spec",
+      "msg": "A COBOL invoice processor reads one pipe-delimited input line containing quantity, unit price, and discount percent. It validates each token digit-by-digit (digits and at most one decimal point, with field-specific whole/fraction limits), rejects invalid input or discount over 100 with ERROR:INVALID_INPUT, computes EXACT-TOTAL = quantity * price * (100 - discount) / 100 truncated to 6 decimal places, checks for overflow at 100000, then moves the truncated result to PIC 9(5)V99 and displays TOTAL= followed by an 8-character zero-padded total with two decimals."
+    },
+    {
+      "t": "2026-11-07T16:49:12",
+      "module": "invoice",
+      "node": "record",
+      "msg": "recorded 30 golden cases"
+    },
+    {
+      "t": "2026-11-07T16:49:24",
+      "module": "invoice",
+      "node": "rewrite",
+      "msg": "attempt 1"
+    },
+    {
+      "t": "2026-11-07T16:49:24",
+      "module": "invoice",
+      "node": "verify",
+      "msg": "30/30 equivalence tests passed"
+    },
+    {
+      "t": "2026-11-07T16:49:41",
+      "module": "invoice",
+      "node": "accept",
+      "msg": "verified identical. unit tests written"
+    },
+    {
+      "t": "2026-11-07T16:50:17",
+      "module": "payroll",
+      "node": "extract_spec",
+      "msg": "A payroll calculator that reads hours worked and hourly rate from a pipe-delimited input, computes gross pay with overtime after 40 hours, applies progressive tax brackets, and outputs formatted pay totals. Invalid inputs or overflow conditions produce error messages and terminate the program."
+    },
+    {
+      "t": "2026-11-07T16:50:23",
+      "module": "payroll",
+      "node": "record",
+      "msg": "recorded 30 golden cases"
+    },
+    {
+      "t": "2026-11-07T16:50:38",
+      "module": "payroll",
+      "node": "rewrite",
+      "msg": "attempt 1"
+    },
+    {
+      "t": "2026-11-07T16:50:38",
+      "module": "payroll",
+      "node": "verify",
+      "msg": "30/30 equivalence tests passed"
+    },
+    {
+      "t": "2026-11-07T16:51:25",
+      "module": "payroll",
+      "node": "accept",
+      "msg": "verified identical. unit test writer failed: Generated unit tests need review: These tests fail: test_business_rule_branches, test_exact_spec_outputs, test_normal_output_fixed_width, test_overflow_branch\n pay, hours exactly 40\"),\n            (\"40.01|10.00\", \"overtime, hours just over 40\"),\n            (\"1.00|499.99\", \"gross <= 500, lowest bracket\"),\n            (\"1.00|500.01\", \"gross just over 500, middle bracket\"),\n            (\"40.01|25.00\", \"gross just over 1000, highest bracket\"),\n            (\"999.99|999.99\", \"overflow branch\"),\n            (\"-1.00|20.00\", \"negative hours validation\"),\n            (\"40.00|-1.00\", \"negative rate validation\"),\n            (\"1000.00|20.00\", \"whole-digits > 3 validation\"),\n        ],\n    )\n    def test_business_rule_branches(input_line: str, description: str) -> None:\n        result = main(input_line)\n        assert isinstance(result, str)\n        if description.startswith((\"negative\", \"whole-digits\")):\n            assert result == \"ERROR:INVALID_INPUT\"\n        elif description == \"overflow branch\":\n>           assert result == \"ERROR:OVERFLOW\"\nE           AssertionError: assert 'GROSS=147997...ET=1036129.14' == 'ERROR:OVERFLOW'\nE             \nE             - ERROR:OVERFLOW\nE             + GROSS=1479970.20|TAX=0443841.06|NET=1036129.14\n\n/var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py:260: AssertionError\n=========================== short test summary info ============================\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py::test_normal_output_fixed_width[0.00|20.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py::test_normal_output_fixed_width[40.00|20.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py::test_normal_output_fixed_width[40.01|25.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py::test_normal_output_fixed_width[1.00|499.99]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py::test_normal_output_fixed_width[1.00|500.01]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py::test_normal_output_fixed_width[999.99|999.99]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py::test_normal_output_fixed_width[0.01|0.01]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py::test_normal_output_fixed_width[39.99|999.99]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py::test_overflow_branch[999.99|999.99]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py::test_exact_spec_outputs[999.99|999.99-ERROR:OVERFLOW]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_ekio5b7d/test_payroll.py::test_business_rule_branches[999.99|999.99-overflow branch]\n11 failed, 74 passed in 0.09s\n"
+    }
+  ],
+  "mode": "real_model"
+}

@@ -22,6 +22,11 @@ SAMPLES = ROOT / "samples" / "legacy"
 _extract_spec, _generate_inputs = es.extract_spec, gi.generate_inputs
 
 
+@pytest.fixture(autouse=True)
+def offline_mode(monkeypatch):
+    monkeypatch.setenv('LLM_MODE', 'fake')
+
+
 @pytest.fixture
 def invoice_src():
     return load_cobol_source(SAMPLES / "invoice.cbl")
@@ -184,3 +189,12 @@ def test_generate_inputs_survives_llm_exception(monkeypatch, invoice_src):
     monkeypatch.setattr(_llm, "call_llm", _boom)
     inputs = _generate_inputs({}, invoice_src)
     assert inputs and all(len(i) == 12 for i in inputs)  # baseline cases still produced
+
+
+def test_input_schema_bounds_reply_size():
+    """An unbounded Super reply once grew past 32K chars and broke JSON parsing."""
+    from agents.generate_inputs import INPUTS_SCHEMA, MAX_CASES
+    cases = INPUTS_SCHEMA["properties"]["cases"]
+    assert cases["maxItems"] == MAX_CASES
+    assert cases["items"]["properties"]["input"]["maxLength"] <= 300
+    assert cases["items"]["properties"]["covers"]["maxLength"] <= 160

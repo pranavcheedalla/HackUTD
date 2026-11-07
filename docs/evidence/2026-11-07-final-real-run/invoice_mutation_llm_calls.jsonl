@@ -1,0 +1,3 @@
+{"ts": "2026-11-07T22:52:41.774621+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 1.495, "ok": true, "error": null}
+{"ts": "2026-11-07T22:52:55.129123+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 13.354, "ok": true, "error": null}
+{"ts": "2026-11-07T22:53:07.317085+00:00", "model": "super", "model_id": "nvidia/nemotron-3.5-super-vl-120b-a12b", "source": "live", "seconds": 12.133, "ok": true, "error": null}

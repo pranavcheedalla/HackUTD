@@ -59,7 +59,7 @@ def test_smoke_restores_private_paths_on_failure(tmp_path, monkeypatch):
 def test_smoke_rejects_original_golden_drift(tmp_path):
     copy = tmp_path / "team handoff"
     shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(
-        ".git", "bin", "__pycache__", ".pytest_cache", ".venv", "validation", "runs",
+        ".git", ".env", ".env.*", "bin", "__pycache__", ".pytest_cache", ".venv", "validation", "runs",
     ))
     golden = copy / "golden/interest.jsonl"
     cases = [json.loads(line) for line in golden.read_bytes().splitlines()]

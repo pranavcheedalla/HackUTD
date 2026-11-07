@@ -1,0 +1,14 @@
+Session: <repo>/runs/sessions/20261107-164719-real-92234b
+Migration order: interest -> invoice -> payroll
+
+=== interest ===
+  -> done  (30/30 tests, 1 attempts)
+
+=== invoice ===
+  -> done  (30/30 tests, 1 attempts)
+
+=== payroll ===
+[test_writer] payroll: repairing tests (pytest could not run the file:)
+  -> done  (30/30 tests, 1 attempts)
+
+3/3 modules verified. Live state: runs/state.json

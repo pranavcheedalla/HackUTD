@@ -358,7 +358,7 @@ def test_cli_detects_reference_drift_and_requires_explicit_update(tmp_path):
     import shutil
     copy = tmp_path / "handoff with spaces"
     shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(
-        "bin", "__pycache__", ".pytest_cache", ".venv", "validation",
+        ".git", ".env", ".env.*", "runs", "bin", "__pycache__", ".pytest_cache", ".venv", "validation",
     ))
     golden = copy / "golden/interest.jsonl"
     original = golden.read_bytes()

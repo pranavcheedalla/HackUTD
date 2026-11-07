@@ -55,7 +55,8 @@ def _run_process(command: list[str], timeout: float, data: bytes | None = None,
                  *, extra_env: dict | None = None, cwd=None):
     # Ambient COB_* settings can redirect DISPLAY or alter numeric behavior.
     environment = {key: value for key, value in os.environ.items()
-                   if not key.startswith("COB_")}
+                   if not key.startswith("COB_") and not any(
+                       marker in key.upper() for marker in ('API_KEY', 'ACCESS_TOKEN', 'SECRET', 'PASSWORD'))}
     environment.update(LC_ALL="C", LANG="C")
     environment.update(extra_env or {})
     with subprocess.Popen(

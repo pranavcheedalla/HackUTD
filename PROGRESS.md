@@ -1,5 +1,28 @@
 # Person 2 resume checkpoint
 
+## Current integrated-backend checkpoint (Nov 7, afternoon)
+
+P3 853577c and P4 fcde03b are merged into this integration branch. All five remote
+branches were refreshed and inspected. Main remains Hemant's final merge target.
+The local NVIDIA account/key is configured in ignored .env with mode 0600; both
+current model slots answered live connection checks. Never include credentials
+in commits, session copies, archives, or chat.
+
+New work: delimited-input parsing, truncating MOVE detection, reviewed-case anchors,
+schema-constrained NVIDIA output, Nano drafts plus Super spec review, explicit API
+failure handling, isolated session runner, extra rewrite audit, and Streamlit UI.
+Rewrite prompts preserve sticky validation flags and ASCII-only space trimming.
+Generated unit-test disagreements are reported rather than silently dropped.
+
+The regression suite passed 290 tests before the final unit-writer safeguard;
+the updated full suite is running. Live sessions are under runs/sessions.
+The first attempts exposed malformed JSON and invalid-input handling problems;
+do not describe those attempts as full success. A complete final run with the
+latest validation regressions, held-out audit, release report, and push remain
+to be completed. See docs/backend-setup.md for the eight integration steps.
+
+Older checkpoint notes below are historical and superseded by this section.
+
 All assigned components are implemented. Actual Hemant graph integration is now fixture-tested. Live model-agent
 behavior remains pending as described in docs/final-handoff.md.
 

@@ -19,3 +19,11 @@ tests/unit/test_*.py
 # P4
 *.pyc
 runs/nemotron_trace.jsonl
+runs/llm_calls.jsonl
+runs/jobs/
+runs/sessions/
+runs/latest_session.json
+runs/session.lock
+runs/reviewed-specs/
+.env.*
+!.env.example

@@ -1,0 +1,46 @@
+{
+ "label": "CONTROLLED MUTATION (injected rounding bug, not a model output)",
+ "cases": 30,
+ "mutant": {
+  "failed": 4,
+  "caught_12_35": true,
+  "failures": [
+   {
+    "input": "1|12.35|0.01",
+    "expected": "TOTAL=00012.34",
+    "actual": "TOTAL=00012.35"
+   },
+   {
+    "input": "1|0.01|50.00",
+    "expected": "TOTAL=00000.00",
+    "actual": "TOTAL=00000.01"
+   },
+   {
+    "input": "2|99980.00|49.99",
+    "expected": "TOTAL=99999.99",
+    "actual": "TOTAL=00000.00"
+   },
+   {
+    "input": " 001 | 00012.35 | 000.01 ",
+    "expected": "TOTAL=00012.34",
+    "actual": "TOTAL=00012.35"
+   }
+  ]
+ },
+ "explanation": {
+  "failure": {
+   "input": "1|12.35|0.01",
+   "expected": "TOTAL=00012.34",
+   "actual": "TOTAL=00012.35"
+  },
+  "verdict": "new_code_bug",
+  "reason": "The Python code rounds 12.345 up to 12.35 instead of truncating to 12.34 like COBOL."
+ },
+ "repairs": [
+  {
+   "attempt": 1,
+   "failed": 0
+  }
+ ],
+ "result": "repaired"
+}

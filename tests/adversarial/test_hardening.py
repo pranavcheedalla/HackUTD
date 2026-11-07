@@ -171,7 +171,7 @@ def test_report_output_cannot_overwrite_golden(tmp_path):
     import shutil
     root = Path(testing.__file__).parent
     copy = tmp_path / 'protected project'
-    shutil.copytree(root, copy, ignore=shutil.ignore_patterns('.git', 'bin', '__pycache__', '.pytest_cache', '.venv', 'validation', 'runs'))
+    shutil.copytree(root, copy, ignore=shutil.ignore_patterns('.git', '.env', '.env.*', 'bin', '__pycache__', '.pytest_cache', '.venv', 'validation', 'runs'))
     golden = copy / 'golden/invoice.jsonl'
     before = golden.read_bytes()
     process = subprocess.run([sys.executable, str(copy / 'check_integration.py'), '--output', str(golden)],

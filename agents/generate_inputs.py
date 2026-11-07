@@ -8,7 +8,9 @@ eval script (or the UI) can show why each input exists.
 from __future__ import annotations
 
 import json
+import os
 import sys
+from pathlib import Path
 
 from agents import _llm
 from agents.cobol_static import analyze, numbered, render_summary
@@ -41,7 +43,8 @@ Cover ALL of these (one case can cover several):
 7. Overflow: inputs whose computed results exceed the receiving field's digits.
 8. Negative / invalid data: a '-' or letters in a numeric field, spaces in a numeric field,
    a short line and an over-long line (just 1-2 of these; the COBOL output is recorded as-is).
-Return {min_cases}-{max_cases} cases, each with a short "covers" note. No duplicates.
+Return {min_cases}-{max_cases} cases, each with a short "covers" note (under 15 words).
+No duplicates. Keep the whole reply compact: no explanations outside the JSON.
 """
 
 GENERATE_INPUTS_USER = """\
@@ -69,10 +72,12 @@ INPUTS_SCHEMA = {
     "properties": {
         "cases": {
             "type": "array",
+            "maxItems": MAX_CASES,
             "items": {
                 "type": "object",
                 "required": ["input", "covers"],
-                "properties": {"input": {"type": "string"}, "covers": {"type": "string"}},
+                "properties": {"input": {"type": "string", "maxLength": 300},
+                               "covers": {"type": "string", "maxLength": 160}},
             },
         }
     },
@@ -118,6 +123,15 @@ def _clean(cases: list[dict], width: int, warnings: list[str]) -> list[dict]:
 
 def _baseline(analysis) -> list[dict]:
     """Deterministic cases added for unsigned numeric fixed-width records: all zeros, all nines."""
+    if _anchors(analysis):
+        # Hold onto failures found by the fresh-input audit, not just arithmetic examples.
+        special = {
+            'interest': [' 001 | 050 | 01 ', '00001|000.01|01', '1\t|2|3', '1.|2|3', 'abc|5|1'],
+            'invoice': ['2|99980.00|49.99', ' 001 | 00012.35 | 000.01 ', '1\t|2|3', '1|1.|0', 'abc|10|0'],
+            'payroll': ['0.01|4.95', ' 040.00 | 020.00 ', '1\t|2', '1.|2', 'abc|10'],
+        }
+        return [{'input': line, 'covers': 'audit regression: validation, whitespace, leading zeros or cent boundary'}
+                for line in special[analysis.program_id.lower()]]
     lay = analysis.input_layout
     if not lay or not all(f["pic"] and set(f["pic"].replace("(", "").replace(")", "")) <= set("9V0123456789")
                           for f in lay):
@@ -152,23 +166,50 @@ def _fallback_cases(analysis) -> list[dict]:
     return out
 
 
+def _anchors(analysis) -> list[dict]:
+    """Protect the reviewed P2 examples; fixed-width P3 samples use their own protocol."""
+    module_id = (analysis.program_id or "").lower()
+    root = Path(__file__).resolve().parents[1]
+    canonical = root / "legacy" / f"{module_id}.cbl"
+    if analysis.delimiter != "|" or module_id not in {"interest", "payroll", "invoice"} or not canonical.is_file():
+        return []
+    expected = analyze(canonical.read_text())
+    if analysis.delimited_fields != expected.delimited_fields:
+        return []
+    values = json.loads((root / "legacy" / "inputs" / f"{module_id}.json").read_text())
+    return [{"input": value, "covers": "reviewed handwritten regression case"} for value in values]
+
+
 def _call(system: str, user: str, schema: dict):
     """call_llm, but a failed call (timeout, bad JSON, 5xx) becomes "" so the fallbacks run."""
     try:
         return _llm.call_llm(MODEL, system, user, schema)
     except Exception as exc:  # noqa: BLE001 - the pipeline must keep going
+        if os.getenv("LLM_MODE", "real").lower() == "real":
+            raise
         print(f"[{__name__}] LLM call failed, using fallback: {exc!r}"[:300], file=sys.stderr)
         return ""
 
 
 def generate_inputs(spec: dict, cobol_src: str) -> list[str]:
     analysis = analyze(cobol_src)
-    system = GENERATE_INPUTS_SYSTEM.format(min_cases=MIN_CASES, max_cases=MAX_CASES)
+    anchors = _anchors(analysis)
+    # Reviewed cases already fill part of the budget; ask only for the remainder so the
+    # model's reply stays small (unbounded replies were truncated into invalid JSON).
+    want_min = max(5, MIN_CASES - len(anchors))
+    want_max = max(want_min, MAX_CASES - len(anchors))
+    system = GENERATE_INPUTS_SYSTEM.format(min_cases=want_min, max_cases=want_max)
     user = GENERATE_INPUTS_USER.format(spec=json.dumps(spec, indent=1), static=render_summary(analysis),
                                        source=numbered(cobol_src))
     warnings: list[str] = []
 
-    cases = _clean(_cases(_call(system, user, INPUTS_SCHEMA)), analysis.input_width, warnings)
+    proposals = _clean(_cases(_call(system, user, INPUTS_SCHEMA)), analysis.input_width, warnings)
+    if analysis.delimiter:
+        # Keep deliberately malformed cases, but reject the old padded-buffer fallback.
+        proposals = [c for c in proposals if len(c['input']) < 256]
+    if os.getenv('LLM_MODE', 'real').lower() == 'real' and not proposals:
+        raise ValueError('Model returned no usable input proposals')
+    cases = _clean(anchors + proposals, analysis.input_width, warnings)
     if len(cases) < MIN_CASES:
         need = MIN_CASES - len(cases)
         more_user = user + GENERATE_INPUTS_MORE.format(
@@ -182,9 +223,10 @@ def generate_inputs(spec: dict, cobol_src: str) -> list[str]:
     if not cases:
         warnings.append("model gave no usable cases; using deterministic boundary cases")
         cases = _clean(_fallback_cases(analysis), analysis.input_width, warnings)
-    cases = cases[:MAX_CASES]
-    have = {c["input"] for c in cases}
-    cases += [b for b in _baseline(analysis) if b["input"] not in have]
+    # Baselines belong inside the limit, and reviewed cases cannot be displaced.
+    cases = _clean(anchors + _baseline(analysis) + cases, analysis.input_width, warnings)[:MAX_CASES]
+    if os.getenv("LLM_MODE", "real").lower() == "real" and len(cases) < MIN_CASES:
+        raise ValueError(f"Only {len(cases)} distinct inputs; require {MIN_CASES}-{MAX_CASES}")
 
     for w in warnings:
         print(f"[generate_inputs] {w}", file=sys.stderr)

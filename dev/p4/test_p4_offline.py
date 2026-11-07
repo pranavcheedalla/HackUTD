@@ -186,13 +186,13 @@ def test_explainer_uses_nemotron_super(monkeypatch):
 
 
 # ---------------------------------------------------------------- test writer runs its tests
-def test_test_writer_repairs_then_drops_tests_that_still_fail(monkeypatch):
+def test_test_writer_repairs_then_reports_tests_that_still_fail(monkeypatch):
     bad = ("```python\nfrom modern.m7 import main\n\n"
            "def test_ok():\n    assert main('') == 'Z'\n\n"
            "def test_wrong_guess():\n    assert main('') == 'nope'\n```")
     monkeypatch.setattr(_llm, "call_llm", lambda *a: bad)     # repair returns the same file
-    src = test_writer.write_unit_tests({"module_id": "m7"}, "def main(s):\n    return 'Z'\n")
-    assert "test_ok" in src and "test_wrong_guess" not in src
+    with pytest.raises(RuntimeError, match='test_wrong_guess'):
+        test_writer.write_unit_tests({"module_id": "m7"}, "def main(s):\n    return 'Z'\n")
 
 
 def test_test_writer_accepts_passing_tests_without_repair(monkeypatch):
@@ -220,6 +220,7 @@ def test_fallback_skips_retired_model(monkeypatch):
 
 
 def test_empty_answer_after_reasoning_retries_without_thinking(monkeypatch):
+    monkeypatch.setattr(_llm, 'THINKING', True)
     monkeypatch.setenv("NVIDIA_API_KEY", "x")
     monkeypatch.setattr(_llm, "MODEL_CHAINS", {"super": ["m"]})
     monkeypatch.setattr(_llm, "_dead_models", set())

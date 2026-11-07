@@ -383,6 +383,15 @@ def find_arithmetic(proc: str, base: int, clean: str, index: dict[str, Field]) -
                   _has_size_error(proc, end))
         _annotate(a, index, verb == "DIVIDE", verb == "MULTIPLY")
         out.append(a)
+    # MOVE can discard fractional cents too; it is the invoice's actual quirk.
+    for m in re.finditer(kw("MOVE") + r"\s+(" + NAME + r")\s+TO\s+(" + NAME + r")", proc, re.I):
+        if _inside(m.start(), spans):
+            continue
+        source, target = (index.get(n.upper()) for n in m.groups())
+        if source and target and source.kind == target.kind == "numeric" and source.decimals > target.decimals:
+            a = Arith(line_of(clean, base + m.start()), "MOVE", [(target.name, False)], source.name, False)
+            _annotate(a, index, False, False)
+            out.append(a)
     return sorted(out, key=lambda a: a.line)
 
 
@@ -400,6 +409,8 @@ class Analysis:
     calls: list
     dynamic_calls: list
     copies: list
+    delimiter: str | None = None
+    delimited_fields: list = field(default_factory=list)
 
     @property
     def truncation_targets(self) -> list[str]:
@@ -431,6 +442,26 @@ def analyze(src: str) -> Analysis:
                            "conditions": leaf.conditions})
         width = target.length
 
+    delimiter, delimited_fields = None, []
+    # A text ACCEPT buffer is storage capacity, not the external record width.
+    pattern = (kw("UNSTRING") + r"\s+(" + NAME + r")\s+DELIMITED\s+BY\s+"
+               r"(['\"])([^'\"\n]+)\2\s+INTO\s+(.*?)\s+END-UNSTRING")
+    for m in re.finditer(pattern, proc, re.I | re.S):
+        if _inside(m.start(), spans) or m.group(1).upper() not in accepts:
+            continue
+        delimiter = m.group(3)
+        for raw in re.findall(NAME, m.group(4)):
+            raw = raw.upper()
+            conversion = re.search(kw("MOVE") + r"\s+(?:FUNCTION\s+)?NUMVAL\s*\(\s*"
+                                   + re.escape(raw) + r"\s*\)\s+TO\s+(" + NAME + r")", proc, re.I)
+            target = index.get(conversion.group(1).upper() if conversion else raw)
+            if target:
+                delimited_fields.append({"name": target.name, "raw": raw, "pic": target.pic,
+                                         "type": "decimal" if target.decimals else "integer" if target.kind == "numeric" else "string",
+                                         "meaning": target.describe()})
+        layout, width = [], 0
+        break
+
     def raw_lines(pattern):
         out = []
         for m in re.finditer(pattern, proc, re.I):
@@ -447,13 +478,20 @@ def analyze(src: str) -> Analysis:
         arithmetic=find_arithmetic(proc, base, clean, index),
         branches=raw_lines(kw("IF|WHEN|EVALUATE|UNTIL")), displays=raw_lines(kw("DISPLAY")),
         calls=calls, dynamic_calls=dynamic, copies=find_copies(src),
+        delimiter=delimiter, delimited_fields=delimited_fields,
     )
 
 
 def render_summary(a: Analysis, max_fields: int = 60) -> str:
     """Compact plain-text fact sheet that goes into the prompts."""
     out = [f"PROGRAM-ID: {a.program_id or '?'}"]
-    if a.input_layout:
+    if a.delimiter is not None:
+        out.append(f"\nINPUT LINE: variable-length tokens separated by {a.delimiter!r}; literal decimal points are typed.")
+        out.append("The ACCEPT text buffer is capacity, NOT a required line length. Do not pad to it.")
+        for i, f in enumerate(a.delimited_fields, 1):
+            out.append(f"  token {i}: {f['name']} via NUMVAL({f['raw']}) - {f['meaning']}")
+        out.append("Numeric PICs describe internal storage; consult validation and IF checks for allowed input ranges.")
+    elif a.input_layout:
         out.append(f"\nINPUT LINE (ACCEPT {a.accept_targets[0]}): fixed width, {a.input_width} characters total")
         for f in a.input_layout:
             cond = "; values: " + ", ".join(f"{n}={v}" for n, v in f["conditions"]) if f["conditions"] else ""

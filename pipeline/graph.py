@@ -45,6 +45,7 @@ class GraphState(TypedDict, total=False):
     last_failures: list
     divergences: list
     error: Optional[str]
+    unit_tests_status: str
 
 
 def _safe(node_name: str):
@@ -120,9 +121,11 @@ def accept(state: GraphState) -> GraphState:
         tests_src = agents.write_unit_tests(state["spec"], state["python_src"])
         (UNIT_DIR / f"test_{state['id']}_unit.py").write_text(tests_src)
         note = "unit tests written"
+        unit_status = 'fixture' if os.getenv('LLM_MODE') == 'fake' else 'passed'
     except Exception as e:
         note = f"unit test writer failed: {e}"
-    out = {**state, "status": "done", "last_failures": []}
+        unit_status = 'needs_review'
+    out = {**state, "status": "done", "last_failures": [], 'unit_tests_status': unit_status}
     status.update(out, "accept", f"verified identical. {note}")
     return out
 

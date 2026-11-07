@@ -8,8 +8,8 @@ Generated tests import the module as `modern.<module_id>`.
 
 After Nemotron writes the tests they are RUN in a sandbox against the code:
   - collection/import errors or failing tests -> one repair call with the pytest output
-  - tests that still fail are removed (the code is already proven equal to COBOL by the
-    golden tests, so a failing unit test here means the test's guess was wrong)
+  - tests still failing after repair are reported; a new case can reveal a real bug
+    beyond the recorded golden set, so disagreements must not be silently discarded
 """
 from __future__ import annotations
 
@@ -69,9 +69,10 @@ TEST_FIX_USER = """## Spec
 ## Problem
 {problem}
 
-The module's outputs are already verified identical to the legacy COBOL, so when a test
-fails, the test's expectation is what's wrong: fix or loosen that assertion. Return the
-complete corrected test file in a single ```python code block."""
+The module matches the recorded COBOL cases, but a new case might reveal a real bug.
+Check the expectation against the spec and code. Correct demonstrably wrong expectations;
+do not weaken or remove a valid assertion just to make it pass. Return the complete
+corrected test file in a single ```python code block."""
 
 
 # ----------------------------------------------------------------------------- agent
@@ -95,11 +96,8 @@ def write_unit_tests(spec: dict, python_src: str) -> str:
             if validate_tests(fixed, module_id) is None:
                 code, problem, run = fixed, fixed_problem, fixed_run
 
-    if run and run["failed"] and not run["collected_error"]:
-        code = drop_tests(code, run["failed"])
-        print(f"[test_writer] {module_id}: dropped wrong tests {run['failed']}")
-    elif problem:
-        print(f"[test_writer] {module_id}: tests still have problems: {problem.splitlines()[0]}")
+    if problem:
+        raise RuntimeError(f"Generated unit tests need review: {problem}")
     return code
 
 

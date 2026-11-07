@@ -1,46 +1,114 @@
-# Legacy Modernization Agents — combined P1 + P2
+# Legacy → Verified
 
-The system records what original COBOL actually does, rewrites it in Python,
-and accepts a rewrite only when its outputs match the recorded cases exactly.
+An integrated NVIDIA Nemotron / LangGraph backend that reads COBOL, documents it,
+records its real outputs, writes Python, and accepts a rewrite only after exact
+string comparisons pass. A local Streamlit dashboard shows progress and evidence.
 
-Hemant's contract, LLM wrapper, LangGraph graph, CLI, and atomic state writer are
-combined with Person 2's real GnuCOBOL runtime, hardened pytest harness, and all
-three demo originals. The shared contract and five public P2 signatures are unchanged.
+P1, P2, P3, and P4 are combined on `person2/legacy-runtime-harness` for PR #1.
+The shared signatures in `contract.py` are preserved. Hemant owns the merge to main.
 
-## Run the combined offline demo
+## Install on macOS
 
-Python 3.11 and GnuCOBOL are required. From the repository root:
+Python 3.11 and GnuCOBOL are required:
 
 ```bash
-HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install gnucobol python@3.11
+brew install gnucobol python@3.11
 python3.11 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements-combined.lock
+python -m pip install -r requirements-backend.lock
 python check_setup.py
-LLM_MODE=fake python run.py
 ```
 
-This runs the **actual COBOL and LangGraph**, using explicitly labeled handwritten
-agent fixtures. It calls no model. Interest and payroll pass their 15 cases on
-attempt 1. Invoice initially rounds instead of truncating, fails 2 cases, receives
-the failure list, and passes all 15 after repair on attempt 2.
+`requirements-backend.lock` pins the full tested backend, NVIDIA client, and dashboard.
+`requirements-combined.lock` remains the earlier P1/P2 fixture-demo environment;
+use the backend lock for the integrated project and full regression suite.
 
-Expected final result: `3/3 modules verified`. `runs/state.json` records every
-phase and has `mode: "offline_fixture"`, so the dashboard can distinguish this
-from a real-model run. Golden records stay identical to the committed 15-case
-references. Generated source, tests, specs, caches, and live state are gitignored.
+## Configure NVIDIA
 
-To demonstrate the terminal failure and explanation route:
+Copy `.env.example` to `.env` and set `NVIDIA_API_KEY` locally. Do not commit it.
+Current model slots use `nvidia/nemotron-3.5-lightning-30b-a3b` and
+`nvidia/nemotron-3.5-super-vl-120b-a12b`. Both answered live connection checks.
+Credentials are machine-local and are not included in handoff archives.
+
+All pipeline calls use `llm.call_llm`. It provides schema-constrained JSON,
+validation and repair, bounded request timeouts, retries for transient errors,
+atomic response caching, and call metadata without keys or reasoning text.
+Permanent authentication/model errors stop immediately. Real P3 failures remain
+failures; they do not silently turn into fixture specs or input sets.
+
+Nano drafts each spec; Super reviews it against source and available recorded
+examples. Super generates inputs and rewrites; a separate prompt writes unit tests.
+Generated prose remains advisory. Actual COBOL recordings decide acceptance.
+
+## Run safely and inspect progress
+
+```bash
+python tools/isolated_run.py --mode real
+python -m streamlit run ui/app.py --server.address 127.0.0.1 --browser.gatherUsageStats false
+```
+
+Open the printed localhost dashboard URL. Its Start pipeline button launches the
+same isolated runner; choose Live NVIDIA models or Offline fixture demo explicitly.
+Each session keeps its own `runs/state.json`, specs, goldens, generated Python,
+tests, model-call evidence, and log under `runs/sessions/`. The committed 15-case
+recordings are preserved. A lock prevents overlapping managed runs.
+
+For one module, add `--only interest`, `--only invoice`, or `--only payroll`.
+To bypass response caching for fresh live evidence, set `LLM_CACHE=0`.
+
+The original shared CLI also works: `python run.py legacy/`. It writes directly
+into the current checkout and replaces runtime goldens with its generated inputs.
+Use the isolated runner for demos and audits.
+
+## Offline fixture demo
+
+```bash
+python tools/isolated_run.py --mode fake
+```
+
+This executes real COBOL, LangGraph, and pytest with clearly labeled handwritten
+agent responses. It makes no model calls. Interest and payroll pass 15 cases;
+invoice intentionally rounds on attempt 1, fails two, then repairs on attempt 2.
+The state and dashboard label this mode `offline_fixture`.
+
+The direct CLI also supports an intentional failed demo:
 
 ```bash
 LLM_MODE=fake python run.py --only invoice --demo-scenario exhaust
 ```
 
-That intentionally exits 2 after three attempts: invoice stays 13/15, and the
-fixture explainer labels the two differences `legacy_quirk`. Its explanation is
-marked as an offline fixture. It is not a Nemotron explanation.
+That returns exit code 2 after three attempts, with fixture explanations. It is
+not evidence of a live model explanation.
 
-The genuine legacy quirk is easy to inspect:
+## Verify
+
+```bash
+LLM_MODE=fake python -m pytest tests dev/p4 -q
+python record_interest.py --check
+python record_payroll.py --check
+python record_invoice.py --check
+python check_integration.py --output runs/person2-smoke.json
+python tools/audit_rewrites.py runs/sessions/<session> --output runs/sessions/<session>/extended-audit.json
+```
+
+The regression suite covers runtime limits, exact output, false-pass attempts,
+branch integration, NVIDIA wrapper behavior with mocked replies, and dashboard
+rendering. The held-out audit compares the generated modules with actual COBOL
+on additional valid, invalid, whitespace, and mutated inputs; it makes no model calls.
+
+## Programs and acceptance
+
+| Program | Input line | Rules |
+| --- | --- | --- |
+| interest | principal\|rate_percent\|years | Decimal simple interest; half-up cents |
+| payroll | hours\|hourly_rate | Overtime above 40; progressive fictional tax brackets |
+| invoice | quantity\|unit_price\|discount_percent | Discount, overflow guard, silent cent truncation |
+
+Each original is under 150 lines, with 15 reviewed handwritten cases and actual
+COBOL golden outputs. Live input sets contain 20–30 distinct cases, retaining
+reviewed examples and additional audit regressions. P3 distinguishes delimited
+text from the 256-character ACCEPT buffer; its static analysis also detects
+invoice's truncating MOVE into `PIC 9(5)V99`.
 
 ```text
 Input:                1|12.35|0.01
@@ -48,79 +116,14 @@ Original truncation:  TOTAL=00012.34
 Incorrect rounding:   TOTAL=00012.35
 ```
 
-## Tests and component checks
+The graph follows Understand → Spec → Record → Rewrite → Verify → Accept.
+Failed comparisons feed exact failures back to the rewrite agent, up to three
+attempts; exhaustion produces explanations and a failed module. Generated unit
+tests are a supplementary layer and cannot override golden equivalence failures.
 
-```bash
-python -m pytest -q
-python record_interest.py --check
-python record_payroll.py --check
-python record_invoice.py --check
-python check_integration.py --output runs/person2-smoke.json
-```
+Passing proves exact strings for the tested cases, not universal equivalence.
+Subprocess limits and isolated run folders are not an OS security sandbox.
 
-Run the regression suite in a clean checkout. A demo creates extra generated
-equivalence tests against its generated modules; those are ordinary pytest files
-and will also be discovered until removed. Live model runs should use a separate
-checkout/worktree because their generated input sets replace runtime recordings.
-
-The component smoke uses temporary data and preserves saved references. The
-adversarial suite covers false-pass paths, resource limits, cache drift, and
-malformed data. See the [acceptance checklist](docs/ACCEPTANCE_CHECKLIST.md) and
-[audit report](docs/ADVERSARIAL_REVIEW.md). These checks are not an OS sandbox.
-
-## Real-model mode and next integration steps
-
-P3 and P4 are **still stubs in this combined branch**. `python run.py` defaults to
-real mode and stops before execution while those stubs remain. It cannot report
-an offline fixture run as real model success.
-
-1. Integrate and review the real understanding agents. The fetched branch
-   `abhinav/understand_agents` contains that work; it is not silently merged here.
-2. Integrate the real building/rewrite/test-writer/divergence agents. The fetched
-   `Pranav` branch currently contains only the initial README.
-3. Install `requirements.txt`, copy `.env.example` to `.env`, fill the NVIDIA key,
-   and verify the exact Nano/Super model IDs. Never commit `.env`.
-4. Use `python llm.py` for Hemant's connection smoke, then `python run.py legacy/`.
-5. Verify real model specs/inputs, retry behavior, explanations, and final dashboard.
-
-Every real LLM call must go through `llm.call_llm`. No key is needed for the offline
-combined demo. `requirements-combined.lock` pins its tested dependencies;
-`requirements.txt` is Hemant's full real-mode dependency list.
-
-## Pipeline and ownership
-
-```text
-understand (CLI)
-  -> extract_spec -> record -> rewrite -> verify -> accept
-                                ^          |
-                                +--retry---+
-                                           +-> explain -> failed (after 3 attempts)
-```
-
-The graph records real outputs and generates pytest tests against `main(input_line)
-from each rewritten module. Passing means exact strings for the selected cases,
-not mathematical proof for every possible input. Money in Python uses Decimal.
-
-| Piece | Owner | Combined status |
-| --- | --- | --- |
-| contract.py, llm.py, pipeline/, run.py | Hemant | Integrated; offline graph and state flow verified |
-| legacy/ package, testing.py, testing_reporter.py, originals/goldens | P2 | Real implementations integrated |
-| agents/understanding.py | P3 | Stub pending real branch integration |
-| agents/building.py | P4 | Stub pending real implementation |
-| agents/demo.py | Integration fixture | Used only with LLM_MODE=fake |
-
-Hemant retains the final merge into main. This branch combines both histories
-for a single reviewable handoff; it does not replace the remaining agent work.
-
-## Program details
-
-| Original | Lines | Handwritten golden cases | Rules |
-| --- | --- | --- | --- |
-| interest | 99 | 15 | [Runtime and interest guide](docs/person2-runtime.md) |
-| payroll | 104 | 15 | [Payroll rules and cases](docs/payroll.md) |
-| invoice | 101 | 15 | [Invoice truncation and cases](docs/invoice.md) |
-
-The obsolete legacy.py stub is removed. Its HELLO.cbl sample is preserved in
-examples/pipeline-hello.cbl, outside discovery, so legacy/ contains exactly the
-three actual demo programs. All P2 binary paths come from compile_cobol; compiled
-Mac executables are not committed. [Detailed handoff](docs/final-handoff.md).
+See [backend setup and branch audit](docs/backend-setup.md),
+[acceptance checklist](docs/ACCEPTANCE_CHECKLIST.md), and
+[P2 program details](docs/person2-runtime.md).

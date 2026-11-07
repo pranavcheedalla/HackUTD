@@ -5,3 +5,4 @@ python-dotenv>=1.0
 jsonschema>=4.0
 pytest>=8.0
 coverage>=7.0
+streamlit>=1.40,<2
