@@ -59,6 +59,7 @@ class GraphState(TypedDict, total=False):
     depends_on: list
     dep_modules: list        # [{module_id, program_id, params, status}] per dependency
     history: list            # one attempt_record per verify: counts, failed cases, explanation
+    attempt_sources: list    # [{attempt, python}] each rewrite's source, kept for the replay
 
 
 def _safe(node_name: str):
@@ -161,7 +162,9 @@ def rewrite(state: GraphState) -> GraphState:
     if attempts == 1:
         testing.golden_to_pytest(state["id"], str(py_path))
     out = {**state, "python_src": src, "py_path": str(py_path),
-           "attempts": attempts, "status": "rewriting"}
+           "attempts": attempts, "status": "rewriting",
+           "attempt_sources": [*(state.get("attempt_sources") or []),
+                               {"attempt": attempts, "python": src[:20000]}]}
     status.update(out, "rewrite", f"attempt {attempts}" + (" (fixing failures)" if failures else ""))
     return out
 
