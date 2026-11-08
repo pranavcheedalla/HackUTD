@@ -99,12 +99,19 @@
   .intake.open { opacity: 1; pointer-events: auto; }
   body.intake-on .controls { opacity: 0; pointer-events: none; }
   .in-wrap { width: min(760px, 100%); display: flex; flex-direction: column; gap: 30px; margin-block: auto; }
-  .northbase-wrap { align-items: center; text-align: center; gap: 24px; }
-  .northbase-title { margin: 0; font: 200 clamp(48px, 8vw, 96px)/1.1 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; letter-spacing: .1em; text-indent: .1em; color: rgba(242,241,248,.94); }
-  .northbase-tagline { margin: -6px 0 18px; font-size: 9.5px; letter-spacing: 5px; text-transform: uppercase; color: rgba(232,234,242,.45); }
-  .northbase-wrap .in-back { align-self: center; margin: 0 0 22px; }
-  .northbase-wrap .drop { flex-direction: column; gap: 18px; }
+  .northbase-wrap { position: relative; display: block; text-align: center; height: 88vh; margin: 0; }
+  .northbase-title { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); margin: 0; white-space: nowrap; font: 600 clamp(48px, 7.5vw, 92px)/1.05 var(--mono); letter-spacing: -.065em; color: rgba(242,241,248,.98); }
+  .northbase-tagline { position: absolute; left: 50%; top: calc(50% + 64px); transform: translateX(-50%); width: max-content; max-width: 100%; margin: 0; font-size: 9.5px; letter-spacing: 5px; text-transform: uppercase; color: rgba(232,234,242,.45); }
+  .northbase-wrap .in-back { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); margin: 0; white-space: nowrap; }
+  .northbase-wrap .drop { position: absolute; top: calc(50% + 105px); left: 50%; transform: translateX(-50%); flex-direction: column; gap: 18px; }
+  .northbase-wrap .drop-ring { border-color: rgba(232,234,242,.45); }
+  .northbase-wrap .drop-ring::after { background: var(--ink); box-shadow: 0 0 14px 2px rgba(232,234,242,.5); }
   .northbase-wrap .drop-s { margin-top: 12px; text-transform: none; letter-spacing: 1.5px; }
+  .northbase-wrap .in-note, .northbase-wrap .in-foot { position: absolute; left: 0; width: 100%; }
+  .northbase-wrap .in-note { top: calc(50% + 236px); }
+  .northbase-wrap .in-foot { top: calc(50% + 282px); }
+  .intake.entering { opacity: 0; pointer-events: none; transition: opacity .3s ease; }
+  @media (prefers-reduced-motion: reduce) { .intake { transition: none; } }
   .drop:focus-visible { outline: 1px dotted var(--dim); outline-offset: 14px; }
   .in-title { font-size: 13px; letter-spacing: 8px; text-transform: uppercase; color: rgba(242,241,248,.92); }
   .in-lede { margin: -14px 0 0; font: 400 19px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; color: rgba(242,241,248,.86); max-width: 600px; }

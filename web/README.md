@@ -2,12 +2,12 @@
 
 The demo frontend. Each COBOL program is a star that travels left to right through the
 pipeline: Discover → Read → Probe → Record → Rewrite → Verify → Verified. The scene is black
-and white while the code is old COBOL, and the northern lights come in as it becomes
-verified Python. When Verify finds a mismatch, the real failing case and Nemotron's
+and white while the code is old COBOL. Violet appears during rewriting; mint northern
+lights appear only after acceptance. When Verify finds a mismatch, the real failing case and Nemotron's
 explanation appear above the ring, and the star goes back to Rewrite.
 
-Everything on screen is replayed from a recorded run. The page makes no model calls and
-needs no network, so it plays the same way every time.
+Demo mode replays a recorded real run without model calls. Live mode follows a real
+pipeline run from the local server and requires NVIDIA configuration.
 
 ## Run it
 
@@ -24,6 +24,10 @@ python tools/serve.py          # then open http://127.0.0.1:8765
 The page opens on the case file. **Hand it the codebase** opens the centered NorthBase
 zip drop screen. A shooting star crosses the same sky from left to right; the codebase
 inventory is not displayed. You can also open that screen directly with `#codebases`.
+
+A recognised zip zooms through the drop star for 1.5 seconds and arrives paused at
+Discover. Escape cancels the entrance and returns to the drop screen. Reduced-motion
+preferences skip the zoom and arrive paused immediately.
 
 - **Dropping a .zip of COBOL** replays a known codebase, or starts a live run for a new codebase.
 - **Run live instead** starts a real Nemotron run on the uploaded codebase.

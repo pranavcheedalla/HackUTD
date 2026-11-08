@@ -25,11 +25,13 @@ The established backend and recordings are on main.
   - Anti-cheat gate.
   - Per-attempt history.
   - Retries see the explanation agent's "why".
-  - 363 tests: `python -m pytest -q tests dev/p4`.
+  - 365 tests: `python -m pytest -q tests dev/p4`.
 - **Codebases:** `samples/legacy` ("Invoicing", 3 programs) and `samples/bank` ("Retail bank", 5 programs, 2 shared subprograms).
   `demo/retail-bank.zip` is the bank, ready to drop on stage.
 - **Frontend (`web/`):**
   - case file (TSB 2018 and New Jersey 2020, with sources) → centered NorthBase zip drop, with a shooting star in the same sky;
+  - a recognised zip zooms through the drop star into paused Discover; reduced motion skips the zoom;
+  - black/silver legacy sky → violet rewrite → mint aurora after acceptance;
   - the galaxy replay narrates itself (one sentence and one proof per station);
   - click a ring for the caption, `DETAILS →` for the station readout (all 7 stations built by the team);
   - live mode follows a real run, with Switch to recording and Back to live;
@@ -43,7 +45,7 @@ The established backend and recordings are on main.
 ## Demo script (about 3 minutes)
 
 1. **Case file (30 s):** "Hard to change, and dangerous to change without proof."
-2. Drop demo/retail-bank.zip; it plays the recorded real run. Say: 'this replays a real run from tonight; live takes about 25 minutes.'
+2. Drop demo/retail-bank.zip; the star entrance arrives paused at Discover in the recorded real run. Say: 'this replays a real run from tonight; live takes about 25 minutes.'
 3. **Use Next → to fly between stations and pause at each one, starting at Discover:**
    - the ALERTS mismatch, caught and fixed;
    - then click the Verify ring → `DETAILS`.
