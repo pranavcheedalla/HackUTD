@@ -183,7 +183,9 @@ def _safe_upload(data: bytes, name: str) -> tuple[int, dict]:
                 "title": known.get("title") or folder.name, "about": known.get("about", ""),
                 "same_as": folder.relative_to(SAMPLES.parent).as_posix()}))
             break
-    return 200, {"codebase": dest.relative_to(ROOT).as_posix(), "files": kept}
+    rel = dest.relative_to(ROOT).as_posix()
+    return 200, {"codebase": rel, "files": kept, "recording": _recording_for(rel),
+                 "title": str(_about(dest).get("title") or Path(name or "upload.zip").stem)[:60]}
 
 
 def _replay(session: str) -> tuple[int, dict]:
