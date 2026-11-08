@@ -11,12 +11,31 @@ needs no network, so it plays the same way every time.
 
 ## Run it
 
+**With live runs (recommended):**
+
 ```bash
-cd web && python -m http.server 8765
+python tools/serve.py          # then open http://127.0.0.1:8765
 ```
 
-Then open <http://127.0.0.1:8765>. Pick a replay in the bottom-left menu, or open one
-directly with `#codebase` or `#planted-bug`.
+The page opens on the intake screen.
+
+- **Run live** starts a real Nemotron run on that codebase, and the galaxy follows it as it happens.
+- **Watch recording** plays a saved real run.
+- **Dropping a .zip of COBOL** adds it as a new codebase and runs it.
+
+If live isn't possible (no `NVIDIA_API_KEY` in `.env`, or a run already in progress), the page
+says so. During a live run, **Switch to recording** jumps to the saved run of the same codebase.
+
+To follow a run started from the terminal (`tools/isolated_run.py`), open
+`http://127.0.0.1:8765/#live=<session>`. A late join catches up at double speed.
+
+**Recordings only, no server needed:**
+
+```bash
+cd web && python3 -m http.server 8765
+```
+
+Open a recording directly with `#codebase`, `#bank` or `#planted-bug`.
 
 | Key | Action |
 |---|---|
@@ -24,14 +43,6 @@ directly with `#codebase` or `#planted-bug`.
 | R | Restart |
 | ← → | Jump 3 seconds |
 | Esc | Close the panel |
-
-The replay narrates itself: while the star stops at a station, a short caption appears next to
-the ring with one sentence and one proof, such as the 12.34 vs 12.35 mismatch. The captions are
-written in `web/captions.js` from the replay data.
-
-- Click a ring, or press 1–7, to bring back that station's caption.
-- Click `DETAILS →`, press the same number again, or press Enter, to open the full station readout.
-- Click any other star to open its COBOL, Python, spec, answer key, and attempts.
 
 ## Add a replay
 

@@ -28,3 +28,7 @@ runs/drivers/
 runs/reviewed-specs/
 .env.*
 !.env.example
+
+# codebases dropped into the live demo
+samples/uploads/
+runs/live-runs.log

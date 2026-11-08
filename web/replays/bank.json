@@ -1,0 +1,1319 @@
+{
+ "kind": "run",
+ "mode": "real_model",
+ "session": "20261108-002105-real-36afb1",
+ "started_at": "2026-11-08T00:21:06",
+ "modules": [
+  {
+   "id": "accrue",
+   "file": "accrue.cbl",
+   "program_id": "ACCRUE",
+   "kind": "subprogram",
+   "depends_on": [],
+   "status": "done",
+   "error": null,
+   "attempts": 1,
+   "tests_passed": 30,
+   "tests_total": 30,
+   "history": [
+    {
+     "attempt": 1,
+     "passed": 30,
+     "total": 30,
+     "failures": [],
+     "explanation": null
+    }
+   ],
+   "divergences": [],
+   "unit_tests_status": "needs_review",
+   "unit_tests_quarantined": [
+    "test_exact_interest_values",
+    "test_extra_long_input_no_crash",
+    "test_silent_overflow_keeps_rightmost_digits",
+    "test_truncation_not_rounding"
+   ],
+   "spec": {
+    "module_id": "accrue",
+    "summary": "The ACCRUE subprogram calculates interest earned on a bank balance over a specified number of days using a rate determined by the account type. It multiplies the balance by the rate and days, divides by 36500, and truncates the result to cents before returning the interest value. The account type is evaluated to set the annual interest rate, and any unrecognized type defaults to 0.05%.",
+    "inputs": [
+     {
+      "name": "lk-balance",
+      "type": "decimal",
+      "format": "token 1, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(7)V99: unsigned number, 7 integer digits + 2 implied decimals (no decimal point stored), max 9999999.99"
+     },
+     {
+      "name": "lk-type",
+      "type": "string",
+      "format": "token 2, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC X: text, 1 chars"
+     },
+     {
+      "name": "lk-days",
+      "type": "integer",
+      "format": "token 3, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(2): unsigned number, 2 integer digits, max 99"
+     },
+     {
+      "name": "lk-interest",
+      "type": "decimal",
+      "format": "token 4, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(6)V99: unsigned number, 6 integer digits + 2 implied decimals (no decimal point stored), max 999999.99"
+     }
+    ],
+    "outputs": [
+     {
+      "name": "LK-INTEREST",
+      "type": "decimal",
+      "format": "PIC 9(6)V99, 6 integer digits + 2 implied decimals, unsigned, truncated to 2 decimals, max 999999.99"
+     }
+    ],
+    "business_rules": [
+     "The account type LK-TYPE determines the annual interest rate: 'S' sets 2.10%, 'P' sets 3.75%, any other value sets 0.05%.",
+     "The interest rate WS-RATE is stored as PIC 9V99, representing the percentage value with 2 implied decimal places (e.g., 2.10 is stored as 210).",
+     "Interest is calculated using the formula: LK-INTEREST = LK-BALANCE * WS-RATE * LK-DAYS / 36500.",
+     "Intermediate decimal results are computed exactly; truncation occurs only when the final result is moved to the receiving field LK-INTEREST (PIC 9(6)V99), discarding digits beyond 2 decimal places.",
+     "Without ON SIZE ERROR, if the computed interest exceeds the capacity of LK-INTEREST (PIC 9(6)V99, max 999999.99), the leftmost digits are silently discarded and only the rightmost digits are retained.",
+     "The program executes an EVALUATE TRUE statement to select the rate based on the account type before performing the interest calculation."
+    ],
+    "edge_cases": [
+     "LK-BALANCE = 0, LK-DAYS = 0, LK-TYPE = 'S': Interest = 0.00 (minimum input).",
+     "LK-BALANCE = 9999999.99, LK-DAYS = 99, LK-TYPE = 'P': Computation exceeds LK-INTEREST capacity; result truncated to fit PIC 9(6)V99 width.",
+     "LK-BALANCE = 1000, LK-DAYS = 1, LK-TYPE = 'X': Default rate 0.05% applied; interest calculated with truncation at the receiving field.",
+     "LK-BALANCE = 5000, LK-DAYS = 365, LK-TYPE = 'S': Interest = 50.00 (one year at 2.10%).",
+     "LK-BALANCE = 100, LK-DAYS = 1, LK-TYPE = 'S': Interest = 0.05 (fractional cent truncated to 0.00)."
+    ],
+    "quirks": [
+     "TRUNCATION without ROUNDED: The COMPUTE statement truncates extra decimal digits rather than rounding. Example: A computed interest of 12.339 is stored as 12.33, not 12.34.",
+     "SIGN LOSS on unsigned field: LK-INTEREST is defined as PIC 9(6)V99 (unsigned). If the computation produces a negative result, the sign is lost and the absolute value is stored.",
+     "SILENT OVERFLOW without ON SIZE ERROR: If the interest calculation exceeds 999999.99, the leftmost digits are lost. The field retains only the rightmost digits that fit the PIC 9(6)V99 width.",
+     "IMPLIED DECIMAL POINT: PIC 9(7)V99 and PIC 9(6)V99 store numbers without an internal decimal point. The value 1234.56 is stored as the integer 123456. Output formatting must re-insert the implied decimal point to match COBOL DISPLAY behavior.",
+     "RATE STORAGE: WS-RATE is PIC 9V99. The MOVE 2.10 TO WS-RATE stores 210 internally. The arithmetic COMPUTE uses this stored value, so the formula LK-BALANCE * WS-RATE * LK-DAYS / 36500 must account for the implied two decimal places of the rate.",
+     "[static check, line 24] LK-INTEREST (PIC 9(6)V99: unsigned number, 6 integer digits + 2 implied decimals (no decimal point stored), max 999999.99) is stored WITHOUT ROUNDED: digits beyond 2 decimal place(s) are TRUNCATED, not rounded (e.g. 12.339 is stored as 12.33, not 12.34)."
+    ]
+   },
+   "cobol": "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. ACCRUE.\n      * Subprogram: interest earned over a period.\n      * Annual rate: savings 2.10%, premium 3.75%, checking 0.05%.\n      * Interest = balance * rate * days / 36500, truncated to cents.\n       DATA DIVISION.\n       WORKING-STORAGE SECTION.\n       01  WS-RATE               PIC 9V99.\n       LINKAGE SECTION.\n       01  LK-BALANCE            PIC 9(7)V99.\n       01  LK-TYPE               PIC X.\n       01  LK-DAYS               PIC 9(2).\n       01  LK-INTEREST           PIC 9(6)V99.\n       PROCEDURE DIVISION USING LK-BALANCE LK-TYPE LK-DAYS\n                                LK-INTEREST.\n           EVALUATE TRUE\n               WHEN LK-TYPE = 'S'\n                   MOVE 2.10 TO WS-RATE\n               WHEN LK-TYPE = 'P'\n                   MOVE 3.75 TO WS-RATE\n               WHEN OTHER\n                   MOVE 0.05 TO WS-RATE\n           END-EVALUATE\n           COMPUTE LK-INTEREST = LK-BALANCE * WS-RATE * LK-DAYS / 36500\n           GOBACK.\n",
+   "python": "\"\"\"Module accrue - migrated from COBOL subprogram ACCRUE.\n\nCalculates interest earned on a bank balance over a specified number of days\nusing a rate determined by the account type.\n\nCOBOL linkage parameters (BY REFERENCE):\n    LK-BALANCE  PIC 9(7)V99   unsigned, 7 int digits + 2 implied decimals\n    LK-TYPE     PIC X         1 character\n    LK-DAYS     PIC 9(2)      unsigned, 2 int digits\n    LK-INTEREST PIC 9(6)V99   unsigned, 6 int digits + 2 implied decimals\n\"\"\"\n\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\n\n# ---------------------------------------------------------------------------\n# COBOL data-semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Subprogram entry point: call()\n# ---------------------------------------------------------------------------\n\ndef call(lk_balance, lk_type, lk_days, lk_interest):\n    \"\"\"Execute ACCRUE subprogram logic.\n\n    Parameters are passed BY REFERENCE; all are returned after the call,\n    each stored per its PIC.\n\n    Args:\n        lk_balance:  Decimal, PIC 9(7)V99\n        lk_type:     str, PIC X(1)\n        lk_days:     Decimal, PIC 9(2)\n        lk_interest: Decimal, PIC 9(6)V99 (output)\n\n    Returns:\n        tuple of (lk_balance, lk_type, lk_days, lk_interest) after execution.\n    \"\"\"\n    # Store each input parameter into its PIC (truncation/sign loss per COBOL).\n    lk_balance = pic_store(lk_balance, 7, 2, signed=False)\n    lk_type = (lk_type or \"\")[:1].ljust(1)  # PIC X(1): cut/pad to length 1\n    lk_days = pic_store(lk_days, 2, 0, signed=False)\n\n    # EVALUATE TRUE to select annual interest rate.\n    # WS-RATE is PIC 9V99: MOVE 2.10 stores 210 internally (implied 2 decimals).\n    if lk_type == \"S\":\n        ws_rate = pic_store(Decimal(\"2.10\"), 1, 2, signed=False)  # 2.10 -> 210\n    elif lk_type == \"P\":\n        ws_rate = pic_store(Decimal(\"3.75\"), 1, 2, signed=False)  # 3.75 -> 375\n    else:\n        ws_rate = pic_store(Decimal(\"0.05\"), 1, 2, signed=False)  # 0.05 -> 5\n\n    # COMPUTE LK-INTEREST = LK-BALANCE * WS-RATE * LK-DAYS / 36500\n    # Intermediate results keep full precision; truncation only at store into\n    # LK-INTEREST (PIC 9(6)V99, no ROUNDED, no ON SIZE ERROR -> silent overflow).\n    interest = lk_balance * ws_rate * lk_days / Decimal(\"36500\")\n    lk_interest = pic_store(interest, 6, 2, signed=False)\n\n    return (lk_balance, lk_type, lk_days, lk_interest)\n\n\n# ---------------------------------------------------------------------------\n# Test-driver entry point: main()\n# ---------------------------------------------------------------------------\n\ndef _numval(text: str) -> Decimal:\n    \"\"\"Parse human-readable decimal text like COBOL FUNCTION NUMVAL.\n\n    Returns Decimal('0') for empty or non-numeric text instead of raising,\n    so main() never crashes on odd input (COBOL doesn't crash either).\n    \"\"\"\n    s = text.strip(\" \")\n    if not s:\n        return Decimal(\"0\")\n    try:\n        return Decimal(s)\n    except Exception:\n        return Decimal(\"0\")\n\n\ndef main(input_line: str) -> str:\n    \"\"\"Parse '|'-joined input, run call(), return '|'-joined NAME=value results.\n\n    Input format: LK-BALANCE|LK-TYPE|LK-DAYS|LK-INTEREST\n    Numbers are human-readable decimal text (parsed like FUNCTION NUMVAL then\n    stored into their PIC). Text is taken as-is, cut/padded to field length.\n\n    Output format: LK-BALANCE=...|LK-TYPE=...|LK-DAYS=...|LK-INTEREST=...\n    Numeric values are zero-padded as 9(int).9(dec); text values exactly as stored.\n    No trailing newline.\n    \"\"\"\n    # Split on literal '|' delimiter (COBOL UNSTRING ... DELIMITED BY '|').\n    parts = input_line.split(\"|\")\n    # Pad missing fields with empty string; ignore extras.\n    while len(parts) < 4:\n        parts.append(\"\")\n\n    # Parse numeric inputs like FUNCTION NUMVAL, then store into PIC.\n    # Empty / malformed input must not raise; NUMVAL yields 0.\n    lk_balance = pic_store(_numval(parts[0]), 7, 2, signed=False)\n    lk_type = (parts[1] or \"\")[:1].ljust(1)\n    lk_days = pic_store(_numval(parts[2]), 2, 0, signed=False)\n    lk_interest = pic_store(_numval(parts[3]), 6, 2, signed=False)\n\n    # Run the subprogram.\n    lk_balance, lk_type, lk_days, lk_interest = call(\n        lk_balance, lk_type, lk_days, lk_interest\n    )\n\n    # Format outputs per COBOL DISPLAY rules for un-edited numeric fields.\n    bal_str = display_num(lk_balance, 7, 2, signed=False)\n    type_str = lk_type  # PIC X(1), exactly as stored\n    days_str = display_num(lk_days, 2, 0, signed=False)\n    interest_str = display_num(lk_interest, 6, 2, signed=False)\n\n    return (\n        f\"LK-BALANCE={bal_str}|\"\n        f\"LK-TYPE={type_str}|\"\n        f\"LK-DAYS={days_str}|\"\n        f\"LK-INTEREST={interest_str}\"\n    )\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.read().rstrip(\"\\n\")\n    print(main(line), end=\"\")\n",
+   "golden": [
+    {
+     "input": "1.00|X|1|1.00",
+     "output": "LK-BALANCE=0000001.00|LK-TYPE=X|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "|||",
+     "output": "LK-BALANCE=0000000.00|LK-TYPE= |LK-DAYS=00|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "0.00|X|1|1.00",
+     "output": "LK-BALANCE=0000000.00|LK-TYPE=X|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "9999999.99|X|1|1.00",
+     "output": "LK-BALANCE=9999999.99|LK-TYPE=X|LK-DAYS=01|LK-INTEREST=000013.69"
+    },
+    {
+     "input": "|X|1|1.00",
+     "output": "LK-BALANCE=0000000.00|LK-TYPE=X|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1.00|S|1|1.00",
+     "output": "LK-BALANCE=0000001.00|LK-TYPE=S|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1.00|P|1|1.00",
+     "output": "LK-BALANCE=0000001.00|LK-TYPE=P|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1.00|s|1|1.00",
+     "output": "LK-BALANCE=0000001.00|LK-TYPE=s|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1.00||1|1.00",
+     "output": "LK-BALANCE=0000001.00|LK-TYPE= |LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1.00|X|0|1.00",
+     "output": "LK-BALANCE=0000001.00|LK-TYPE=X|LK-DAYS=00|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1.00|X|99|1.00",
+     "output": "LK-BALANCE=0000001.00|LK-TYPE=X|LK-DAYS=99|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1.00|X||1.00",
+     "output": "LK-BALANCE=0000001.00|LK-TYPE=X|LK-DAYS=00|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1.00|X|1|0.00",
+     "output": "LK-BALANCE=0000001.00|LK-TYPE=X|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1.00|X|1|999999.99",
+     "output": "LK-BALANCE=0000001.00|LK-TYPE=X|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1.00|X|1|",
+     "output": "LK-BALANCE=0000001.00|LK-TYPE=X|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1000.00|S|1|0.00",
+     "output": "LK-BALANCE=0001000.00|LK-TYPE=S|LK-DAYS=01|LK-INTEREST=000000.05"
+    },
+    {
+     "input": "5000.00|P|30|0.00",
+     "output": "LK-BALANCE=0005000.00|LK-TYPE=P|LK-DAYS=30|LK-INTEREST=000015.41"
+    },
+    {
+     "input": "2500.00|X|60|0.00",
+     "output": "LK-BALANCE=0002500.00|LK-TYPE=X|LK-DAYS=60|LK-INTEREST=000000.20"
+    },
+    {
+     "input": "0.00|S|1|0.00",
+     "output": "LK-BALANCE=0000000.00|LK-TYPE=S|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1000.00|S|0|0.00",
+     "output": "LK-BALANCE=0001000.00|LK-TYPE=S|LK-DAYS=00|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1000.00| |1|0.00",
+     "output": "LK-BALANCE=0001000.00|LK-TYPE= |LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "9999999.99|S|99|0.00",
+     "output": "LK-BALANCE=9999999.99|LK-TYPE=S|LK-DAYS=99|LK-INTEREST=056958.90"
+    },
+    {
+     "input": "9999999.99|P|99|0.00",
+     "output": "LK-BALANCE=9999999.99|LK-TYPE=P|LK-DAYS=99|LK-INTEREST=101712.32"
+    },
+    {
+     "input": "0000000.01|S|1|0.00",
+     "output": "LK-BALANCE=0000000.01|LK-TYPE=S|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1000.00|S|01|0.00",
+     "output": "LK-BALANCE=0001000.00|LK-TYPE=S|LK-DAYS=01|LK-INTEREST=000000.05"
+    },
+    {
+     "input": "1000.00|S|99|0.00",
+     "output": "LK-BALANCE=0001000.00|LK-TYPE=S|LK-DAYS=99|LK-INTEREST=000005.69"
+    },
+    {
+     "input": "1000.00|P|1|0.00",
+     "output": "LK-BALANCE=0001000.00|LK-TYPE=P|LK-DAYS=01|LK-INTEREST=000000.10"
+    },
+    {
+     "input": "1000.00|Z|1|0.00",
+     "output": "LK-BALANCE=0001000.00|LK-TYPE=Z|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1000.00|s|1|0.00",
+     "output": "LK-BALANCE=0001000.00|LK-TYPE=s|LK-DAYS=01|LK-INTEREST=000000.00"
+    },
+    {
+     "input": "1000.00|SP|1|0.00",
+     "output": "LK-BALANCE=0001000.00|LK-TYPE=S|LK-DAYS=01|LK-INTEREST=000000.05"
+    }
+   ],
+   "attempt_sources": [
+    {
+     "attempt": 1,
+     "python": "\"\"\"Module accrue - migrated from COBOL subprogram ACCRUE.\n\nCalculates interest earned on a bank balance over a specified number of days\nusing a rate determined by the account type.\n\nCOBOL linkage parameters (BY REFERENCE):\n    LK-BALANCE  PIC 9(7)V99   unsigned, 7 int digits + 2 implied decimals\n    LK-TYPE     PIC X         1 character\n    LK-DAYS     PIC 9(2)      unsigned, 2 int digits\n    LK-INTEREST PIC 9(6)V99   unsigned, 6 int digits + 2 implied decimals\n\"\"\"\n\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\n\n# ---------------------------------------------------------------------------\n# COBOL data-semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Subprogram entry point: call()\n# ---------------------------------------------------------------------------\n\ndef call(lk_balance, lk_type, lk_days, lk_interest):\n    \"\"\"Execute ACCRUE subprogram logic.\n\n    Parameters are passed BY REFERENCE; all are returned after the call,\n    each stored per its PIC.\n\n    Args:\n        lk_balance:  Decimal, PIC 9(7)V99\n        lk_type:     str, PIC X(1)\n        lk_days:     Decimal, PIC 9(2)\n        lk_interest: Decimal, PIC 9(6)V99 (output)\n\n    Returns:\n        tuple of (lk_balance, lk_type, lk_days, lk_interest) after execution.\n    \"\"\"\n    # Store each input parameter into its PIC (truncation/sign loss per COBOL).\n    lk_balance = pic_store(lk_balance, 7, 2, signed=False)\n    lk_type = (lk_type or \"\")[:1].ljust(1)  # PIC X(1): cut/pad to length 1\n    lk_days = pic_store(lk_days, 2, 0, signed=False)\n\n    # EVALUATE TRUE to select annual interest rate.\n    # WS-RATE is PIC 9V99: MOVE 2.10 stores 210 internally (implied 2 decimals).\n    if lk_type == \"S\":\n        ws_rate = pic_store(Decimal(\"2.10\"), 1, 2, signed=False)  # 2.10 -> 210\n    elif lk_type == \"P\":\n        ws_rate = pic_store(Decimal(\"3.75\"), 1, 2, signed=False)  # 3.75 -> 375\n    else:\n        ws_rate = pic_store(Decimal(\"0.05\"), 1, 2, signed=False)  # 0.05 -> 5\n\n    # COMPUTE LK-INTEREST = LK-BALANCE * WS-RATE * LK-DAYS / 36500\n    # Intermediate results keep full precision; truncation only at store into\n    # LK-INTEREST (PIC 9(6)V99, no ROUNDED, no ON SIZE ERROR -> silent overflow).\n    interest = lk_balance * ws_rate * lk_days / Decimal(\"36500\")\n    lk_interest = pic_store(interest, 6, 2, signed=False)\n\n    return (lk_balance, lk_type, lk_days, lk_interest)\n\n\n# ---------------------------------------------------------------------------\n# Test-driver entry point: main()\n# ---------------------------------------------------------------------------\n\ndef _numval(text: str) -> Decimal:\n    \"\"\"Parse human-readable decimal text like COBOL FUNCTION NUMVAL.\n\n    Returns Decimal('0') for empty or non-numeric text instead of raising,\n    so main() never crashes on odd input (COBOL doesn't crash either).\n    \"\"\"\n    s = text.strip(\" \")\n    if not s:\n        return Decimal(\"0\")\n    try:\n        return Decimal(s)\n    except Exception:\n        return Decimal(\"0\")\n\n\ndef main(input_line: str) -> str:\n    \"\"\"Parse '|'-joined input, run call(), return '|'-joined NAME=value results.\n\n    Input format: LK-BALANCE|LK-TYPE|LK-DAYS|LK-INTEREST\n    Numbers are human-readable decimal text (parsed like FUNCTION NUMVAL then\n    stored into their PIC). Text is taken as-is, cut/padded to field length.\n\n    Output format: LK-BALANCE=...|LK-TYPE=...|LK-DAYS=...|LK-INTEREST=...\n    Numeric values are zero-padded as 9(int).9(dec); text values exactly as stored.\n    No trailing newline.\n    \"\"\"\n    # Split on literal '|' delimiter (COBOL UNSTRING ... DELIMITED BY '|').\n    parts = input_line.split(\"|\")\n    # Pad missing fields with empty string; ignore extras.\n    while len(parts) < 4:\n        parts.append(\"\")\n\n    # Parse numeric inputs like FUNCTION NUMVAL, then store into PIC.\n    # Empty / malformed input must not raise; NUMVAL yields 0.\n    lk_balance = pic_store(_numval(parts[0]), 7, 2, signed=False)\n    lk_type = (parts[1] or \"\")[:1].ljust(1)\n    lk_days = pic_store(_numval(parts[2]), 2, 0, signed=False)\n    lk_interest = pic_store(_numval(parts[3]), 6, 2, signed=False)\n\n    # Run the subprogram.\n    lk_balance, lk_type, lk_days, lk_interest = call(\n        lk_balance, lk_type, lk_days, lk_interest\n    )\n\n    # Format outputs per COBOL DISPLAY rules for un-edited numeric fields.\n    bal_str = display_num(lk_balance, 7, 2, signed=False)\n    type_str = lk_type  # PIC X(1), exactly as stored\n    days_str = display_num(lk_days, 2, 0, signed=False)\n    interest_str = display_num(lk_interest, 6, 2, signed=False)\n\n    return (\n        f\"LK-BALANCE={bal_str}|\"\n        f\"LK-TYPE={type_str}|\"\n        f\"LK-DAYS={days_str}|\"\n        f\"LK-INTEREST={interest_str}\"\n    )\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.read().rstrip(\"\\n\")\n    print(main(line), end=\"\")\n"
+    }
+   ],
+   "heldout": null
+  },
+  {
+   "id": "feerate",
+   "file": "feerate.cbl",
+   "program_id": "FEERATE",
+   "kind": "subprogram",
+   "depends_on": [],
+   "status": "done",
+   "error": null,
+   "attempts": 1,
+   "tests_passed": 30,
+   "tests_total": 30,
+   "history": [
+    {
+     "attempt": 1,
+     "passed": 30,
+     "total": 30,
+     "failures": [],
+     "explanation": null
+    }
+   ],
+   "divergences": [],
+   "unit_tests_status": "needs_review",
+   "unit_tests_quarantined": [
+    "test_exact_fees_from_spec",
+    "test_extra_long_input_no_crash"
+   ],
+   "spec": {
+    "module_id": "feerate",
+    "summary": "A COBOL subprogram that calculates account fees based on transaction count and account type. Checking accounts ('C') start at 5.00 plus 0.35 per transaction over 20. Savings accounts ('S') start at 2.50 plus 0.50 per transaction over 6. All other types result in a fee of 0.00. Results are stored in PIC 9(3)V99 without rounding, truncating excess decimals, and overflow silently loses high-order digits.",
+    "inputs": [
+     {
+      "name": "lk-type",
+      "type": "string",
+      "format": "token 1, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC X: text, 1 chars"
+     },
+     {
+      "name": "lk-txns",
+      "type": "integer",
+      "format": "token 2, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(3): unsigned number, 3 integer digits, max 999"
+     },
+     {
+      "name": "lk-fee",
+      "type": "decimal",
+      "format": "token 3, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(3)V99: unsigned number, 3 integer digits + 2 implied decimals (no decimal point stored), max 999.99"
+     }
+    ],
+    "outputs": [
+     {
+      "name": "LK-TYPE",
+      "type": "string",
+      "format": "LK-TYPE=<1 char as stored>"
+     },
+     {
+      "name": "LK-TXNS",
+      "type": "decimal",
+      "format": "LK-TXNS=9(3)"
+     },
+     {
+      "name": "LK-FEE",
+      "type": "decimal",
+      "format": "LK-FEE=9(3).9(2)"
+     }
+    ],
+    "business_rules": [
+     "EVALUATE TRUE selects exactly one branch based on LK-TYPE; no fall-through occurs.",
+     "When LK-TYPE = 'C': MOVE 5.00 to LK-FEE; if LK-TXNS > 20, compute LK-FEE = LK-FEE + (LK-TXNS - 20) * 0.35.",
+     "When LK-TYPE = 'S': MOVE 2.50 to LK-FEE; if LK-TXNS > 6, compute LK-FEE = LK-FEE + (LK-TXNS - 6) * 0.50.",
+     "When LK-TYPE is any other value: MOVE 0 to LK-FEE.",
+     "Arithmetic is computed exactly; truncation to 2 decimal places occurs only when the result is moved into LK-FEE (PIC 9(3)V99), not at each operator.",
+     "LK-FEE is unsigned: a negative computed result is stored without its sign (magnitude stored).",
+     "No ON SIZE ERROR: if the result exceeds 999.99, high-order digits are silently lost.",
+     "Leading zeros in numeric inputs are allowed within the PIC digit-count limits."
+    ],
+    "edge_cases": [
+     "LK-TYPE = 'C', LK-TXNS = 0: base 5.00 plus (0 - 20) * 0.35 = -7.00; negative intermediate stored as magnitude 7.00; final LK-FEE = 12.00.",
+     "LK-TYPE = 'S', LK-TXNS = 0: base 2.50 plus (0 - 6) * 0.50 = -3.00; negative intermediate stored as magnitude 3.00; final LK-FEE = 5.50.",
+     "LK-TYPE = 'C', LK-TXNS = 20: condition LK-TXNS > 20 is false; LK-FEE remains 5.00.",
+     "LK-TYPE = 'S', LK-TXNS = 6: condition LK-TXNS > 6 is false; LK-FEE remains 2.50.",
+     "LK-TYPE = 'C', LK-TXNS = 21: (21 - 20) * 0.35 = 0.35; final LK-FEE = 5.35.",
+     "LK-TYPE = 'S', LK-TXNS = 7: (7 - 6) * 0.50 = 0.50; final LK-FEE = 3.00.",
+     "LK-TYPE = 'X' or empty: WHEN OTHER branch sets LK-FEE to 0.00."
+    ],
+    "quirks": [
+     "COMPUTE without ROUNDED truncates extra decimal digits toward zero when storing into LK-FEE; e.g. 12.339 becomes 12.33.",
+     "PIC 9(3)V99 has no sign; negative results lose their sign and store the absolute value.",
+     "No ON SIZE ERROR: results above 999.99 silently lose high-order digits.",
+     "Implied decimal V99: no decimal point is stored internally; output formatting inserts the decimal point.",
+     "Test driver reads one '|'-separated line: LK-TYPE|LK-TXNS|LK-FEE; numeric tokens use NUMVAL with literal decimal point; empty numeric token is 0; empty text token is spaces."
+    ]
+   },
+   "cobol": "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. FEERATE.\n      * Subprogram: monthly account fee.\n      * Checking: 5.00 plus 0.35 for each transaction over 20.\n      * Savings:  2.50 plus 0.50 for each transaction over 6.\n      * Premium:  no fee.\n       DATA DIVISION.\n       LINKAGE SECTION.\n       01  LK-TYPE               PIC X.\n       01  LK-TXNS               PIC 9(3).\n       01  LK-FEE                PIC 9(3)V99.\n       PROCEDURE DIVISION USING LK-TYPE LK-TXNS LK-FEE.\n           EVALUATE TRUE\n               WHEN LK-TYPE = 'C'\n                   MOVE 5.00 TO LK-FEE\n                   IF LK-TXNS > 20\n                       COMPUTE LK-FEE = LK-FEE + (LK-TXNS - 20) * 0.35\n                   END-IF\n               WHEN LK-TYPE = 'S'\n                   MOVE 2.50 TO LK-FEE\n                   IF LK-TXNS > 6\n                       COMPUTE LK-FEE = LK-FEE + (LK-TXNS - 6) * 0.50\n                   END-IF\n               WHEN OTHER\n                   MOVE 0 TO LK-FEE\n           END-EVALUATE\n           GOBACK.\n",
+   "python": "\"\"\"Migration of COBOL subprogram FEERATE.\n\nCalculates account fees based on transaction count and account type.\nChecking accounts ('C'): 5.00 plus 0.35 per transaction over 20.\nSavings accounts ('S'): 2.50 plus 0.50 per transaction over 6.\nAll other types: fee of 0.00.\n\nThis module provides two entry points:\n    call(lk_type, lk_txns, lk_fee)   - subprogram entry (BY REFERENCE linkage)\n    main(input_line)                 - test-driver entry ('|'-separated params)\n\"\"\"\n\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\n\n# ---------------------------------------------------------------------------\n# COBOL data semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# FEERATE linkage record (mirrors COBOL LINKAGE SECTION)\n# ---------------------------------------------------------------------------\n\nclass FeerateRecord:\n    \"\"\"Holds the three linkage parameters exactly as COBOL stores them.\"\"\"\n\n    __slots__ = (\"lk_type\", \"lk_txns\", \"lk_fee\")\n\n    def __init__(self, lk_type=\" \", lk_txns=Decimal(\"0\"), lk_fee=Decimal(\"0\")):\n        self.lk_type = lk_type          # PIC X(1)\n        self.lk_txns = lk_txns          # PIC 9(3)\n        self.lk_fee = lk_fee            # PIC 9(3)V99\n\n\n# ---------------------------------------------------------------------------\n# Subprogram entry point: call(lk_type, lk_txns, lk_fee) -> tuple\n# ---------------------------------------------------------------------------\n\ndef call(lk_type, lk_txns, lk_fee):\n    \"\"\"FEERATE subprogram logic.\n\n    Parameters arrive BY REFERENCE; we store each into its PIC field first\n    (truncating/padding as COBOL would), run the EVALUATE, then return the\n    final parameter values as a tuple in USING order.\n    \"\"\"\n    # --- Store incoming parameters into their PIC fields -------------------\n    # LK-TYPE PIC X(1): text, cut/padded to 1 char\n    lk_type = str(lk_type)[:1].ljust(1)\n\n    # LK-TXNS PIC 9(3): unsigned, 3 integer digits, no decimals\n    lk_txns = pic_store(lk_txns, int_digits=3, dec_digits=0, signed=False)\n\n    # LK-FEE PIC 9(3)V99: unsigned, 3 integer digits + 2 implied decimals\n    lk_fee = pic_store(lk_fee, int_digits=3, dec_digits=2, signed=False)\n\n    # --- EVALUATE TRUE (exactly one branch, no fall-through) --------------\n    if lk_type == \"C\":\n        # MOVE 5.00 TO LK-FEE  (stored into PIC 9(3)V99 -> truncates to 2 decimals)\n        lk_fee = pic_store(Decimal(\"5.00\"), int_digits=3, dec_digits=2, signed=False)\n        # IF LK-TXNS > 20\n        if lk_txns > 20:\n            # COMPUTE LK-FEE = LK-FEE + (LK-TXNS - 20) * 0.35\n            # Full precision inside the expression; truncation only on store.\n            lk_fee = lk_fee + (lk_txns - Decimal(\"20\")) * Decimal(\"0.35\")\n            lk_fee = pic_store(lk_fee, int_digits=3, dec_digits=2, signed=False)\n    elif lk_type == \"S\":\n        # MOVE 2.50 TO LK-FEE\n        lk_fee = pic_store(Decimal(\"2.50\"), int_digits=3, dec_digits=2, signed=False)\n        # IF LK-TXNS > 6\n        if lk_txns > 6:\n            # COMPUTE LK-FEE = LK-FEE + (LK-TXNS - 6) * 0.50\n            lk_fee = lk_fee + (lk_txns - Decimal(\"6\")) * Decimal(\"0.50\")\n            lk_fee = pic_store(lk_fee, int_digits=3, dec_digits=2, signed=False)\n    else:\n        # WHEN OTHER: MOVE 0 TO LK-FEE\n        lk_fee = pic_store(Decimal(\"0\"), int_digits=3, dec_digits=2, signed=False)\n\n    return (lk_type, lk_txns, lk_fee)\n\n\n# ---------------------------------------------------------------------------\n# Test-driver entry point: main(input_line) -> str\n# ---------------------------------------------------------------------------\n\ndef _numval(text):\n    \"\"\"Parse a human-readable number like FUNCTION NUMVAL.\n    Empty string -> 0. Leading/trailing spaces stripped.\"\"\"\n    s = text.strip()\n    if s == \"\":\n        return Decimal(\"0\")\n    # NUMVAL accepts optional sign, digits, optional decimal point, digits.\n    # Be lenient: strip anything that isn't part of a simple decimal literal.\n    m = re.match(r\"^[+-]?(\\d+(\\.\\d*)?|\\.\\d+)$\", s)\n    if not m:\n        # Malformed numeric token: COBOL NUMVAL would return 0 for invalid input\n        # in many implementations; treat as 0 to avoid crashing.\n        return Decimal(\"0\")\n    return Decimal(s)\n\n\ndef main(input_line: str) -> str:\n    \"\"\"Parse '|'-separated params, call the subprogram, return result line.\n\n    Format: LK-TYPE|LK-TXNS|LK-FEE\n    Output: LK-TYPE=<value>|LK-TXNS=<value>|LK-FEE=<value>\n    \"\"\"\n    # Split on literal '|' (COBOL UNSTRING ... DELIMITED BY '|')\n    parts = input_line.split(\"|\")\n    # Pad to exactly 3 fields if short; ignore extras if long (defensive)\n    while len(parts) < 3:\n        parts.append(\"\")\n    parts = parts[:3]\n\n    raw_type, raw_txns, raw_fee = parts\n\n    # LK-TYPE: text as-is, cut/padded to PIC X(1)\n    lk_type = raw_type[:1].ljust(1)\n\n    # LK-TXNS: NUMVAL then store into PIC 9(3)\n    lk_txns = pic_store(_numval(raw_txns), int_digits=3, dec_digits=0, signed=False)\n\n    # LK-FEE: NUMVAL then store into PIC 9(3)V99\n    lk_fee = pic_store(_numval(raw_fee), int_digits=3, dec_digits=2, signed=False)\n\n    # Run subprogram\n    lk_type, lk_txns, lk_fee = call(lk_type, lk_txns, lk_fee)\n\n    # Format output: LK-TYPE=<1 char>|LK-TXNS=9(3)>|LK-FEE=9(3).9(2)>\n    txns_str = display_num(lk_txns, int_digits=3, dec_digits=0, signed=False)\n    fee_str = display_num(lk_fee, int_digits=3, dec_digits=2, signed=False)\n\n    return f\"LK-TYPE={lk_type}|LK-TXNS={txns_str}|LK-FEE={fee_str}\"\n\n\n# ---------------------------------------------------------------------------\n# Allow direct execution: python feerate.py < input_line\n# ---------------------------------------------------------------------------\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline().rstrip(\"\\n\")\n    print(main(line), end=\"\")\n",
+   "golden": [
+    {
+     "input": "X|1|1.00",
+     "output": "LK-TYPE=X|LK-TXNS=001|LK-FEE=000.00"
+    },
+    {
+     "input": "||",
+     "output": "LK-TYPE= |LK-TXNS=000|LK-FEE=000.00"
+    },
+    {
+     "input": "C|1|1.00",
+     "output": "LK-TYPE=C|LK-TXNS=001|LK-FEE=005.00"
+    },
+    {
+     "input": "S|1|1.00",
+     "output": "LK-TYPE=S|LK-TXNS=001|LK-FEE=002.50"
+    },
+    {
+     "input": "c|1|1.00",
+     "output": "LK-TYPE=c|LK-TXNS=001|LK-FEE=000.00"
+    },
+    {
+     "input": "|1|1.00",
+     "output": "LK-TYPE= |LK-TXNS=001|LK-FEE=000.00"
+    },
+    {
+     "input": "X|19|1.00",
+     "output": "LK-TYPE=X|LK-TXNS=019|LK-FEE=000.00"
+    },
+    {
+     "input": "X|20|1.00",
+     "output": "LK-TYPE=X|LK-TXNS=020|LK-FEE=000.00"
+    },
+    {
+     "input": "X|21|1.00",
+     "output": "LK-TYPE=X|LK-TXNS=021|LK-FEE=000.00"
+    },
+    {
+     "input": "X|5|1.00",
+     "output": "LK-TYPE=X|LK-TXNS=005|LK-FEE=000.00"
+    },
+    {
+     "input": "X|6|1.00",
+     "output": "LK-TYPE=X|LK-TXNS=006|LK-FEE=000.00"
+    },
+    {
+     "input": "X|7|1.00",
+     "output": "LK-TYPE=X|LK-TXNS=007|LK-FEE=000.00"
+    },
+    {
+     "input": "X|0|1.00",
+     "output": "LK-TYPE=X|LK-TXNS=000|LK-FEE=000.00"
+    },
+    {
+     "input": "X|999|1.00",
+     "output": "LK-TYPE=X|LK-TXNS=999|LK-FEE=000.00"
+    },
+    {
+     "input": "X||1.00",
+     "output": "LK-TYPE=X|LK-TXNS=000|LK-FEE=000.00"
+    },
+    {
+     "input": "X|1|0.00",
+     "output": "LK-TYPE=X|LK-TXNS=001|LK-FEE=000.00"
+    },
+    {
+     "input": "X|1|999.99",
+     "output": "LK-TYPE=X|LK-TXNS=001|LK-FEE=000.00"
+    },
+    {
+     "input": "X|1|",
+     "output": "LK-TYPE=X|LK-TXNS=001|LK-FEE=000.00"
+    },
+    {
+     "input": "C|20|0.00",
+     "output": "LK-TYPE=C|LK-TXNS=020|LK-FEE=005.00"
+    },
+    {
+     "input": "C|21|0.00",
+     "output": "LK-TYPE=C|LK-TXNS=021|LK-FEE=005.35"
+    },
+    {
+     "input": "C|19|0.00",
+     "output": "LK-TYPE=C|LK-TXNS=019|LK-FEE=005.00"
+    },
+    {
+     "input": "S|6|0.00",
+     "output": "LK-TYPE=S|LK-TXNS=006|LK-FEE=002.50"
+    },
+    {
+     "input": "S|7|0.00",
+     "output": "LK-TYPE=S|LK-TXNS=007|LK-FEE=003.00"
+    },
+    {
+     "input": "S|5|0.00",
+     "output": "LK-TYPE=S|LK-TXNS=005|LK-FEE=002.50"
+    },
+    {
+     "input": "C|0|0.00",
+     "output": "LK-TYPE=C|LK-TXNS=000|LK-FEE=005.00"
+    },
+    {
+     "input": "S|0|0.00",
+     "output": "LK-TYPE=S|LK-TXNS=000|LK-FEE=002.50"
+    },
+    {
+     "input": "C|999|0.00",
+     "output": "LK-TYPE=C|LK-TXNS=999|LK-FEE=347.65"
+    },
+    {
+     "input": "S|999|0.00",
+     "output": "LK-TYPE=S|LK-TXNS=999|LK-FEE=499.00"
+    },
+    {
+     "input": "X|0|0.00",
+     "output": "LK-TYPE=X|LK-TXNS=000|LK-FEE=000.00"
+    },
+    {
+     "input": "|0|0.00",
+     "output": "LK-TYPE= |LK-TXNS=000|LK-FEE=000.00"
+    }
+   ],
+   "attempt_sources": [
+    {
+     "attempt": 1,
+     "python": "\"\"\"Migration of COBOL subprogram FEERATE.\n\nCalculates account fees based on transaction count and account type.\nChecking accounts ('C'): 5.00 plus 0.35 per transaction over 20.\nSavings accounts ('S'): 2.50 plus 0.50 per transaction over 6.\nAll other types: fee of 0.00.\n\nThis module provides two entry points:\n    call(lk_type, lk_txns, lk_fee)   - subprogram entry (BY REFERENCE linkage)\n    main(input_line)                 - test-driver entry ('|'-separated params)\n\"\"\"\n\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\n\n# ---------------------------------------------------------------------------\n# COBOL data semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# FEERATE linkage record (mirrors COBOL LINKAGE SECTION)\n# ---------------------------------------------------------------------------\n\nclass FeerateRecord:\n    \"\"\"Holds the three linkage parameters exactly as COBOL stores them.\"\"\"\n\n    __slots__ = (\"lk_type\", \"lk_txns\", \"lk_fee\")\n\n    def __init__(self, lk_type=\" \", lk_txns=Decimal(\"0\"), lk_fee=Decimal(\"0\")):\n        self.lk_type = lk_type          # PIC X(1)\n        self.lk_txns = lk_txns          # PIC 9(3)\n        self.lk_fee = lk_fee            # PIC 9(3)V99\n\n\n# ---------------------------------------------------------------------------\n# Subprogram entry point: call(lk_type, lk_txns, lk_fee) -> tuple\n# ---------------------------------------------------------------------------\n\ndef call(lk_type, lk_txns, lk_fee):\n    \"\"\"FEERATE subprogram logic.\n\n    Parameters arrive BY REFERENCE; we store each into its PIC field first\n    (truncating/padding as COBOL would), run the EVALUATE, then return the\n    final parameter values as a tuple in USING order.\n    \"\"\"\n    # --- Store incoming parameters into their PIC fields -------------------\n    # LK-TYPE PIC X(1): text, cut/padded to 1 char\n    lk_type = str(lk_type)[:1].ljust(1)\n\n    # LK-TXNS PIC 9(3): unsigned, 3 integer digits, no decimals\n    lk_txns = pic_store(lk_txns, int_digits=3, dec_digits=0, signed=False)\n\n    # LK-FEE PIC 9(3)V99: unsigned, 3 integer digits + 2 implied decimals\n    lk_fee = pic_store(lk_fee, int_digits=3, dec_digits=2, signed=False)\n\n    # --- EVALUATE TRUE (exactly one branch, no fall-through) --------------\n    if lk_type == \"C\":\n        # MOVE 5.00 TO LK-FEE  (stored into PIC 9(3)V99 -> truncates to 2 decimals)\n        lk_fee = pic_store(Decimal(\"5.00\"), int_digits=3, dec_digits=2, signed=False)\n        # IF LK-TXNS > 20\n        if lk_txns > 20:\n            # COMPUTE LK-FEE = LK-FEE + (LK-TXNS - 20) * 0.35\n            # Full precision inside the expression; truncation only on store.\n            lk_fee = lk_fee + (lk_txns - Decimal(\"20\")) * Decimal(\"0.35\")\n            lk_fee = pic_store(lk_fee, int_digits=3, dec_digits=2, signed=False)\n    elif lk_type == \"S\":\n        # MOVE 2.50 TO LK-FEE\n        lk_fee = pic_store(Decimal(\"2.50\"), int_digits=3, dec_digits=2, signed=False)\n        # IF LK-TXNS > 6\n        if lk_txns > 6:\n            # COMPUTE LK-FEE = LK-FEE + (LK-TXNS - 6) * 0.50\n            lk_fee = lk_fee + (lk_txns - Decimal(\"6\")) * Decimal(\"0.50\")\n            lk_fee = pic_store(lk_fee, int_digits=3, dec_digits=2, signed=False)\n    else:\n        # WHEN OTHER: MOVE 0 TO LK-FEE\n        lk_fee = pic_store(Decimal(\"0\"), int_digits=3, dec_digits=2, signed=False)\n\n    return (lk_type, lk_txns, lk_fee)\n\n\n# ---------------------------------------------------------------------------\n# Test-driver entry point: main(input_line) -> str\n# ---------------------------------------------------------------------------\n\ndef _numval(text):\n    \"\"\"Parse a human-readable number like FUNCTION NUMVAL.\n    Empty string -> 0. Leading/trailing spaces stripped.\"\"\"\n    s = text.strip()\n    if s == \"\":\n        return Decimal(\"0\")\n    # NUMVAL accepts optional sign, digits, optional decimal point, digits.\n    # Be lenient: strip anything that isn't part of a simple decimal literal.\n    m = re.match(r\"^[+-]?(\\d+(\\.\\d*)?|\\.\\d+)$\", s)\n    if not m:\n        # Malformed numeric token: COBOL NUMVAL would return 0 for invalid input\n        # in many implementations; treat as 0 to avoid crashing.\n        return Decimal(\"0\")\n    return Decimal(s)\n\n\ndef main(input_line: str) -> str:\n    \"\"\"Parse '|'-separated params, call the subprogram, return result line.\n\n    Format: LK-TYPE|LK-TXNS|LK-FEE\n    Output: LK-TYPE=<value>|LK-TXNS=<value>|LK-FEE=<value>\n    \"\"\"\n    # Split on literal '|' (COBOL UNSTRING ... DELIMITED BY '|')\n    parts = input_line.split(\"|\")\n    # Pad to exactly 3 fields if short; ignore extras if long (defensive)\n    while len(parts) < 3:\n        parts.append(\"\")\n    parts = parts[:3]\n\n    raw_type, raw_txns, raw_fee = parts\n\n    # LK-TYPE: text as-is, cut/padded to PIC X(1)\n    lk_type = raw_type[:1].ljust(1)\n\n    # LK-TXNS: NUMVAL then store into PIC 9(3)\n    lk_txns = pic_store(_numval(raw_txns), int_digits=3, dec_digits=0, signed=False)\n\n    # LK-FEE: NUMVAL then store into PIC 9(3)V99\n    lk_fee = pic_store(_numval(raw_fee), int_digits=3, dec_digits=2, signed=False)\n\n    # Run subprogram\n    lk_type, lk_txns, lk_fee = call(lk_type, lk_txns, lk_fee)\n\n    # Format output: LK-TYPE=<1 char>|LK-TXNS=9(3)>|LK-FEE=9(3).9(2)>\n    txns_str = display_num(lk_txns, int_digits=3, dec_digits=0, signed=False)\n    fee_str = display_num(lk_fee, int_digits=3, dec_digits=2, signed=False)\n\n    return f\"LK-TYPE={lk_type}|LK-TXNS={txns_str}|LK-FEE={fee_str}\"\n\n\n# ---------------------------------------------------------------------------\n# Allow direct execution: python feerate.py < input_line\n# ---------------------------------------------------------------------------\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline().rstrip(\"\\n\")\n    print(main(line), end=\"\")\n"
+    }
+   ],
+   "heldout": null
+  },
+  {
+   "id": "alerts",
+   "file": "alerts.cbl",
+   "program_id": "ALERTS",
+   "kind": "program",
+   "depends_on": [
+    "feerate"
+   ],
+   "status": "done",
+   "error": null,
+   "attempts": 2,
+   "tests_passed": 20,
+   "tests_total": 20,
+   "history": [
+    {
+     "attempt": 1,
+     "passed": 0,
+     "total": 20,
+     "failures": [
+      {
+       "input": "C00010000001030",
+       "expected": "FEES:    5.00\nLIMIT:    10.00\nFEE ALERT: NO",
+       "actual": ""
+      },
+      {
+       "input": "S00025005000515",
+       "expected": "FEES:    2.50\nLIMIT:    25.00\nFEE ALERT: NO",
+       "actual": ""
+      },
+      {
+       "input": "P00500000010060",
+       "expected": "FEES:    0.00\nLIMIT:   500.00\nFEE ALERT: NO",
+       "actual": ""
+      },
+      {
+       "input": "C00000000000000",
+       "expected": "FEES:    5.00\nLIMIT:     0.00\nFEE ALERT: YES",
+       "actual": ""
+      },
+      {
+       "input": "S00000000100101",
+       "expected": "FEES:    2.50\nLIMIT:     0.00\nFEE ALERT: YES",
+       "actual": ""
+      }
+     ],
+     "explanation": {
+      "verdict": "new_code_bug",
+      "reason": "The Python program returns no output because its exception handler swallows a missing feerate module instead of printing the fee, limit, and alert lines.",
+      "input": "C00010000001030"
+     }
+    },
+    {
+     "attempt": 2,
+     "passed": 20,
+     "total": 20,
+     "failures": [],
+     "explanation": null
+    }
+   ],
+   "divergences": [],
+   "unit_tests_status": "needs_review",
+   "unit_tests_quarantined": [
+    "test_exact_outputs_from_spec",
+    "test_fee_alert_branch_known_cases",
+    "test_output_line_lengths_are_fixed",
+    "test_short_input_padded_with_spaces",
+    "test_zero_suppression_shows_digit_before_decimal"
+   ],
+   "spec": {
+    "module_id": "alerts",
+    "summary": "Reads a 15-character fixed-width account record, calls FEERATE to compute WS-FEE, computes WS-LIMIT as ACCT-BALANCE divided by 100 with truncation to two implied decimals, moves both values to zero-suppressed display fields, and prints fee, limit, and a fee-alert line based on the comparison.",
+    "inputs": [
+     {
+      "name": "ACCT-TYPE",
+      "type": "string",
+      "format": "cols 1-1, PIC X, values C=checking, S=savings, P=premium"
+     },
+     {
+      "name": "ACCT-BALANCE",
+      "type": "decimal",
+      "format": "cols 2-10, PIC 9(7)V99, 7 integer digits plus 2 implied decimals, unsigned, max 9999999.99"
+     },
+     {
+      "name": "ACCT-TXNS",
+      "type": "integer",
+      "format": "cols 11-13, PIC 9(3), 3 integer digits, unsigned, max 999"
+     },
+     {
+      "name": "ACCT-DAYS",
+      "type": "integer",
+      "format": "cols 14-15, PIC 9(2), 2 integer digits, unsigned, max 99"
+     }
+    ],
+    "outputs": [
+     {
+      "name": "OUT-FEE",
+      "type": "string",
+      "format": "PIC ZZ9.99, 6 characters, zero-suppressed display-edited number with 2 decimals"
+     },
+     {
+      "name": "OUT-LIMIT",
+      "type": "string",
+      "format": "PIC Z(4)9.99, 8 characters, zero-suppressed display-edited number with 2 decimals"
+     },
+     {
+      "name": "FEE-ALERT-LINE",
+      "type": "string",
+      "format": "literal 'FEE ALERT: YES' or 'FEE ALERT: NO'"
+     }
+    ],
+    "business_rules": [
+     "ACCEPT reads the 15-character fixed-width line into ACCT-RECORD by column position: ACCT-TYPE col 1, ACCT-BALANCE cols 2-10, ACCT-TXNS cols 11-13, ACCT-DAYS cols 14-15",
+     "CALL 'FEERATE' USING ACCT-TYPE ACCT-TXNS WS-FEE sets WS-FEE (PIC 9(3)V99) based on account type and transaction count",
+     "COMPUTE WS-LIMIT = ACCT-BALANCE / 100 stores the result in PIC 9(5)V99 without ROUNDED; intermediate division is exact, but the receiving field truncates beyond 2 implied decimals",
+     "No ON SIZE ERROR on the COMPUTE; results above 99999.99 silently lose high-order digits in WS-LIMIT",
+     "MOVE WS-FEE TO OUT-FEE applies PIC ZZ9.99 editing: leading zeros become spaces, decimal point and two decimal digits are always shown",
+     "MOVE WS-LIMIT TO OUT-LIMIT applies PIC Z(4)9.99 editing: leading zeros become spaces, decimal point and two decimal digits are always shown",
+     "DISPLAY 'FEES:  ' OUT-FEE emits one line: literal 'FEES:  ' immediately followed by the 6-character edited fee",
+     "DISPLAY 'LIMIT: ' OUT-LIMIT emits one line: literal 'LIMIT: ' immediately followed by the 8-character edited limit",
+     "If WS-FEE > WS-LIMIT, display 'FEE ALERT: YES'; otherwise display 'FEE ALERT: NO'",
+     "ACCT-DAYS is accepted but not used in any computation or output"
+    ],
+    "edge_cases": [
+     "ACCT-BALANCE = 000000000: WS-LIMIT = 0.00, OUT-LIMIT displays as '    0.00'",
+     "ACCT-BALANCE = 000012345: WS-LIMIT = 123.45, OUT-LIMIT displays as '  123.45'",
+     "ACCT-BALANCE = 999999999: WS-LIMIT = 99999.99, OUT-LIMIT displays as '99999.99'",
+     "WS-FEE = 0.00: OUT-FEE displays as '  0.00'",
+     "WS-FEE = 005.50: OUT-FEE displays as '  5.50'",
+     "WS-FEE = 999.99: OUT-FEE displays as '999.99'",
+     "ACCT-BALANCE = 1000000000 exceeds PIC 9(7)V99 and is outside the defined input domain"
+    ],
+    "quirks": [
+     "PIC 9(7)V99 stores 9 digits with 2 implied decimals and no stored decimal point; COMPUTE WS-LIMIT = ACCT-BALANCE / 100 divides the raw stored integer by 100, then truncates to the receiving field's 2 implied decimals",
+     "Truncation occurs at the receiving field WS-LIMIT, not at each intermediate operator",
+     "Without ON SIZE ERROR, high-order overflow of WS-LIMIT is silently lost",
+     "ZZ9.99 always shows the digit before the decimal point; zero fee displays as '  0.00', not '     .00'",
+     "Z(4)9.99 always shows the digit before the decimal point; zero limit displays as '    0.00'",
+     "DISPLAY concatenates operands with no separator between the literal and the edited field"
+    ]
+   },
+   "cobol": "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. ALERTS.\n      * Fee alert: warn when this month's fees exceed 1% of balance.\n      * Input: one fixed-width line, 15 characters (see ACCTREC).\n       DATA DIVISION.\n       WORKING-STORAGE SECTION.\n       COPY ACCTREC.\n       01  WS-FEE                PIC 9(3)V99.\n       01  WS-LIMIT              PIC 9(5)V99.\n       01  OUT-FEE               PIC ZZ9.99.\n       01  OUT-LIMIT             PIC Z(4)9.99.\n       PROCEDURE DIVISION.\n       MAIN-PARA.\n           ACCEPT ACCT-RECORD\n           CALL 'FEERATE' USING ACCT-TYPE ACCT-TXNS WS-FEE\n           COMPUTE WS-LIMIT = ACCT-BALANCE / 100\n           MOVE WS-FEE TO OUT-FEE\n           MOVE WS-LIMIT TO OUT-LIMIT\n           DISPLAY \"FEES:  \" OUT-FEE\n           DISPLAY \"LIMIT: \" OUT-LIMIT\n           IF WS-FEE > WS-LIMIT\n               DISPLAY \"FEE ALERT: YES\"\n           ELSE\n               DISPLAY \"FEE ALERT: NO\"\n           END-IF\n           STOP RUN.\n",
+   "python": "\"\"\"Migration of COBOL program ALERTS.\n\nReads a 15-character fixed-width account record, calls FEERATE to compute WS-FEE,\ncomputes WS-LIMIT as ACCT-BALANCE divided by 100 with truncation to two implied\ndecimals, moves both values to zero-suppressed display fields, and prints fee,\nlimit, and a fee-alert line based on the comparison.\n\"\"\"\n\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\nimport feerate\n\n\n# ---------------------------------------------------------------------------\n# COBOL data semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Working-storage record mirroring COBOL layout\n# ---------------------------------------------------------------------------\n\nclass AlertsRecord:\n    \"\"\"Holds all working-storage fields exactly as COBOL stores them.\"\"\"\n\n    __slots__ = (\n        \"acct_type\",      # PIC X\n        \"acct_balance\",   # PIC 9(7)V99\n        \"acct_txns\",      # PIC 9(3)\n        \"acct_days\",      # PIC 9(2)\n        \"ws_fee\",         # PIC 9(3)V99\n        \"ws_limit\",       # PIC 9(5)V99\n        \"out_fee\",        # PIC ZZ9.99 (edited)\n        \"out_limit\",      # PIC Z(4)9.99 (edited)\n    )\n\n    def __init__(self):\n        self.acct_type = \" \"\n        self.acct_balance = Decimal(\"0\")\n        self.acct_txns = Decimal(\"0\")\n        self.acct_days = Decimal(\"0\")\n        self.ws_fee = Decimal(\"0\")\n        self.ws_limit = Decimal(\"0\")\n        self.out_fee = \"      \"\n        self.out_limit = \"        \"\n\n\n# ---------------------------------------------------------------------------\n# Paragraph: MAIN-PARA\n# ---------------------------------------------------------------------------\n\ndef main_para(input_line: str) -> str:\n    \"\"\"Replicate COBOL MAIN-PARA paragraph.\"\"\"\n    rec = AlertsRecord()\n    lines = []\n\n    # ACCEPT ACCT-RECORD\n    # Fixed-width layout: ACCT-TYPE(1) ACCT-BALANCE(9) ACCT-TXNS(3) ACCT-DAYS(2)\n    fields = split_fixed(input_line, [1, 9, 3, 2])\n    rec.acct_type = fields[0]\n    # ACCT-BALANCE PIC 9(7)V99: 9 digits, 2 implied decimals, unsigned\n    rec.acct_balance = pic_from_text(fields[1], int_digits=7, dec_digits=2, signed=False)\n    # ACCT-TXNS PIC 9(3): 3 integer digits, unsigned\n    rec.acct_txns = pic_from_text(fields[2], int_digits=3, dec_digits=0, signed=False)\n    # ACCT-DAYS PIC 9(2): 2 integer digits, unsigned (accepted but unused)\n    rec.acct_days = pic_from_text(fields[3], int_digits=2, dec_digits=0, signed=False)\n\n    # CALL 'FEERATE' USING ACCT-TYPE ACCT-TXNS WS-FEE\n    # COBOL passes BY REFERENCE; callee may modify any argument.\n    rec.acct_type, rec.acct_txns, rec.ws_fee = feerate.call(\n        rec.acct_type, rec.acct_txns, rec.ws_fee\n    )\n    # After the call, keep the caller's own PIC truncation when storing results.\n    # WS-FEE is PIC 9(3)V99 unsigned; re-store to enforce truncation/sign rules.\n    rec.ws_fee = pic_store(rec.ws_fee, int_digits=3, dec_digits=2, signed=False)\n\n    # COMPUTE WS-LIMIT = ACCT-BALANCE / 100\n    # Intermediate division is exact; truncation happens only when stored into\n    # WS-LIMIT (PIC 9(5)V99). No ON SIZE ERROR -> high-order overflow silently lost.\n    rec.ws_limit = pic_store(rec.acct_balance / Decimal(\"100\"), int_digits=5, dec_digits=2, signed=False)\n\n    # MOVE WS-FEE TO OUT-FEE  (PIC ZZ9.99 editing)\n    rec.out_fee = edit_picture(rec.ws_fee, \"ZZ9.99\")\n\n    # MOVE WS-LIMIT TO OUT-LIMIT  (PIC Z(4)9.99 editing)\n    rec.out_limit = edit_picture(rec.ws_limit, \"Z(4)9.99\")\n\n    # DISPLAY \"FEES:  \" OUT-FEE  (concatenation, no separator)\n    lines.append(\"FEES:  \" + rec.out_fee)\n\n    # DISPLAY \"LIMIT: \" OUT-LIMIT\n    lines.append(\"LIMIT: \" + rec.out_limit)\n\n    # IF WS-FEE > WS-LIMIT ... ELSE ...\n    if rec.ws_fee > rec.ws_limit:\n        lines.append(\"FEE ALERT: YES\")\n    else:\n        lines.append(\"FEE ALERT: NO\")\n\n    # STOP RUN\n    return \"\\n\".join(lines)\n\n\n# ---------------------------------------------------------------------------\n# Module entry point\n# ---------------------------------------------------------------------------\n\ndef main(input_line: str) -> str:\n    \"\"\"Return everything the COBOL program would print, lines joined by '\\n',\n    no trailing newline. Never raises.\"\"\"\n    try:\n        return main_para(input_line)\n    except Exception:\n        # COBOL doesn't crash on odd input; return empty output on any error.\n        return \"\"\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline().rstrip(\"\\n\")\n    print(main(line), end=\"\")\n",
+   "golden": [
+    {
+     "input": "C00010000001030",
+     "output": "FEES:    5.00\nLIMIT:    10.00\nFEE ALERT: NO"
+    },
+    {
+     "input": "S00025005000515",
+     "output": "FEES:    2.50\nLIMIT:    25.00\nFEE ALERT: NO"
+    },
+    {
+     "input": "P00500000010060",
+     "output": "FEES:    0.00\nLIMIT:   500.00\nFEE ALERT: NO"
+    },
+    {
+     "input": "C00000000000000",
+     "output": "FEES:    5.00\nLIMIT:     0.00\nFEE ALERT: YES"
+    },
+    {
+     "input": "S00000000100101",
+     "output": "FEES:    2.50\nLIMIT:     0.00\nFEE ALERT: YES"
+    },
+    {
+     "input": "P99999999999999",
+     "output": "FEES:    0.00\nLIMIT: 99999.99\nFEE ALERT: NO"
+    },
+    {
+     "input": "C00001000000000",
+     "output": "FEES:    5.00\nLIMIT:     1.00\nFEE ALERT: YES"
+    },
+    {
+     "input": "C00000999900000",
+     "output": "FEES:    5.00\nLIMIT:     0.99\nFEE ALERT: YES"
+    },
+    {
+     "input": "C00001000100000",
+     "output": "FEES:    5.00\nLIMIT:     1.00\nFEE ALERT: YES"
+    },
+    {
+     "input": "X00001000000000",
+     "output": "FEES:    0.00\nLIMIT:     1.00\nFEE ALERT: NO"
+    },
+    {
+     "input": "C00001234500000",
+     "output": "FEES:    5.00\nLIMIT:     1.23\nFEE ALERT: YES"
+    },
+    {
+     "input": "C00001234900000",
+     "output": "FEES:    5.00\nLIMIT:     1.23\nFEE ALERT: YES"
+    },
+    {
+     "input": "C00001235000000",
+     "output": "FEES:    5.00\nLIMIT:     1.23\nFEE ALERT: YES"
+    },
+    {
+     "input": "C00999999900000",
+     "output": "FEES:    5.00\nLIMIT:   999.99\nFEE ALERT: NO"
+    },
+    {
+     "input": "C00000055000000",
+     "output": "FEES:    5.00\nLIMIT:     0.05\nFEE ALERT: YES"
+    },
+    {
+     "input": "C00009999900000",
+     "output": "FEES:    5.00\nLIMIT:     9.99\nFEE ALERT: NO"
+    },
+    {
+     "input": "C00010000000000",
+     "output": "FEES:    5.00\nLIMIT:    10.00\nFEE ALERT: NO"
+    },
+    {
+     "input": "C00001000000099",
+     "output": "FEES:    5.00\nLIMIT:     1.00\nFEE ALERT: YES"
+    },
+    {
+     "input": "C00001000099900",
+     "output": "FEES:  347.65\nLIMIT:     1.00\nFEE ALERT: YES"
+    },
+    {
+     "input": "C99999999999999",
+     "output": "FEES:  347.65\nLIMIT: 99999.99\nFEE ALERT: NO"
+    }
+   ],
+   "attempt_sources": [
+    {
+     "attempt": 1,
+     "python": "\"\"\"Migration of COBOL program ALERTS.\n\nReads a 15-character fixed-width account record, calls FEERATE to compute WS-FEE,\ncomputes WS-LIMIT as ACCT-BALANCE divided by 100 with truncation to two implied\ndecimals, moves both values to zero-suppressed display fields, and prints fee,\nlimit, and a fee-alert line based on the comparison.\n\"\"\"\n\nfrom decimal import Decimal\nimport feerate\n\n\n# ---------------------------------------------------------------------------\n# COBOL data semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    import re\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    import re\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Working-storage record mirroring COBOL layout\n# ---------------------------------------------------------------------------\n\nclass AlertsRecord:\n    \"\"\"Holds all working-storage fields exactly as COBOL stores them.\"\"\"\n\n    __slots__ = (\n        \"acct_type\",      # PIC X\n        \"acct_balance\",   # PIC 9(7)V99\n        \"acct_txns\",      # PIC 9(3)\n        \"acct_days\",      # PIC 9(2)\n        \"ws_fee\",         # PIC 9(3)V99\n        \"ws_limit\",       # PIC 9(5)V99\n        \"out_fee\",        # PIC ZZ9.99 (edited)\n        \"out_limit\",      # PIC Z(4)9.99 (edited)\n    )\n\n    def __init__(self):\n        self.acct_type = \" \"\n        self.acct_balance = Decimal(\"0\")\n        self.acct_txns = Decimal(\"0\")\n        self.acct_days = Decimal(\"0\")\n        self.ws_fee = Decimal(\"0\")\n        self.ws_limit = Decimal(\"0\")\n        self.out_fee = \"      \"\n        self.out_limit = \"        \"\n\n\n# ---------------------------------------------------------------------------\n# Paragraph: MAIN-PARA\n# ---------------------------------------------------------------------------\n\ndef main_para(input_line: str) -> str:\n    \"\"\"Replicate COBOL MAIN-PARA paragraph.\"\"\"\n    rec = AlertsRecord()\n    lines = []\n\n    # ACCEPT ACCT-RECORD\n    # Fixed-width layout: ACCT-TYPE(1) ACCT-BALANCE(9) ACCT-TXNS(3) ACCT-DAYS(2)\n    fields = split_fixed(input_line, [1, 9, 3, 2])\n    rec.acct_type = fields[0]\n    # ACCT-BALANCE PIC 9(7)V99: 9 digits, 2 implied decimals, unsigned\n    rec.acct_balance = pic_from_text(fields[1], int_digits=7, dec_digits=2, signed=False)\n    # ACCT-TXNS PIC 9(3): 3 integer digits, unsigned\n    rec.acct_txns = pic_from_text(fields[2], int_digits=3, dec_digits=0, signed=False)\n    # ACCT-DAYS PIC 9(2): 2 integer digits, unsigned (accepted but unused)\n    rec.acct_days = pic_from_text(fields[3], int_digits=2, dec_digits=0, signed=False)\n\n    # CALL 'FEERATE' USING ACCT-TYPE ACCT-TXNS WS-FEE\n    # COBOL passes BY REFERENCE; callee may modify any argument.\n    rec.acct_type, rec.acct_txns, rec.ws_fee = feerate.call(\n        rec.acct_type, rec.acct_txns, rec.ws_fee\n    )\n    # After the call, keep the caller's own PIC truncation when storing results.\n    # WS-FEE is PIC 9(3)V99 unsigned; re-store to enforce truncation/sign rules.\n    rec.ws_fee = pic_store(rec.ws_fee, int_digits=3, dec_digits=2, signed=False)\n\n    # COMPUTE WS-LIMIT = ACCT-BALANCE / 100\n    # Intermediate division is exact; truncation happens only when stored into\n    # WS-LIMIT (PIC 9(5)V99). No ON SIZE ERROR -> high-order overflow silently lost.\n    rec.ws_limit = pic_store(rec.acct_balance / Decimal(\"100\"), int_digits=5, dec_digits=2, signed=False)\n\n    # MOVE WS-FEE TO OUT-FEE  (PIC ZZ9.99 editing)\n    rec.out_fee = edit_picture(rec.ws_fee, \"ZZ9.99\")\n\n    # MOVE WS-LIMIT TO OUT-LIMIT  (PIC Z(4)9.99 editing)\n    rec.out_limit = edit_picture(rec.ws_limit, \"Z(4)9.99\")\n\n    # DISPLAY \"FEES:  \" OUT-FEE  (concatenation, no separator)\n    lines.append(\"FEES:  \" + rec.out_fee)\n\n    # DISPLAY \"LIMIT: \" OUT-LIMIT\n    lines.append(\"LIMIT: \" + rec.out_limit)\n\n    # IF WS-FEE > WS-LIMIT ... ELSE ...\n    if rec.ws_fee > rec.ws_limit:\n        lines.append(\"FEE ALERT: YES\")\n    else:\n        lines.append(\"FEE ALERT: NO\")\n\n    # STOP RUN\n    return \"\\n\".join(lines)\n\n\n# ---------------------------------------------------------------------------\n# Module entry point\n# ---------------------------------------------------------------------------\n\ndef main(input_line: str) -> str:\n    \"\"\"Return everything the COBOL program would print, lines joined by '\\n',\n    no trailing newline. Never raises.\"\"\"\n    try:\n        return main_para(input_line)\n    except Exception:\n        # COBOL doesn't crash on odd input; return empty output on any error.\n        return \"\"\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline().rstrip(\"\\n\")\n    print(main(line), end=\"\")\n"
+    },
+    {
+     "attempt": 2,
+     "python": "\"\"\"Migration of COBOL program ALERTS.\n\nReads a 15-character fixed-width account record, calls FEERATE to compute WS-FEE,\ncomputes WS-LIMIT as ACCT-BALANCE divided by 100 with truncation to two implied\ndecimals, moves both values to zero-suppressed display fields, and prints fee,\nlimit, and a fee-alert line based on the comparison.\n\"\"\"\n\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\nimport feerate\n\n\n# ---------------------------------------------------------------------------\n# COBOL data semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Working-storage record mirroring COBOL layout\n# ---------------------------------------------------------------------------\n\nclass AlertsRecord:\n    \"\"\"Holds all working-storage fields exactly as COBOL stores them.\"\"\"\n\n    __slots__ = (\n        \"acct_type\",      # PIC X\n        \"acct_balance\",   # PIC 9(7)V99\n        \"acct_txns\",      # PIC 9(3)\n        \"acct_days\",      # PIC 9(2)\n        \"ws_fee\",         # PIC 9(3)V99\n        \"ws_limit\",       # PIC 9(5)V99\n        \"out_fee\",        # PIC ZZ9.99 (edited)\n        \"out_limit\",      # PIC Z(4)9.99 (edited)\n    )\n\n    def __init__(self):\n        self.acct_type = \" \"\n        self.acct_balance = Decimal(\"0\")\n        self.acct_txns = Decimal(\"0\")\n        self.acct_days = Decimal(\"0\")\n        self.ws_fee = Decimal(\"0\")\n        self.ws_limit = Decimal(\"0\")\n        self.out_fee = \"      \"\n        self.out_limit = \"        \"\n\n\n# ---------------------------------------------------------------------------\n# Paragraph: MAIN-PARA\n# ---------------------------------------------------------------------------\n\ndef main_para(input_line: str) -> str:\n    \"\"\"Replicate COBOL MAIN-PARA paragraph.\"\"\"\n    rec = AlertsRecord()\n    lines = []\n\n    # ACCEPT ACCT-RECORD\n    # Fixed-width layout: ACCT-TYPE(1) ACCT-BALANCE(9) ACCT-TXNS(3) ACCT-DAYS(2)\n    fields = split_fixed(input_line, [1, 9, 3, 2])\n    rec.acct_type = fields[0]\n    # ACCT-BALANCE PIC 9(7)V99: 9 digits, 2 implied decimals, unsigned\n    rec.acct_balance = pic_from_text(fields[1], int_digits=7, dec_digits=2, signed=False)\n    # ACCT-TXNS PIC 9(3): 3 integer digits, unsigned\n    rec.acct_txns = pic_from_text(fields[2], int_digits=3, dec_digits=0, signed=False)\n    # ACCT-DAYS PIC 9(2): 2 integer digits, unsigned (accepted but unused)\n    rec.acct_days = pic_from_text(fields[3], int_digits=2, dec_digits=0, signed=False)\n\n    # CALL 'FEERATE' USING ACCT-TYPE ACCT-TXNS WS-FEE\n    # COBOL passes BY REFERENCE; callee may modify any argument.\n    rec.acct_type, rec.acct_txns, rec.ws_fee = feerate.call(\n        rec.acct_type, rec.acct_txns, rec.ws_fee\n    )\n    # After the call, keep the caller's own PIC truncation when storing results.\n    # WS-FEE is PIC 9(3)V99 unsigned; re-store to enforce truncation/sign rules.\n    rec.ws_fee = pic_store(rec.ws_fee, int_digits=3, dec_digits=2, signed=False)\n\n    # COMPUTE WS-LIMIT = ACCT-BALANCE / 100\n    # Intermediate division is exact; truncation happens only when stored into\n    # WS-LIMIT (PIC 9(5)V99). No ON SIZE ERROR -> high-order overflow silently lost.\n    rec.ws_limit = pic_store(rec.acct_balance / Decimal(\"100\"), int_digits=5, dec_digits=2, signed=False)\n\n    # MOVE WS-FEE TO OUT-FEE  (PIC ZZ9.99 editing)\n    rec.out_fee = edit_picture(rec.ws_fee, \"ZZ9.99\")\n\n    # MOVE WS-LIMIT TO OUT-LIMIT  (PIC Z(4)9.99 editing)\n    rec.out_limit = edit_picture(rec.ws_limit, \"Z(4)9.99\")\n\n    # DISPLAY \"FEES:  \" OUT-FEE  (concatenation, no separator)\n    lines.append(\"FEES:  \" + rec.out_fee)\n\n    # DISPLAY \"LIMIT: \" OUT-LIMIT\n    lines.append(\"LIMIT: \" + rec.out_limit)\n\n    # IF WS-FEE > WS-LIMIT ... ELSE ...\n    if rec.ws_fee > rec.ws_limit:\n        lines.append(\"FEE ALERT: YES\")\n    else:\n        lines.append(\"FEE ALERT: NO\")\n\n    # STOP RUN\n    return \"\\n\".join(lines)\n\n\n# ---------------------------------------------------------------------------\n# Module entry point\n# ---------------------------------------------------------------------------\n\ndef main(input_line: str) -> str:\n    \"\"\"Return everything the COBOL program would print, lines joined by '\\n',\n    no trailing newline. Never raises.\"\"\"\n    try:\n        return main_para(input_line)\n    except Exception:\n        # COBOL doesn't crash on odd input; return empty output on any error.\n        return \"\"\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline().rstrip(\"\\n\")\n    print(main(line), end=\"\")\n"
+    }
+   ],
+   "heldout": null
+  },
+  {
+   "id": "loanpay",
+   "file": "loanpay.cbl",
+   "program_id": "LOANPAY",
+   "kind": "program",
+   "depends_on": [],
+   "status": "done",
+   "error": null,
+   "attempts": 1,
+   "tests_passed": 25,
+   "tests_total": 25,
+   "history": [
+    {
+     "attempt": 1,
+     "passed": 25,
+     "total": 25,
+     "failures": [],
+     "explanation": null
+    }
+   ],
+   "divergences": [],
+   "unit_tests_status": "needs_review",
+   "unit_tests_quarantined": [
+    "test_exact_outputs_computable_from_spec",
+    "test_output_line_lengths_constant"
+   ],
+   "spec": {
+    "module_id": "loanpay",
+    "summary": "A flat-interest loan calculator that reads a 16-character fixed-width input line containing principal, rate, and months; it validates the term, computes total owed and monthly payment, and displays the results with zero-suppressed formatting, or prints an error if the term is zero months.",
+    "inputs": [
+     {
+      "name": "IN-PRINCIPAL",
+      "type": "decimal",
+      "format": "cols 1-9, PIC 9(7)V99, 7 integer digits + 2 implied decimals, no decimal point stored, unsigned, zero-padded"
+     },
+     {
+      "name": "IN-RATE",
+      "type": "decimal",
+      "format": "cols 10-13, PIC 9(2)V99, 2 integer digits + 2 implied decimals, no decimal point stored, unsigned, zero-padded"
+     },
+     {
+      "name": "IN-MONTHS",
+      "type": "integer",
+      "format": "cols 14-16, PIC 9(3), 3 integer digits, unsigned, zero-padded"
+     }
+    ],
+    "outputs": [
+     {
+      "name": "OUT-TOTAL",
+      "type": "decimal",
+      "format": "PIC Z(7)9.99, 11 characters wide, 2 decimals shown, leading zeros replaced by spaces"
+     },
+     {
+      "name": "OUT-PAYMENT",
+      "type": "decimal",
+      "format": "PIC Z(6)9.99, 10 characters wide, 2 decimals shown, leading zeros replaced by spaces"
+     }
+    ],
+    "business_rules": [
+     "Interest = IN-PRINCIPAL * IN-RATE * IN-MONTHS / 1200, computed with ROUNDED and stored in WS-INTEREST (PIC 9(7)V99); if the result exceeds 9999999.99, high-order digits are silently lost without ON SIZE ERROR.",
+     "Total = IN-PRINCIPAL + WS-INTEREST, stored in WS-TOTAL (PIC 9(8)V99); if the result exceeds 99999999.99, high-order digits are silently lost without ON SIZE ERROR.",
+     "Payment = WS-TOTAL / IN-MONTHS, stored in WS-PAYMENT (PIC 9(7)V99) WITHOUT ROUNDED: any decimal digits beyond the second place are truncated (not rounded) toward zero.",
+     "Payment result that exceeds 9999999.99 silently loses its leftmost digits in WS-PAYMENT without ON SIZE ERROR.",
+     "If IN-MONTHS equals zero, the program displays \"ERROR: TERM MUST BE AT LEAST 1 MONTH\" and stops; no arithmetic or display of totals occurs.",
+     "MOVE WS-TOTAL TO OUT-TOTAL and MOVE WS-PAYMENT TO OUT-PAYMENT convert numeric values to display-edited fields; leading zeros are replaced by spaces, the decimal point and two fractional digits are always printed.",
+     "OUT-TOTAL is displayed with PIC Z(7)9.99 (11 chars wide).",
+     "OUT-PAYMENT is displayed with PIC Z(6)9.99 (10 chars wide)."
+    ],
+    "edge_cases": [
+     "IN-MONTHS = 0: program prints \"ERROR: TERM MUST BE AT LEAST 1 MONTH\" and stops; arithmetic is skipped entirely.",
+     "Principal = 000000000, Rate = 00, Months = 001: Interest = 0.00, Total = 0.00, Payment = 0.00; all outputs display leading zeros as spaces per Z edit.",
+     "Principal = 9999999.99, Rate = 99.99, Months = 999: Interest computation may overflow WS-INTEREST (PIC 9(7)V99), silently losing high-order digits; Payment may overflow WS-PAYMENT similarly.",
+     "Payment truncation: if WS-TOTAL / IN-MONTHS produces 12.339, WS-PAYMENT stores 12.33 (truncated, not rounded)."
+    ],
+    "quirks": [
+     "COMPUTE without ROUNDED truncates extra decimal digits toward zero (12.339 -> 12.33); COMPUTE with ROUNDED rounds half away from zero (12.345 -> 12.35).",
+     "No ON SIZE ERROR: overflow of a PIC 9 field silently drops leftmost digits, wrapping around the fixed width (e.g. PIC 9(3) receiving 1234 stores 234).",
+     "PIC Z(7)9.99 and PIC Z(6)9.99 editing: leading zeros are suppressed (replaced by spaces), but the decimal point and the two fractional digits are always printed; the total width is 11 and 10 characters respectively.",
+     "DISPLAY concatenates operands with no separators; the literal \"TOTAL:   \" has exactly 8 characters (including 3 trailing spaces) and the literal \"PAYMENT: \" has exactly 9 characters (including 1 trailing space).",
+     "ACCEPT WS-INPUT reads a fixed 16-character line; if the input line is shorter than 16 characters, it is right-padded with spaces before being parsed into IN-PRINCIPAL, IN-RATE, and IN-MONTHS by column position.",
+     "The division by IN-MONTHS in the Payment computation assumes IN-MONTHS is non-zero; the branch at line 22 guards against the zero case.",
+     "[static check, line 29] WS-PAYMENT (PIC 9(7)V99: unsigned number, 7 integer digits + 2 implied decimals (no decimal point stored), max 9999999.99) is stored WITHOUT ROUNDED: digits beyond 2 decimal place(s) are TRUNCATED, not rounded (e.g. 12.339 is stored as 12.33, not 12.34)."
+    ]
+   },
+   "cobol": "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. LOANPAY.\n      * Flat-interest loan: total owed and the monthly payment.\n      * Input: one fixed-width line, 16 characters, no decimal points\n      *   cols 1-9   principal  PIC 9(7)V99\n      *   cols 10-13 rate (%)   PIC 9(2)V99\n      *   cols 14-16 months     PIC 9(3)\n       DATA DIVISION.\n       WORKING-STORAGE SECTION.\n       01  WS-INPUT.\n           05  IN-PRINCIPAL      PIC 9(7)V99.\n           05  IN-RATE           PIC 9(2)V99.\n           05  IN-MONTHS         PIC 9(3).\n       01  WS-INTEREST           PIC 9(7)V99.\n       01  WS-TOTAL              PIC 9(8)V99.\n       01  WS-PAYMENT            PIC 9(7)V99.\n       01  OUT-TOTAL             PIC Z(7)9.99.\n       01  OUT-PAYMENT           PIC Z(6)9.99.\n       PROCEDURE DIVISION.\n       MAIN-PARA.\n           ACCEPT WS-INPUT\n           IF IN-MONTHS = 0\n               DISPLAY \"ERROR: TERM MUST BE AT LEAST 1 MONTH\"\n               STOP RUN\n           END-IF\n           COMPUTE WS-INTEREST ROUNDED =\n               IN-PRINCIPAL * IN-RATE * IN-MONTHS / 1200\n           COMPUTE WS-TOTAL = IN-PRINCIPAL + WS-INTEREST\n           COMPUTE WS-PAYMENT = WS-TOTAL / IN-MONTHS\n           MOVE WS-TOTAL TO OUT-TOTAL\n           MOVE WS-PAYMENT TO OUT-PAYMENT\n           DISPLAY \"TOTAL:   \" OUT-TOTAL\n           DISPLAY \"PAYMENT: \" OUT-PAYMENT\n           STOP RUN.\n",
+   "python": "\"\"\"loanpay - Flat-interest loan calculator (COBOL LOANPAY port).\n\nReplicates GnuCOBOL DISPLAY output byte-for-byte for the fixed-width\n16-character input record:\n\n    cols 1-9   IN-PRINCIPAL  PIC 9(7)V99   (7 int digits, 2 implied decimals)\n    cols 10-13 IN-RATE       PIC 9(2)V99   (2 int digits, 2 implied decimals)\n    cols 14-16 IN-MONTHS     PIC 9(3)      (3 int digits)\n\nAll arithmetic uses decimal.Decimal with COBOL truncation/rounding rules\napplied at every store.  No floats, no stdin/stdout inside main().\n\"\"\"\n\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\n\n# ---------------------------------------------------------------------------\n# COBOL data-semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Loanpay module\n# ---------------------------------------------------------------------------\n\ndef main(input_line: str) -> str:\n    \"\"\"Return everything COBOL program LOANPAY would DISPLAY for one input line.\n\n    The input line is the fixed-width 16-character record:\n      cols 1-9   principal  PIC 9(7)V99\n      cols 10-13 rate (%)   PIC 9(2)V99\n      cols 14-16 months     PIC 9(3)\n\n    Lines are joined by \"\\n\" with NO trailing newline.\n    \"\"\"\n    # ACCEPT WS-INPUT  (fixed 16-character record; short lines space-padded)\n    fields = split_fixed(input_line, [9, 4, 3])\n\n    # IN-PRINCIPAL  PIC 9(7)V99  (cols 1-9)\n    in_principal = pic_from_text(fields[0], 7, 2)\n    # IN-RATE       PIC 9(2)V99  (cols 10-13)\n    in_rate = pic_from_text(fields[1], 2, 2)\n    # IN-MONTHS     PIC 9(3)     (cols 14-16)\n    in_months = pic_from_text(fields[2], 3)\n\n    # IF IN-MONTHS = 0  -> error message, STOP RUN (no arithmetic)\n    if in_months == 0:\n        return \"ERROR: TERM MUST BE AT LEAST 1 MONTH\"\n\n    # COMPUTE WS-INTEREST ROUNDED = IN-PRINCIPAL * IN-RATE * IN-MONTHS / 1200\n    #   WS-INTEREST PIC 9(7)V99; ROUNDED -> half away from zero.\n    #   Intermediate expression keeps full precision; truncation/rounding only\n    #   at the store into WS-INTEREST.\n    interest_raw = in_principal * in_rate * in_months / Decimal(1200)\n    ws_interest = pic_store(interest_raw, 7, 2, rounded=True)\n\n    # COMPUTE WS-TOTAL = IN-PRINCIPAL + WS-INTEREST\n    #   WS-TOTAL PIC 9(8)V99; no ROUNDED -> truncate extra decimals.\n    ws_total = pic_store(in_principal + ws_interest, 8, 2)\n\n    # COMPUTE WS-PAYMENT = WS-TOTAL / IN-MONTHS\n    #   WS-PAYMENT PIC 9(7)V99; no ROUNDED -> truncate beyond 2 decimals.\n    ws_payment = pic_store(ws_total / in_months, 7, 2)\n\n    # MOVE WS-TOTAL TO OUT-TOTAL   (PIC Z(7)9.99, 11 chars)\n    out_total = edit_picture(ws_total, \"Z(7)9.99\")\n    # MOVE WS-PAYMENT TO OUT-PAYMENT (PIC Z(6)9.99, 10 chars)\n    out_payment = edit_picture(ws_payment, \"Z(6)9.99\")\n\n    # DISPLAY \"TOTAL:   \" OUT-TOTAL   (literal is exactly 8 chars: TOTAL + 3 spaces)\n    # DISPLAY \"PAYMENT: \" OUT-PAYMENT (literal is exactly 9 chars: PAYMENT + 1 space)\n    line1 = \"TOTAL:   \" + out_total\n    line2 = \"PAYMENT: \" + out_payment\n    return line1 + \"\\n\" + line2\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline()\n    # Strip only the trailing newline; keep everything else as the input record.\n    if line.endswith(\"\\n\"):\n        line = line[:-1]\n    print(main(line), end=\"\")\n",
+   "golden": [
+    {
+     "input": "0000000000000000",
+     "output": "ERROR: TERM MUST BE AT LEAST 1 MONTH"
+    },
+    {
+     "input": "9999999999999999",
+     "output": "TOTAL:   12416749.16\nPAYMENT:   12429.17"
+    },
+    {
+     "input": "0001000000500012",
+     "output": "TOTAL:       1050.00\nPAYMENT:      87.50"
+    },
+    {
+     "input": "0002500750350024",
+     "output": "TOTAL:       2675.80\nPAYMENT:     111.49"
+    },
+    {
+     "input": "0050000000725060",
+     "output": "TOTAL:      68125.00\nPAYMENT:    1135.41"
+    },
+    {
+     "input": "0012345670999036",
+     "output": "TOTAL:      16045.67\nPAYMENT:     445.71"
+    },
+    {
+     "input": "0099999991250180",
+     "output": "TOTAL:     287499.97\nPAYMENT:    1597.22"
+    },
+    {
+     "input": "0000000000000001",
+     "output": "TOTAL:          0.00\nPAYMENT:       0.00"
+    },
+    {
+     "input": "0000000000500001",
+     "output": "TOTAL:          0.00\nPAYMENT:       0.00"
+    },
+    {
+     "input": "0001000000000001",
+     "output": "TOTAL:       1000.00\nPAYMENT:    1000.00"
+    },
+    {
+     "input": "0001000000500000",
+     "output": "ERROR: TERM MUST BE AT LEAST 1 MONTH"
+    },
+    {
+     "input": "9999999990001001",
+     "output": "TOTAL:   10000083.32\nPAYMENT:      83.32"
+    },
+    {
+     "input": "0000000019999001",
+     "output": "TOTAL:          0.01\nPAYMENT:       0.01"
+    },
+    {
+     "input": "0000000010001001",
+     "output": "TOTAL:          0.01\nPAYMENT:       0.01"
+    },
+    {
+     "input": "0000000000000999",
+     "output": "TOTAL:          0.00\nPAYMENT:       0.00"
+    },
+    {
+     "input": "0000000000500999",
+     "output": "TOTAL:          0.00\nPAYMENT:       0.00"
+    },
+    {
+     "input": "0001000000000999",
+     "output": "TOTAL:       1000.00\nPAYMENT:       1.00"
+    },
+    {
+     "input": "0001000000500999",
+     "output": "TOTAL:       5162.50\nPAYMENT:       5.16"
+    },
+    {
+     "input": "0001000000500001",
+     "output": "TOTAL:       1004.17\nPAYMENT:    1004.17"
+    },
+    {
+     "input": "0001000000500002",
+     "output": "TOTAL:       1008.33\nPAYMENT:     504.16"
+    },
+    {
+     "input": "0001000000500998",
+     "output": "TOTAL:       5158.33\nPAYMENT:       5.16"
+    },
+    {
+     "input": "0001000000499001",
+     "output": "TOTAL:       1004.16\nPAYMENT:    1004.16"
+    },
+    {
+     "input": "0001000000501001",
+     "output": "TOTAL:       1004.18\nPAYMENT:    1004.18"
+    },
+    {
+     "input": "0001000009999001",
+     "output": "TOTAL:       1083.33\nPAYMENT:    1083.33"
+    },
+    {
+     "input": "0001000009998001",
+     "output": "TOTAL:       1083.32\nPAYMENT:    1083.32"
+    }
+   ],
+   "attempt_sources": [
+    {
+     "attempt": 1,
+     "python": "\"\"\"loanpay - Flat-interest loan calculator (COBOL LOANPAY port).\n\nReplicates GnuCOBOL DISPLAY output byte-for-byte for the fixed-width\n16-character input record:\n\n    cols 1-9   IN-PRINCIPAL  PIC 9(7)V99   (7 int digits, 2 implied decimals)\n    cols 10-13 IN-RATE       PIC 9(2)V99   (2 int digits, 2 implied decimals)\n    cols 14-16 IN-MONTHS     PIC 9(3)      (3 int digits)\n\nAll arithmetic uses decimal.Decimal with COBOL truncation/rounding rules\napplied at every store.  No floats, no stdin/stdout inside main().\n\"\"\"\n\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\n\n# ---------------------------------------------------------------------------\n# COBOL data-semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Loanpay module\n# ---------------------------------------------------------------------------\n\ndef main(input_line: str) -> str:\n    \"\"\"Return everything COBOL program LOANPAY would DISPLAY for one input line.\n\n    The input line is the fixed-width 16-character record:\n      cols 1-9   principal  PIC 9(7)V99\n      cols 10-13 rate (%)   PIC 9(2)V99\n      cols 14-16 months     PIC 9(3)\n\n    Lines are joined by \"\\n\" with NO trailing newline.\n    \"\"\"\n    # ACCEPT WS-INPUT  (fixed 16-character record; short lines space-padded)\n    fields = split_fixed(input_line, [9, 4, 3])\n\n    # IN-PRINCIPAL  PIC 9(7)V99  (cols 1-9)\n    in_principal = pic_from_text(fields[0], 7, 2)\n    # IN-RATE       PIC 9(2)V99  (cols 10-13)\n    in_rate = pic_from_text(fields[1], 2, 2)\n    # IN-MONTHS     PIC 9(3)     (cols 14-16)\n    in_months = pic_from_text(fields[2], 3)\n\n    # IF IN-MONTHS = 0  -> error message, STOP RUN (no arithmetic)\n    if in_months == 0:\n        return \"ERROR: TERM MUST BE AT LEAST 1 MONTH\"\n\n    # COMPUTE WS-INTEREST ROUNDED = IN-PRINCIPAL * IN-RATE * IN-MONTHS / 1200\n    #   WS-INTEREST PIC 9(7)V99; ROUNDED -> half away from zero.\n    #   Intermediate expression keeps full precision; truncation/rounding only\n    #   at the store into WS-INTEREST.\n    interest_raw = in_principal * in_rate * in_months / Decimal(1200)\n    ws_interest = pic_store(interest_raw, 7, 2, rounded=True)\n\n    # COMPUTE WS-TOTAL = IN-PRINCIPAL + WS-INTEREST\n    #   WS-TOTAL PIC 9(8)V99; no ROUNDED -> truncate extra decimals.\n    ws_total = pic_store(in_principal + ws_interest, 8, 2)\n\n    # COMPUTE WS-PAYMENT = WS-TOTAL / IN-MONTHS\n    #   WS-PAYMENT PIC 9(7)V99; no ROUNDED -> truncate beyond 2 decimals.\n    ws_payment = pic_store(ws_total / in_months, 7, 2)\n\n    # MOVE WS-TOTAL TO OUT-TOTAL   (PIC Z(7)9.99, 11 chars)\n    out_total = edit_picture(ws_total, \"Z(7)9.99\")\n    # MOVE WS-PAYMENT TO OUT-PAYMENT (PIC Z(6)9.99, 10 chars)\n    out_payment = edit_picture(ws_payment, \"Z(6)9.99\")\n\n    # DISPLAY \"TOTAL:   \" OUT-TOTAL   (literal is exactly 8 chars: TOTAL + 3 spaces)\n    # DISPLAY \"PAYMENT: \" OUT-PAYMENT (literal is exactly 9 chars: PAYMENT + 1 space)\n    line1 = \"TOTAL:   \" + out_total\n    line2 = \"PAYMENT: \" + out_payment\n    return line1 + \"\\n\" + line2\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline()\n    # Strip only the trailing newline; keep everything else as the input record.\n    if line.endswith(\"\\n\"):\n        line = line[:-1]\n    print(main(line), end=\"\")\n"
+    }
+   ],
+   "heldout": null
+  },
+  {
+   "id": "statemnt",
+   "file": "statemnt.cbl",
+   "program_id": "STATEMNT",
+   "kind": "program",
+   "depends_on": [
+    "accrue",
+    "feerate"
+   ],
+   "status": "done",
+   "error": null,
+   "attempts": 1,
+   "tests_passed": 30,
+   "tests_total": 30,
+   "history": [
+    {
+     "attempt": 1,
+     "passed": 30,
+     "total": 30,
+     "failures": [],
+     "explanation": null
+    }
+   ],
+   "divergences": [],
+   "unit_tests_status": "needs_review",
+   "unit_tests_quarantined": [
+    "test_each_business_rule_branch",
+    "test_normal_output_has_expected_structure",
+    "test_output_lines_have_fixed_width",
+    "test_status_matches_new_balance_sign"
+   ],
+   "spec": {
+    "module_id": "statemnt",
+    "summary": "A COBOL program that reads a 15-character fixed-width record containing account type, balance, transactions, and days, validates the account type and day count, calls external routines to compute interest and fees, calculates the new balance, and prints interest, fees, new balance, and status. Invalid account type or zero days trigger immediate error stops.",
+    "inputs": [
+     {
+      "name": "ACCT-TYPE",
+      "type": "string",
+      "format": "cols 1-1, PIC X, 1 character; C=checking, S=savings, P=premium"
+     },
+     {
+      "name": "ACCT-BALANCE",
+      "type": "decimal",
+      "format": "cols 2-10, PIC 9(7)V99, 7 integer digits + 2 implied decimals, unsigned, zero-padded, max 9999999.99"
+     },
+     {
+      "name": "ACCT-TXNS",
+      "type": "integer",
+      "format": "cols 11-13, PIC 9(3), 3 integer digits, unsigned, max 999"
+     },
+     {
+      "name": "ACCT-DAYS",
+      "type": "integer",
+      "format": "cols 14-15, PIC 9(2), 2 integer digits, unsigned, max 99"
+     }
+    ],
+    "outputs": [
+     {
+      "name": "OUT-INTEREST",
+      "type": "decimal",
+      "format": "Z(5)9.99, 9 chars wide, 2 decimals, leading zeros replaced by spaces"
+     },
+     {
+      "name": "OUT-FEE",
+      "type": "decimal",
+      "format": "ZZ9.99, 6 chars wide, 2 decimals, leading zeros replaced by spaces"
+     },
+     {
+      "name": "OUT-NEW",
+      "type": "decimal",
+      "format": "-Z(7)9.99, 12 chars wide, 2 decimals, leading minus sign shown when negative"
+     },
+     {
+      "name": "DISPLAY_LINE_1",
+      "type": "string",
+      "format": "literal 'ERROR: UNKNOWN ACCOUNT TYPE'"
+     },
+     {
+      "name": "DISPLAY_LINE_2",
+      "type": "string",
+      "format": "literal 'ERROR: PERIOD MUST BE AT LEAST 1 DAY'"
+     },
+     {
+      "name": "DISPLAY_LINE_3",
+      "type": "string",
+      "format": "literal 'INTEREST:    ' concatenated with OUT-INTEREST"
+     },
+     {
+      "name": "DISPLAY_LINE_4",
+      "type": "string",
+      "format": "literal 'FEES:        ' concatenated with OUT-FEE"
+     },
+     {
+      "name": "DISPLAY_LINE_5",
+      "type": "string",
+      "format": "literal 'NEW BALANCE: ' concatenated with OUT-NEW"
+     },
+     {
+      "name": "DISPLAY_LINE_6",
+      "type": "string",
+      "format": "literal 'STATUS: OVERDRAWN'"
+     },
+     {
+      "name": "DISPLAY_LINE_7",
+      "type": "string",
+      "format": "literal 'STATUS: OK'"
+     }
+    ],
+    "business_rules": [
+     "ACCEPT reads the 15-character line into ACCT-RECORD left-to-right by column position; short lines are right-padded with spaces.",
+     "Validation order: account type is checked first; if not C, S, or P, DISPLAY 'ERROR: UNKNOWN ACCOUNT TYPE' and STOP RUN before any arithmetic.",
+     "If account type is valid, ACCT-DAYS is checked next; if zero, DISPLAY 'ERROR: PERIOD MUST BE AT LEAST 1 DAY' and STOP RUN before any CALL or COMPUTE.",
+     "CALL 'ACCRUE' computes WS-INTEREST from ACCT-BALANCE, ACCT-TYPE, and ACCT-DAYS; result stored in WS-INTEREST PIC 9(6)V99.",
+     "CALL 'FEERATE' computes WS-FEE from ACCT-TYPE and ACCT-TXNS; result stored in WS-FEE PIC 9(3)V99.",
+     "COMPUTE WS-NEW = ACCT-BALANCE + WS-INTEREST - WS-FEE; intermediate decimals are computed exactly and truncation to 2 implied decimals occurs only when stored into WS-NEW PIC S9(8)V99.",
+     "Without ON SIZE ERROR, a COMPUTE result exceeding 99999999.99 silently loses high-order digits in WS-NEW.",
+     "MOVE WS-INTEREST TO OUT-INTEREST edits the value into PIC Z(5)9.99; leading zeros are replaced by spaces, the decimal point is always shown, and 2 decimals are displayed.",
+     "MOVE WS-FEE TO OUT-FEE edits the value into PIC ZZ9.99; leading zeros are replaced by spaces, the decimal point is always shown, and 2 decimals are displayed.",
+     "MOVE WS-NEW TO OUT-NEW edits the signed value into PIC -Z(7)9.99; a leading minus sign appears when negative, leading zeros are replaced by spaces, and 2 decimals are displayed.",
+     "IF WS-NEW < 0 triggers DISPLAY 'STATUS: OVERDRAWN'; otherwise DISPLAY 'STATUS: OK'.",
+     "Each DISPLAY statement concatenates its literal with the edited field as one output line."
+    ],
+    "edge_cases": [
+     "ACCT-TYPE = 'X' (or any non-C/S/P): program prints 'ERROR: UNKNOWN ACCOUNT TYPE' and stops; no arithmetic is performed.",
+     "ACCT-DAYS = 00: program prints 'ERROR: PERIOD MUST BE AT LEAST 1 DAY' and stops; no arithmetic is performed.",
+     "ACCT-BALANCE = 9999999.99, WS-INTEREST = 999999.99, WS-FEE = 0.00: WS-NEW computation exceeds 99999999.99; result silently truncates high-order digits in WS-NEW.",
+     "ACCT-BALANCE = 0.00, WS-INTEREST = 0.01, WS-FEE = 0.00: WS-NEW = 0.01 positive; STATUS: OK printed.",
+     "ACCT-BALANCE = 0.00, WS-INTEREST = 0.00, WS-FEE = 0.01: WS-NEW = -0.01 negative; OUT-NEW displays '-0.01' and STATUS: OVERDRAWN printed.",
+     "ACCT-BALANCE = 1.00, WS-INTEREST = 0.00, WS-FEE = 1.00: WS-NEW = 0.00; STATUS: OK printed (not overdrawn).",
+     "WS-INTEREST = 12.348765 moved to OUT-INTEREST PIC Z(5)9.99 truncates at the receiving field to 12.34, not at each operator."
+    ],
+    "quirks": [
+     "WS-NEW is PIC S9(8)V99 (signed) but OUT-NEW is PIC -Z(7)9.99 (display-edited with sign); MOVE truncates to 7 integer digits + 2 decimals and shows a leading minus when negative.",
+     "OUT-INTEREST PIC Z(5)9.99 is 9 characters wide: 5 Z-edit characters followed by '9.99'. For a value of 100.00 the output is '  100.00' (two leading spaces replacing zeros, then '100.00').",
+     "OUT-FEE PIC ZZ9.99 is 6 characters wide: 2 Z-edit characters, then '9.99'. For a value of 5.50 the output is '  5.50' (leading spaces replacing zeros).",
+     "OUT-NEW PIC -Z(7)9.99 is 12 characters wide: sign position, 7 Z-edit characters, then '9.99'.",
+     "Arithmetic without ROUNDED truncates extra decimal digits: 12.349 becomes 12.34, never rounded up. Truncation occurs at the receiving field, not at each operator.",
+     "Without ON SIZE ERROR, a COMPUTE result that exceeds the receiving PIC S9(8)V99 width silently loses its leftmost digits; the program does not abend.",
+     "DISPLAY statements concatenate literals with edited fields: e.g. DISPLAY \"INTEREST:    \" OUT-INTEREST prints the literal text followed immediately by the 9-char edited interest value.",
+     "ACCT-DAYS = ZERO is tested after input read; if true the program stops before any CALL or COMPUTE, so WS-INTEREST, WS-FEE, and OUT-NEW are never displayed."
+    ]
+   },
+   "cobol": "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. STATEMNT.\n      * Monthly statement: interest in, fees out, new balance.\n      * Input: one fixed-width line, 15 characters (see ACCTREC).\n       DATA DIVISION.\n       WORKING-STORAGE SECTION.\n       COPY ACCTREC.\n       01  WS-INTEREST           PIC 9(6)V99.\n       01  WS-FEE                PIC 9(3)V99.\n       01  WS-NEW                PIC S9(8)V99.\n       01  OUT-INTEREST          PIC Z(5)9.99.\n       01  OUT-FEE               PIC ZZ9.99.\n       01  OUT-NEW               PIC -Z(7)9.99.\n       PROCEDURE DIVISION.\n       MAIN-PARA.\n           ACCEPT ACCT-RECORD\n           IF NOT ACCT-CHECKING AND NOT ACCT-SAVINGS\n                                AND NOT ACCT-PREMIUM\n               DISPLAY \"ERROR: UNKNOWN ACCOUNT TYPE\"\n               STOP RUN\n           END-IF\n           IF ACCT-DAYS = ZERO\n               DISPLAY \"ERROR: PERIOD MUST BE AT LEAST 1 DAY\"\n               STOP RUN\n           END-IF\n           CALL 'ACCRUE' USING ACCT-BALANCE ACCT-TYPE ACCT-DAYS\n                               WS-INTEREST\n           CALL 'FEERATE' USING ACCT-TYPE ACCT-TXNS WS-FEE\n           COMPUTE WS-NEW = ACCT-BALANCE + WS-INTEREST - WS-FEE\n           MOVE WS-INTEREST TO OUT-INTEREST\n           MOVE WS-FEE TO OUT-FEE\n           MOVE WS-NEW TO OUT-NEW\n           DISPLAY \"INTEREST:    \" OUT-INTEREST\n           DISPLAY \"FEES:        \" OUT-FEE\n           DISPLAY \"NEW BALANCE: \" OUT-NEW\n           IF WS-NEW < 0\n               DISPLAY \"STATUS: OVERDRAWN\"\n           ELSE\n               DISPLAY \"STATUS: OK\"\n           END-IF\n           STOP RUN.\n",
+   "python": "\"\"\"Module statemnt - migrated from COBOL program STATEMNT.\n\nMonthly statement: interest in, fees out, new balance.\nReads one fixed-width 15-character record, validates account type and day count,\ncalls external routines ACCRUE and FEERATE, computes the new balance, and prints\ninterest, fees, new balance, and status.\n\nOutput is byte-for-byte identical to the COBOL DISPLAY output.\n\"\"\"\n\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\nimport accrue\nimport feerate\n\n\n# ---------------------------------------------------------------------------\n# COBOL data-semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Working-storage record mirroring COBOL layout\n# ---------------------------------------------------------------------------\n\nclass WorkingStorage:\n    \"\"\"Holds all WORKING-STORAGE fields exactly as COBOL stores them.\"\"\"\n\n    __slots__ = (\n        \"ws_interest\",\n        \"ws_fee\",\n        \"ws_new\",\n        \"out_interest\",\n        \"out_fee\",\n        \"out_new\",\n    )\n\n    def __init__(self):\n        # WS-INTEREST PIC 9(6)V99 unsigned\n        self.ws_interest = Decimal(\"0\")\n        # WS-FEE PIC 9(3)V99 unsigned\n        self.ws_fee = Decimal(\"0\")\n        # WS-NEW PIC S9(8)V99 signed\n        self.ws_new = Decimal(\"0\")\n        # Edited output fields (strings)\n        self.out_interest = \"\"\n        self.out_fee = \"\"\n        self.out_new = \"\"\n\n\n# ---------------------------------------------------------------------------\n# Main program logic\n# ---------------------------------------------------------------------------\n\ndef main(input_line: str) -> str:\n    \"\"\"Run the STATEMNT program on one 15-character input line.\n\n    Returns everything the COBOL program would print, lines joined by \"\\n\",\n    with NO trailing newline. Never raises.\n    \"\"\"\n    # ACCEPT ACCT-RECORD: fixed-width split into 15 columns.\n    # Layout: ACCT-TYPE X(1) | ACCT-BALANCE 9(7)V99 (9 chars) |\n    #         ACCT-TXNS 9(3) (3 chars) | ACCT-DAYS 9(2) (2 chars)\n    fields = split_fixed(input_line, [1, 9, 3, 2])\n    acct_type = fields[0]                      # PIC X(1), taken as-is\n    acct_balance_raw = fields[1]               # PIC 9(7)V99, implied decimal\n    acct_txns_raw = fields[2]                  # PIC 9(3)\n    acct_days_raw = fields[3]                  # PIC 9(2)\n\n    # Parse numeric input fields like COBOL ACCEPT into PIC 9 fields\n    # (implied decimal point, spaces count as zeros).\n    acct_balance = pic_from_text(acct_balance_raw, 7, 2, signed=False)\n    acct_txns = pic_from_text(acct_txns_raw, 3, 0, signed=False)\n    acct_days = pic_from_text(acct_days_raw, 2, 0, signed=False)\n\n    ws = WorkingStorage()\n\n    # Validation order: account type first.\n    if acct_type not in (\"C\", \"S\", \"P\"):\n        return \"ERROR: UNKNOWN ACCOUNT TYPE\"\n\n    # Then day count: zero days -> error stop before any CALL or COMPUTE.\n    if acct_days == 0:\n        return \"ERROR: PERIOD MUST BE AT LEAST 1 DAY\"\n\n    # CALL 'ACCRUE' USING ACCT-BALANCE ACCT-TYPE ACCT-DAYS WS-INTEREST\n    # Parameters passed BY REFERENCE; callee may change any argument.\n    acct_balance, acct_type, acct_days, ws.ws_interest = accrue.call(\n        acct_balance, acct_type, acct_days, ws.ws_interest\n    )\n    # Store result into WS-INTEREST PIC 9(6)V99 (truncation per COBOL MOVE).\n    ws.ws_interest = pic_store(ws.ws_interest, 6, 2, signed=False)\n\n    # CALL 'FEERATE' USING ACCT-TYPE ACCT-TXNS WS-FEE\n    acct_type, acct_txns, ws.ws_fee = feerate.call(\n        acct_type, acct_txns, ws.ws_fee\n    )\n    # Store result into WS-FEE PIC 9(3)V99 (truncation per COBOL MOVE).\n    ws.ws_fee = pic_store(ws.ws_fee, 3, 2, signed=False)\n\n    # COMPUTE WS-NEW = ACCT-BALANCE + WS-INTEREST - WS-FEE\n    # Intermediate results keep full precision; truncation only when stored\n    # into WS-NEW PIC S9(8)V99. No ON SIZE ERROR -> silent high-order digit loss.\n    ws.ws_new = pic_store(\n        acct_balance + ws.ws_interest - ws.ws_fee,\n        int_digits=8,\n        dec_digits=2,\n        signed=True,\n    )\n\n    # MOVE WS-INTEREST TO OUT-INTEREST (PIC Z(5)9.99)\n    ws.out_interest = edit_picture(ws.ws_interest, \"Z(5)9.99\")\n    # MOVE WS-FEE TO OUT-FEE (PIC ZZ9.99)\n    ws.out_fee = edit_picture(ws.ws_fee, \"ZZ9.99\")\n    # MOVE WS-NEW TO OUT-NEW (PIC -Z(7)9.99)\n    ws.out_new = edit_picture(ws.ws_new, \"-Z(7)9.99\")\n\n    # Build output lines, each DISPLAY statement is one line, concatenated.\n    lines = [\n        \"INTEREST:    \" + ws.out_interest,\n        \"FEES:        \" + ws.out_fee,\n        \"NEW BALANCE: \" + ws.out_new,\n    ]\n\n    # IF WS-NEW < 0 -> OVERDRAWN, else OK\n    if ws.ws_new < 0:\n        lines.append(\"STATUS: OVERDRAWN\")\n    else:\n        lines.append(\"STATUS: OK\")\n\n    return \"\\n\".join(lines)\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.read().rstrip(\"\\n\")\n    print(main(line), end=\"\")\n",
+   "golden": [
+    {
+     "input": "C00010000000530",
+     "output": "INTEREST:         0.04\nFEES:          5.00\nNEW BALANCE:       995.04\nSTATUS: OK"
+    },
+    {
+     "input": "S00025005001215",
+     "output": "INTEREST:         2.15\nFEES:          5.50\nNEW BALANCE:      2497.15\nSTATUS: OK"
+    },
+    {
+     "input": "P00500000000390",
+     "output": "INTEREST:       462.32\nFEES:          0.00\nNEW BALANCE:     50462.32\nSTATUS: OK"
+    },
+    {
+     "input": "X00001000000101",
+     "output": "ERROR: UNKNOWN ACCOUNT TYPE"
+    },
+    {
+     "input": "C00001000000100",
+     "output": "ERROR: PERIOD MUST BE AT LEAST 1 DAY"
+    },
+    {
+     "input": "C00000000000000",
+     "output": "ERROR: PERIOD MUST BE AT LEAST 1 DAY"
+    },
+    {
+     "input": "C99999999999999",
+     "output": "INTEREST:      1356.16\nFEES:        347.65\nNEW BALANCE:  10001008.50\nSTATUS: OK"
+    },
+    {
+     "input": "C00000000100101",
+     "output": "INTEREST:         0.00\nFEES:          5.00\nNEW BALANCE: -       4.99\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "S00000000000001",
+     "output": "INTEREST:         0.00\nFEES:          2.50\nNEW BALANCE: -       2.50\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "P00000000000099",
+     "output": "INTEREST:         0.00\nFEES:          0.00\nNEW BALANCE:         0.00\nSTATUS: OK"
+    },
+    {
+     "input": "C00000000099901",
+     "output": "INTEREST:         0.00\nFEES:        347.65\nNEW BALANCE: -     347.65\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "C99999999900001",
+     "output": "INTEREST:        13.69\nFEES:          5.00\nNEW BALANCE:  10000008.68\nSTATUS: OK"
+    },
+    {
+     "input": "C00000000000001",
+     "output": "INTEREST:         0.00\nFEES:          5.00\nNEW BALANCE: -       5.00\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "C00000010000001",
+     "output": "INTEREST:         0.00\nFEES:          5.00\nNEW BALANCE: -       4.00\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "-00001000000101",
+     "output": "ERROR: UNKNOWN ACCOUNT TYPE"
+    },
+    {
+     "input": "A00001000000101",
+     "output": "ERROR: UNKNOWN ACCOUNT TYPE"
+    },
+    {
+     "input": "C00001000000101",
+     "output": "INTEREST:         0.00\nFEES:          5.00\nNEW BALANCE:        95.00\nSTATUS: OK"
+    },
+    {
+     "input": "C00001230000501",
+     "output": "INTEREST:         0.00\nFEES:          5.00\nNEW BALANCE:       118.00\nSTATUS: OK"
+    },
+    {
+     "input": "S00000000000002",
+     "output": "INTEREST:         0.00\nFEES:          2.50\nNEW BALANCE: -       2.50\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "C00000010000101",
+     "output": "INTEREST:         0.00\nFEES:          5.00\nNEW BALANCE: -       4.00\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "C00000010000150",
+     "output": "INTEREST:         0.00\nFEES:          5.00\nNEW BALANCE: -       4.00\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "C00000010000199",
+     "output": "INTEREST:         0.00\nFEES:          5.00\nNEW BALANCE: -       4.00\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "C00000010000100",
+     "output": "ERROR: PERIOD MUST BE AT LEAST 1 DAY"
+    },
+    {
+     "input": "C00000010050001",
+     "output": "INTEREST:         0.00\nFEES:        173.00\nNEW BALANCE: -     172.00\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "C00000010050050",
+     "output": "INTEREST:         0.00\nFEES:        173.00\nNEW BALANCE: -     172.00\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "C00000010050099",
+     "output": "INTEREST:         0.00\nFEES:        173.00\nNEW BALANCE: -     172.00\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "C00000010050000",
+     "output": "ERROR: PERIOD MUST BE AT LEAST 1 DAY"
+    },
+    {
+     "input": "C00000010099901",
+     "output": "INTEREST:         0.00\nFEES:        347.65\nNEW BALANCE: -     346.65\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "C00000010099950",
+     "output": "INTEREST:         0.00\nFEES:        347.65\nNEW BALANCE: -     346.65\nSTATUS: OVERDRAWN"
+    },
+    {
+     "input": "C00000010099999",
+     "output": "INTEREST:         0.00\nFEES:        347.65\nNEW BALANCE: -     346.65\nSTATUS: OVERDRAWN"
+    }
+   ],
+   "attempt_sources": [
+    {
+     "attempt": 1,
+     "python": "\"\"\"Module statemnt - migrated from COBOL program STATEMNT.\n\nMonthly statement: interest in, fees out, new balance.\nReads one fixed-width 15-character record, validates account type and day count,\ncalls external routines ACCRUE and FEERATE, computes the new balance, and prints\ninterest, fees, new balance, and status.\n\nOutput is byte-for-byte identical to the COBOL DISPLAY output.\n\"\"\"\n\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\nimport accrue\nimport feerate\n\n\n# ---------------------------------------------------------------------------\n# COBOL data-semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Working-storage record mirroring COBOL layout\n# ---------------------------------------------------------------------------\n\nclass WorkingStorage:\n    \"\"\"Holds all WORKING-STORAGE fields exactly as COBOL stores them.\"\"\"\n\n    __slots__ = (\n        \"ws_interest\",\n        \"ws_fee\",\n        \"ws_new\",\n        \"out_interest\",\n        \"out_fee\",\n        \"out_new\",\n    )\n\n    def __init__(self):\n        # WS-INTEREST PIC 9(6)V99 unsigned\n        self.ws_interest = Decimal(\"0\")\n        # WS-FEE PIC 9(3)V99 unsigned\n        self.ws_fee = Decimal(\"0\")\n        # WS-NEW PIC S9(8)V99 signed\n        self.ws_new = Decimal(\"0\")\n        # Edited output fields (strings)\n        self.out_interest = \"\"\n        self.out_fee = \"\"\n        self.out_new = \"\"\n\n\n# ---------------------------------------------------------------------------\n# Main program logic\n# ---------------------------------------------------------------------------\n\ndef main(input_line: str) -> str:\n    \"\"\"Run the STATEMNT program on one 15-character input line.\n\n    Returns everything the COBOL program would print, lines joined by \"\\n\",\n    with NO trailing newline. Never raises.\n    \"\"\"\n    # ACCEPT ACCT-RECORD: fixed-width split into 15 columns.\n    # Layout: ACCT-TYPE X(1) | ACCT-BALANCE 9(7)V99 (9 chars) |\n    #         ACCT-TXNS 9(3) (3 chars) | ACCT-DAYS 9(2) (2 chars)\n    fields = split_fixed(input_line, [1, 9, 3, 2])\n    acct_type = fields[0]                      # PIC X(1), taken as-is\n    acct_balance_raw = fields[1]               # PIC 9(7)V99, implied decimal\n    acct_txns_raw = fields[2]                  # PIC 9(3)\n    acct_days_raw = fields[3]                  # PIC 9(2)\n\n    # Parse numeric input fields like COBOL ACCEPT into PIC 9 fields\n    # (implied decimal point, spaces count as zeros).\n    acct_balance = pic_from_text(acct_balance_raw, 7, 2, signed=False)\n    acct_txns = pic_from_text(acct_txns_raw, 3, 0, signed=False)\n    acct_days = pic_from_text(acct_days_raw, 2, 0, signed=False)\n\n    ws = WorkingStorage()\n\n    # Validation order: account type first.\n    if acct_type not in (\"C\", \"S\", \"P\"):\n        return \"ERROR: UNKNOWN ACCOUNT TYPE\"\n\n    # Then day count: zero days -> error stop before any CALL or COMPUTE.\n    if acct_days == 0:\n        return \"ERROR: PERIOD MUST BE AT LEAST 1 DAY\"\n\n    # CALL 'ACCRUE' USING ACCT-BALANCE ACCT-TYPE ACCT-DAYS WS-INTEREST\n    # Parameters passed BY REFERENCE; callee may change any argument.\n    acct_balance, acct_type, acct_days, ws.ws_interest = accrue.call(\n        acct_balance, acct_type, acct_days, ws.ws_interest\n    )\n    # Store result into WS-INTEREST PIC 9(6)V99 (truncation per COBOL MOVE).\n    ws.ws_interest = pic_store(ws.ws_interest, 6, 2, signed=False)\n\n    # CALL 'FEERATE' USING ACCT-TYPE ACCT-TXNS WS-FEE\n    acct_type, acct_txns, ws.ws_fee = feerate.call(\n        acct_type, acct_txns, ws.ws_fee\n    )\n    # Store result into WS-FEE PIC 9(3)V99 (truncation per COBOL MOVE).\n    ws.ws_fee = pic_store(ws.ws_fee, 3, 2, signed=False)\n\n    # COMPUTE WS-NEW = ACCT-BALANCE + WS-INTEREST - WS-FEE\n    # Intermediate results keep full precision; truncation only when stored\n    # into WS-NEW PIC S9(8)V99. No ON SIZE ERROR -> silent high-order digit loss.\n    ws.ws_new = pic_store(\n        acct_balance + ws.ws_interest - ws.ws_fee,\n        int_digits=8,\n        dec_digits=2,\n        signed=True,\n    )\n\n    # MOVE WS-INTEREST TO OUT-INTEREST (PIC Z(5)9.99)\n    ws.out_interest = edit_picture(ws.ws_interest, \"Z(5)9.99\")\n    # MOVE WS-FEE TO OUT-FEE (PIC ZZ9.99)\n    ws.out_fee = edit_picture(ws.ws_fee, \"ZZ9.99\")\n    # MOVE WS-NEW TO OUT-NEW (PIC -Z(7)9.99)\n    ws.out_new = edit_picture(ws.ws_new, \"-Z(7)9.99\")\n\n    # Build output lines, each DISPLAY statement is one line, concatenated.\n    lines = [\n        \"INTEREST:    \" + ws.out_interest,\n        \"FEES:        \" + ws.out_fee,\n        \"NEW BALANCE: \" + ws.out_new,\n    ]\n\n    # IF WS-NEW < 0 -> OVERDRAWN, else OK\n    if ws.ws_new < 0:\n        lines.append(\"STATUS: OVERDRAWN\")\n    else:\n        lines.append(\"STATUS: OK\")\n\n    return \"\\n\".join(lines)\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.read().rstrip(\"\\n\")\n    print(main(line), end=\"\")\n"
+    }
+   ],
+   "heldout": null
+  }
+ ],
+ "events": [
+  {
+   "t": "2026-11-08T00:21:21",
+   "module": "accrue",
+   "node": "extract_spec",
+   "msg": "The ACCRUE subprogram calculates interest earned on a bank balance over a specified number of days using a rate determined by the account type. It multiplies the balance by the rate and days, divides by 36500, and truncates the result to cents before returning the interest value. The account type is evaluated to set the annual interest rate, and any unrecognized type defaults to 0.05%."
+  },
+  {
+   "t": "2026-11-08T00:21:31",
+   "module": "accrue",
+   "node": "record",
+   "msg": "recorded 30 golden cases"
+  },
+  {
+   "t": "2026-11-08T00:21:54",
+   "module": "accrue",
+   "node": "rewrite",
+   "msg": "attempt 1"
+  },
+  {
+   "t": "2026-11-08T00:21:54",
+   "module": "accrue",
+   "node": "verify",
+   "msg": "30/30 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-08T00:22:32",
+   "module": "accrue",
+   "node": "accept",
+   "msg": "verified identical. unit tests written; 4 quarantined for review: test_exact_interest_values, test_extra_long_input_no_crash, test_silent_overflow_keeps_rightmost_digits, test_truncation_not_rounding"
+  },
+  {
+   "t": "2026-11-08T00:22:52",
+   "module": "feerate",
+   "node": "extract_spec",
+   "msg": "A COBOL subprogram that calculates account fees based on transaction count and account type. Checking accounts ('C') start at 5.00 plus 0.35 per transaction over 20. Savings accounts ('S') start at 2.50 plus 0.50 per transaction over 6. All other types result in a fee of 0.00. Results are stored in PIC 9(3)V99 without rounding, truncating excess decimals, and overflow silently loses high-order digits."
+  },
+  {
+   "t": "2026-11-08T00:22:57",
+   "module": "feerate",
+   "node": "record",
+   "msg": "recorded 30 golden cases"
+  },
+  {
+   "t": "2026-11-08T00:23:38",
+   "module": "feerate",
+   "node": "rewrite",
+   "msg": "attempt 1"
+  },
+  {
+   "t": "2026-11-08T00:23:38",
+   "module": "feerate",
+   "node": "verify",
+   "msg": "30/30 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-08T00:24:11",
+   "module": "feerate",
+   "node": "accept",
+   "msg": "verified identical. unit tests written; 2 quarantined for review: test_exact_fees_from_spec, test_extra_long_input_no_crash"
+  },
+  {
+   "t": "2026-11-08T00:24:27",
+   "module": "alerts",
+   "node": "extract_spec",
+   "msg": "Reads a 15-character fixed-width account record, calls FEERATE to compute WS-FEE, computes WS-LIMIT as ACCT-BALANCE divided by 100 with truncation to two implied decimals, moves both values to zero-suppressed display fields, and prints fee, limit, and a fee-alert line based on the comparison."
+  },
+  {
+   "t": "2026-11-08T00:24:33",
+   "module": "alerts",
+   "node": "record",
+   "msg": "recorded 20 golden cases"
+  },
+  {
+   "t": "2026-11-08T00:24:47",
+   "module": "alerts",
+   "node": "rewrite",
+   "msg": "attempt 1"
+  },
+  {
+   "t": "2026-11-08T00:24:48",
+   "module": "alerts",
+   "node": "verify",
+   "msg": "0/20 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-08T00:25:01",
+   "module": "alerts",
+   "node": "rewrite",
+   "msg": "attempt 2 (fixing failures)"
+  },
+  {
+   "t": "2026-11-08T00:25:02",
+   "module": "alerts",
+   "node": "verify",
+   "msg": "20/20 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-08T00:25:34",
+   "module": "alerts",
+   "node": "accept",
+   "msg": "verified identical. unit tests written; 5 quarantined for review: test_exact_outputs_from_spec, test_fee_alert_branch_known_cases, test_output_line_lengths_are_fixed, test_short_input_padded_with_spaces, test_zero_suppression_shows_digit_before_decimal"
+  },
+  {
+   "t": "2026-11-08T00:25:50",
+   "module": "loanpay",
+   "node": "extract_spec",
+   "msg": "A flat-interest loan calculator that reads a 16-character fixed-width input line containing principal, rate, and months; it validates the term, computes total owed and monthly payment, and displays the results with zero-suppressed formatting, or prints an error if the term is zero months."
+  },
+  {
+   "t": "2026-11-08T00:25:56",
+   "module": "loanpay",
+   "node": "record",
+   "msg": "recorded 25 golden cases"
+  },
+  {
+   "t": "2026-11-08T00:26:11",
+   "module": "loanpay",
+   "node": "rewrite",
+   "msg": "attempt 1"
+  },
+  {
+   "t": "2026-11-08T00:26:11",
+   "module": "loanpay",
+   "node": "verify",
+   "msg": "25/25 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-08T00:26:43",
+   "module": "loanpay",
+   "node": "accept",
+   "msg": "verified identical. unit tests written; 2 quarantined for review: test_exact_outputs_computable_from_spec, test_output_line_lengths_constant"
+  },
+  {
+   "t": "2026-11-08T00:27:05",
+   "module": "statemnt",
+   "node": "extract_spec",
+   "msg": "A COBOL program that reads a 15-character fixed-width record containing account type, balance, transactions, and days, validates the account type and day count, calls external routines to compute interest and fees, calculates the new balance, and prints interest, fees, new balance, and status. Invalid account type or zero days trigger immediate error stops."
+  },
+  {
+   "t": "2026-11-08T00:27:13",
+   "module": "statemnt",
+   "node": "record",
+   "msg": "recorded 30 golden cases"
+  },
+  {
+   "t": "2026-11-08T00:27:26",
+   "module": "statemnt",
+   "node": "rewrite",
+   "msg": "attempt 1"
+  },
+  {
+   "t": "2026-11-08T00:27:26",
+   "module": "statemnt",
+   "node": "verify",
+   "msg": "30/30 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-08T00:28:13",
+   "module": "statemnt",
+   "node": "accept",
+   "msg": "verified identical. unit tests written; 4 quarantined for review: test_each_business_rule_branch, test_normal_output_has_expected_structure, test_output_lines_have_fixed_width, test_status_matches_new_balance_sign"
+  }
+ ],
+ "name": "bank",
+ "title": "Retail bank \u00b7 5 programs",
+ "codebase": "samples/bank"
+}
