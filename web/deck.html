@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NorthBound · Slides</title>
+<!-- Three slides in NorthBound's own sky. 1 and 2 open the pitch; → on slide 2 goes into NorthBound;
+     press C in NorthBound (or open deck.html#3) for the wrap-up. Arrow keys / click / space to move. -->
+<style>
+  :root { --ink: #e8eaf2; --dim: rgba(232,234,242,.45); --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+          --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; --mint: #b9f0dc; --violet: #d4c4ff; }
+  html, body { margin: 0; height: 100%; background: #07070a; color: var(--ink); font-family: var(--mono); overflow: hidden; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  .scan { position: fixed; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255,255,255,.02) 0 1px, transparent 1px 3px); }
+  .slide { position: fixed; inset: 0; box-sizing: border-box; padding: 9vh 7vw 12vh; display: flex; flex-direction: column; justify-content: center;
+    opacity: 0; pointer-events: none; transform: translateY(14px); transition: opacity .8s ease, transform .9s cubic-bezier(.2,.7,.2,1); }
+  .slide.on { opacity: 1; pointer-events: auto; transform: none; }
+  .kicker { font-size: 10px; letter-spacing: 5px; text-transform: uppercase; color: rgba(232,234,242,.5); margin: 0 0 22px; }
+  .kicker b { font-weight: 400; color: rgba(242,241,248,.9); }
+
+  /* 1 · who we are */
+  .brand { position: relative; margin: 0; font: 600 clamp(64px, 10.5vw, 168px)/1 var(--mono); letter-spacing: -.065em; color: rgba(242,241,248,.98); width: max-content; }
+  .brand::before, .brand::after { content: attr(data-text); position: absolute; inset: 0; pointer-events: none; opacity: 0; background: #08080b; }
+  .brand::before { color: rgba(250,250,252,.97); } .brand::after { color: rgba(150,150,158,.9); }
+  .on .brand { animation: shake 6.5s steps(1) infinite; } .on .brand::before { animation: slice-a 6.5s steps(1) infinite; } .on .brand::after { animation: slice-b 6.5s steps(1) infinite; }
+  @keyframes shake { 0%, 91%, 100% { transform: none; filter: none; } 92% { transform: translate(2px,-1px); filter: contrast(1.4) brightness(1.15); } 93% { transform: translate(-3px,0); } 94% { transform: translate(1px,1px); filter: contrast(1.6); } 95% { transform: none; filter: none; } }
+  @keyframes slice-a { 0%, 91%, 96%, 100% { opacity: 0; } 92% { opacity: 1; clip-path: inset(18% 0 62% 0); transform: translateX(-6px); } 93% { opacity: 1; clip-path: inset(64% 0 14% 0); transform: translateX(5px); } 94.5% { opacity: 1; clip-path: inset(40% 0 44% 0); transform: translateX(-3px); } }
+  @keyframes slice-b { 0%, 91%, 96%, 100% { opacity: 0; } 92.5% { opacity: .8; clip-path: inset(52% 0 30% 0); transform: translateX(7px); } 94% { opacity: .8; clip-path: inset(8% 0 78% 0); transform: translateX(-5px); } }
+  .tag { margin: 18px 0 0 6px; font-size: 10px; letter-spacing: 6px; text-transform: uppercase; color: rgba(232,234,242,.5); }
+  .lede { margin: 6vh 0 0 4px; max-width: 760px; font: 400 clamp(18px, 1.65vw, 25px)/1.5 var(--sans); color: rgba(242,241,248,.88); }
+  .lede em { font-style: normal; color: #fff; }
+  .team { display: flex; flex-wrap: wrap; gap: 14px 52px; margin: 7vh 0 0 4px; }
+  .who { display: flex; flex-direction: column; gap: 6px; }
+  .who b { font: 400 15px var(--sans); color: rgba(242,241,248,.92); }
+  .who span { font-size: 9px; letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.42); }
+
+  /* 2 · how it's built: the stack on the galaxy's own station line */
+  .head { margin: 0; font: 400 clamp(26px, 2.9vw, 44px)/1.25 var(--sans); color: rgba(244,243,250,.96); max-width: 900px; letter-spacing: -.3px; }
+  .head i { font-style: normal; color: var(--violet); }
+  .line { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0 26px; margin-top: 9vh; }
+  .line::before { content: ''; position: absolute; left: 0; right: 0; top: 23px; height: 1px;
+    background: linear-gradient(90deg, rgba(232,234,242,0), rgba(232,234,242,.35) 8%, rgba(212,196,255,.55) 70%, rgba(185,240,220,.6) 92%, rgba(185,240,220,0)); }
+  .st { position: relative; display: flex; flex-direction: column; gap: 10px; }
+  .ring { width: 46px; height: 46px; border-radius: 50%; border: 1px solid rgba(232,234,242,.4); position: relative; background: #07070a; margin-bottom: 14px; }
+  .ring::after { content: ''; position: absolute; inset: 20px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 12px 2px rgba(232,234,242,.55); }
+  .st.ai .ring { border-color: rgba(212,196,255,.75); } .st.ai .ring::after { background: #efe8ff; box-shadow: 0 0 14px 3px rgba(200,180,255,.7); }
+  .st.ref .ring { border-color: rgba(185,240,220,.75); } .st.ref .ring::after { background: #e6fff6; box-shadow: 0 0 14px 3px rgba(150,240,210,.6); }
+  .st .n { font-size: 9px; letter-spacing: 3px; color: rgba(232,234,242,.35); }
+  .st h3 { margin: 0; font: 400 12px var(--mono); letter-spacing: 3.5px; text-transform: uppercase; color: rgba(242,241,248,.95); }
+  .st.ai h3 { color: var(--violet); } .st.ref h3 { color: var(--mint); }
+  .st p { margin: 0; font: 400 14px/1.55 var(--sans); color: rgba(232,234,242,.66); }
+  .st .role { font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: rgba(232,234,242,.38); }
+
+  /* 3 · what we proved (the aurora: verified) */
+  .big { margin: 0; font: 300 clamp(48px, 6.4vw, 104px)/1.05 var(--mono); letter-spacing: -.04em; color: #f4f2fb; }
+  .big span { color: var(--mint); text-shadow: 0 0 30px rgba(150,240,210,.35); }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5vh 4vw; margin-top: 8vh; max-width: 1240px; }
+  .stat { display: flex; flex-direction: column; gap: 12px; }
+  .stat b { font: 300 clamp(34px, 3.6vw, 56px)/1 var(--mono); letter-spacing: -.02em; color: #f6f5fb; font-weight: 300; }
+  .stat b.m { color: var(--mint); } .stat b.v { color: var(--violet); }
+  .stat span { font-size: 9.5px; letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.62); line-height: 1.7; }
+  .close { margin-top: 8vh; font: 400 clamp(17px, 1.5vw, 22px)/1.5 var(--sans); color: rgba(242,241,248,.86); max-width: 820px; }
+  .thanks { margin-top: 3vh; font-size: 10px; letter-spacing: 5px; text-transform: uppercase; color: rgba(232,234,242,.45); }
+
+  .foot { position: fixed; left: 7vw; right: 7vw; bottom: 4.5vh; display: flex; justify-content: space-between; align-items: baseline; font-size: 9px; letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.32); }
+  .foot button { background: none; border: 0; padding: 4px 0; cursor: pointer; font: inherit; letter-spacing: inherit; text-transform: inherit; color: rgba(232,234,242,.5); }
+  .foot button:hover { color: rgba(242,241,248,.9); }
+  @media (max-width: 900px) { .stats { grid-template-columns: 1fr 1fr; } .line { grid-template-columns: 1fr 1fr; gap: 30px 26px; } .line::before { display: none; } .slide { padding: 6vh 6vw 12vh; overflow-y: auto; justify-content: flex-start; } }
+  @media (prefers-reduced-motion: reduce) { .slide { transition: none; } .on .brand, .on .brand::before, .on .brand::after { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+<div class="scan" aria-hidden="true"></div>
+
+<section class="slide" data-n="1" aria-label="Who we are">
+  <p class="kicker">HackUTD 2026  ·  <b>Legacy code, modernized with proof</b></p>
+  <h1 class="brand" data-text="NorthBound">NorthBound</h1>
+  <p class="tag">Legacy → Verified</p>
+  <p class="lede">Banks and governments still run on COBOL that few people can safely change. NorthBound's AI agents rewrite it in Python, and <em>a rewrite only ships when every output matches the real COBOL.</em></p>
+  <div class="team">
+    <div class="who"><b>Hemant</b><span>Pipeline · agent loop</span></div>
+    <div class="who"><b>Madhav</b><span>COBOL runtime · verification</span></div>
+    <div class="who"><b>Abhinav</b><span>Understanding agents</span></div>
+    <div class="who"><b>Pranav</b><span>Building agents</span></div>
+  </div>
+</section>
+
+<section class="slide" data-n="2" aria-label="How it's built">
+  <p class="kicker">02  ·  <b>How it's built</b></p>
+  <h2 class="head">Nemotron writes the Python. <i>The real COBOL decides</i> whether it ships.</h2>
+  <div class="line">
+    <div class="st ai"><span class="ring"></span><span class="n">01</span><h3>NVIDIA Nemotron</h3>
+      <p>Reads the COBOL, writes a plain-English spec, invents tricky test inputs, rewrites it in Python, explains any mismatch.</p>
+      <span class="role">Nemotron 3.5 Super · Lightning</span></div>
+    <div class="st"><span class="ring"></span><span class="n">02</span><h3>LangGraph</h3>
+      <p>Runs the agents as a loop: spec → record → rewrite ⇄ verify, until it matches or asks a person.</p>
+      <span class="role">Orchestration</span></div>
+    <div class="st ref"><span class="ring"></span><span class="n">03</span><h3>GnuCOBOL</h3>
+      <p>Compiles and runs the original program on every input. What it prints is the answer key.</p>
+      <span class="role">The referee</span></div>
+    <div class="st"><span class="ring"></span><span class="n">04</span><h3>Python sandbox</h3>
+      <p>Runs each rewrite on the same inputs, and rejects any code that reads the answers instead of computing them.</p>
+      <span class="role">Verify · anti-cheat</span></div>
+    <div class="st ai"><span class="ring"></span><span class="n">05</span><h3>NorthBound</h3>
+      <p>Drop a zip of COBOL and watch every step live, with a person in the loop when the agent gets stuck.</p>
+      <span class="role">Canvas UI · local server</span></div>
+  </div>
+</section>
+
+<section class="slide" data-n="3" aria-label="What we proved">
+  <p class="kicker">03  ·  <b>What we proved</b></p>
+  <h2 class="big">Legacy → <span>Verified.</span></h2>
+  <div class="stats">
+    <div class="stat"><b class="m">6 / 6</b><span>COBOL programs from a retail bank, rewritten in Python and verified</span></div>
+    <div class="stat"><b>163</b><span>recorded outputs, every one identical to the real COBOL</span></div>
+    <div class="stat"><b class="v">10 / 10</b><span>live Nemotron runs today passed first try, about 30 s each</span></div>
+    <div class="stat"><b class="v">1 hint</b><span>when the agent was stuck it asked a person, then verified 28 / 28</span></div>
+  </div>
+  <p class="close">It won't ship code that's off by a cent, and it blocks everything that depends on code it can't verify.</p>
+  <p class="thanks">Thank you  ·  Hemant  ·  Madhav  ·  Abhinav  ·  Pranav</p>
+</section>
+
+<div class="foot"><span id="count">01 / 03</span><span><button id="prev">← Back</button>   <button id="next">Next →</button></span></div>
+
+<script>
+(() => {
+  // the sky: NorthBound's stars, monochrome; the aurora rises on the last slide (verified)
+  const cv = document.getElementById('sky'), x = cv.getContext('2d');
+  let W = 0, H = 0, stars = [], aur = 0, aurT = 0;
+  const DPR = Math.min(2, devicePixelRatio || 1);
+  function size() { W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR; x.setTransform(DPR, 0, 0, DPR, 0, 0);
+    stars = Array.from({ length: Math.round(W * H / 5200) }, () => [Math.random() * W, Math.random() * H, Math.random() < .08 ? 1.6 : .9, Math.random() * 7, .15 + Math.random() * .55]); }
+  addEventListener('resize', size); size();
+  let shoot = null;
+  function frame(now) {
+    const t = now / 1000;
+    aur += (aurT - aur) * .02;
+    x.fillStyle = '#07070a'; x.fillRect(0, 0, W, H);
+    for (const s of stars) { x.fillStyle = `rgba(232,236,250,${s[4] * (.55 + .45 * Math.sin(t * 1.3 + s[3]))})`; x.fillRect((s[0] - t * 3 + W) % W, s[1], s[2], s[2]); }
+    if (aur > .01) for (const [cx, cy, r, c] of [[.25, .62, .55, '150,240,210'], [.68, .55, .6, '200,180,255'], [.5, .78, .5, '120,200,255']]) {
+      const g = x.createRadialGradient(W * (cx + .03 * Math.sin(t * .2 + r)), H * cy, 0, W * cx, H * cy, W * r);
+      g.addColorStop(0, `rgba(${c},${.3 * aur})`); g.addColorStop(1, `rgba(${c},0)`); x.fillStyle = g; x.fillRect(0, 0, W, H);
+    }
+    const fog = x.createLinearGradient(0, H * .55, 0, H); fog.addColorStop(0, 'rgba(232,234,242,0)'); fog.addColorStop(1, 'rgba(232,234,242,.05)'); x.fillStyle = fog; x.fillRect(0, H * .55, W, H * .45);
+    if (!shoot && Math.random() < .004) shoot = { x: Math.random() * W * .7, y: Math.random() * H * .35, l: 0 };
+    if (shoot) { shoot.l++; const sx = shoot.x + shoot.l * 9, sy = shoot.y + shoot.l * 3.2, g = x.createLinearGradient(sx - 120, sy - 42, sx, sy);
+      g.addColorStop(0, 'rgba(232,236,250,0)'); g.addColorStop(1, `rgba(232,236,250,${.7 * (1 - shoot.l / 45)})`); x.strokeStyle = g; x.lineWidth = 1;
+      x.beginPath(); x.moveTo(sx - 120, sy - 42); x.lineTo(sx, sy); x.stroke(); if (shoot.l > 45) shoot = null; }
+    const vg = x.createRadialGradient(W / 2, H / 2, H * .25, W / 2, H / 2, W * .8); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.75)'); x.fillStyle = vg; x.fillRect(0, 0, W, H);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // slides: 1 and 2 lead into NorthBound; 3 closes
+  const slides = [...document.querySelectorAll('.slide')], count = document.getElementById('count');
+  let i = Math.max(0, Math.min(2, (parseInt(location.hash.slice(1), 10) || 1) - 1));
+  function show(n) {
+    i = n; slides.forEach((s, k) => s.classList.toggle('on', k === i));
+    count.textContent = `0${i + 1} / 03`; aurT = i === 2 ? 1 : 0;
+    document.getElementById('next').textContent = i === 1 ? 'Into NorthBound →' : i === 2 ? 'Home →' : 'Next →';
+    history.replaceState(null, '', `#${i + 1}`);
+  }
+  function go(d) {
+    if (d > 0 && i === 1) return void (location.href = './');  // slide 2 → the live product
+    if (d > 0 && i === 2) return void (location.href = './');
+    if (d < 0 && i === 0) return;
+    show(i + d);
+  }
+  document.getElementById('next').onclick = () => go(1);
+  document.getElementById('prev').onclick = () => go(-1);
+  addEventListener('keydown', e => {
+    if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); go(1); }
+    if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); go(-1); }
+  });
+  addEventListener('hashchange', () => show(Math.max(0, Math.min(2, (parseInt(location.hash.slice(1), 10) || 1) - 1))));
+  show(i);
+})();
+</script>
+</body>
+</html>
