@@ -59,7 +59,7 @@ controls. PR #10 contains the latest frontend and navigation work. See
 
    That is the exact hint a person sent in the recorded run (session `20261108-105033-real-83cd24`), so the
    fix that follows is real: the star goes back to Rewrite and attempt 2 matches 28 of 28.
-   Rehearsal: `galaxy.simTo(31)` in the console jumps a running replay to just before SETTLE asks.
+   **Skip to human loop** (toolbar, during the drop replay) jumps straight to SETTLE failing its check, then the ask.
 3. **Pause on the moments that matter** (or use Next/Back):
    - the ALERTS mismatch, caught and fixed;
    - then click the Verify ring → `DETAILS`.

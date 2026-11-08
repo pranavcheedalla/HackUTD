@@ -115,4 +115,9 @@ assert.equal(read('R.finished'),true);
 // the finished recording keeps the same stop, so Back returns to the ask
 assert.ok(read('buildTimeline(FULL).beats.some(b=>b.review && b.mi===5)'));
 assert.equal(read("R.modules.find(m=>m.id==='settle').status"),'done');
+// Skip to human loop: straight to SETTLE's first check, with its ask next
+read('startSim(FULL); skipToReview()');
+const firstCheck=full.events.findIndex(e=>e.module==='settle'&&e.node==='verify');
+assert.equal(read('SIM.n'),firstCheck); assert.equal(read('playing'),true);
+assert.equal(read("TL.beats.find(b=>b.working).mi"),5);
 ''')

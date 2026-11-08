@@ -111,6 +111,7 @@
   }
 
   // ---------- playback ----------
+  const skipBtn = document.getElementById('skip-review') || { hidden: true };
   let clock = 0, last = performance.now(), speed = 1, playing = false, chase = false, focus = null, resumeAfter = false, focusX = null;  // focusX: world x the open readout is about
   let cam = 0, cs = 0, trail = [], fr = 0, shoot = null, hits = [];
   let travel = null;  // one presenter click: fly to the next stop, then wait there
@@ -695,6 +696,7 @@
   }
   function simTick() {  // each frame while playing: finish the working step once its time is up
     if (!SIM || !TL) return;
+    if (!skipBtn.hidden && SIM.n > reviewEvent(SIM.full)) skipBtn.hidden = true;
     const w = TL.beats.find(b => b.working);
     if (w && w.review) {  // a person is being asked: wait for the presenter's hint, then a beat to read "sent"
       if (SIM.hintSent && clock >= SIM.sentAt + 1.6) { SIM.n++; simApply(); }
@@ -708,8 +710,22 @@
     SIM.hintSent = true; SIM.typedHint = text; SIM.sentAt = clock;
     playing = true; syncPlayback();
   }
+  function reviewEvent(full) {  // the first check of a program that later asked a person, in the recording
+    const m = (full.modules || []).find(q => (q.human_hints || []).length);
+    return m ? full.events.findIndex(e => e.module === m.id && e.node === 'verify') : -1;
+  }
+  function skipToReview() {
+    const i = SIM ? reviewEvent(SIM.full) : -1;
+    if (i < 0) return;
+    travel = null; resumeAfter = false; closePanel(); closeCaption();
+    SIM.n = i; SIM.hintSent = false; simApply();
+    const w = TL.beats.find(b => b.working);
+    if (w) clock = Math.max(0, w.t0 - 1.7);  // arrive at Verify as its result lands
+    cam = 0; cs = 0; trail = []; lastFail = null; playing = true; syncPlayback();
+  }
   function startSim(full) {
     SIM = { full, n: 0 }; workSince.clear(); TL = null; simApply();
+    skipBtn.hidden = reviewEvent(full) < 0;
     clock = 3.4; cam = 0; cs = 0; trail = []; lastFail = null;  // past the title: the entrance already set the scene
     playing = true; syncPlayback();
   }
@@ -977,6 +993,7 @@
   const sel = document.getElementById('replay'), intake = document.getElementById('intake');
   const fallbackBtn = document.getElementById('fallback'), backBtn = document.getElementById('backlive');
   const runLiveBtn = document.getElementById('run-live-instead'), quickBtn = document.getElementById('quick-live');
+  skipBtn.onclick = () => skipToReview();
   // one standalone program (nothing it calls) migrated live: real Nemotron calls in about 40 seconds
   function offerQuickLive(codebase) {
     const pick = R && (R.modules || []).find(m => m.kind !== 'subprogram' && !(m.depends_on || []).length);
@@ -1001,7 +1018,7 @@
   document.getElementById('case-go').onclick = () => { closeCase(); openIntake(); };
   document.getElementById('in-back').onclick = () => { openCase(); };
   function normalize(rep) { (rep.modules || []).forEach(q => { q.depends_on = q.depends_on || []; q.history = q.history || []; }); return rep; }
-  function stopLive() { cancelEntrance(); SIM = null; travel = null; clearTimeout(pollTimer); pollTimer = null; liveSession = null; fallbackBtn.hidden = true; }
+  function stopLive() { skipBtn.hidden = true; cancelEntrance(); SIM = null; travel = null; clearTimeout(pollTimer); pollTimer = null; liveSession = null; fallbackBtn.hidden = true; }
   // a run still going on the server: offer the way back to it from a recording or the intake
   async function runningSession() {
     if (!API) return null;
@@ -1161,6 +1178,7 @@
                       sim: !!SIM, hintSent: !!(SIM && SIM.hintSent), typedHint: SIM && SIM.typedHint } : null; },
                     sendHint(text) { sendHint(text); },
                     // rehearsal: jump a running replay to just before its n-th real event (e.g. SETTLE's first)
+                    skipToReview() { skipToReview(); },
                     simTo(n) { if (!SIM) return; SIM.n = Math.max(0, Math.min(n, SIM.full.events.length)); SIM.hintSent = false; simApply();
                                const w = TL.beats.find(b => b.working); clock = w ? w.t0 : clock; trail = []; lastFail = null; playing = true; syncPlayback(); },
                     get sim() { return SIM && { revealed: SIM.n, events: SIM.full.events.length }; },
