@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Legacy → Verified</title>
+<style>
+  :root { --ink: #e8eaf2; --dim: rgba(232,234,242,.45); --line: rgba(232,234,242,.12); --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  html, body { margin: 0; height: 100%; background: #07070a; color: var(--ink); font-family: var(--mono); overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: default; }
+  canvas.pointer { cursor: pointer; }
+  .controls { position: fixed; left: 24px; bottom: 20px; display: flex; gap: 14px; align-items: center; opacity: .38; transition: opacity .3s; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; }
+  .controls:hover, .controls:focus-within { opacity: .95; }
+  .controls button, .controls select { background: none; border: 0; color: var(--ink); font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; padding: 4px 0; }
+  .controls select { appearance: none; -webkit-appearance: none; border-bottom: 1px solid var(--line); padding-right: 4px; }
+  .controls select option { background: #111018; text-transform: none; letter-spacing: 0; }
+  .controls .sep { width: 1px; height: 12px; background: var(--line); }
+  .panel { position: fixed; top: 0; right: 0; height: 100vh; width: min(620px, 92vw); box-sizing: border-box; padding: 28px 30px 24px; background: rgba(11, 9, 18, .84); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-left: 1px solid rgba(232,234,242,.08); transform: translateX(104%); transition: transform .45s cubic-bezier(.2,.7,.2,1); display: flex; flex-direction: column; gap: 18px; z-index: 5; }
+  .panel.open { transform: none; }
+  .panel header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .panel h2 { margin: 0; font-weight: 400; font-size: 13px; letter-spacing: 4px; text-transform: uppercase; }
+  .panel .meta { font-size: 11px; letter-spacing: 2px; color: var(--dim); text-transform: uppercase; margin-top: 6px; }
+  .panel .close { background: none; border: 0; color: var(--dim); font: 18px var(--mono); cursor: pointer; padding: 0 2px; }
+  .panel .close:hover { color: var(--ink); }
+  .tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--line); }
+  .tabs button { background: none; border: 0; color: var(--dim); font: 11px var(--mono); letter-spacing: 2.5px; text-transform: uppercase; padding: 0 0 10px; cursor: pointer; border-bottom: 1px solid transparent; margin-bottom: -1px; }
+  .tabs button.on { color: var(--ink); border-bottom-color: rgba(200,180,255,.8); }
+  .body { flex: 1; overflow: auto; font-size: 12.5px; line-height: 1.65; color: rgba(232,234,242,.82); }
+  .body pre { margin: 0; white-space: pre; font: inherit; }
+  .body .k { color: var(--dim); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; margin: 16px 0 6px; }
+  .body .k:first-child { margin-top: 0; }
+  .body table { border-collapse: collapse; width: 100%; }
+  .body td { padding: 5px 10px 5px 0; border-bottom: 1px solid rgba(232,234,242,.06); vertical-align: top; white-space: pre; }
+  .body td:first-child { color: var(--dim); }
+  .body .bad { color: #ffb4c8; }
+  .body .good { color: #b9f0dc; }
+  .body .att { padding: 12px 0; border-bottom: 1px solid rgba(232,234,242,.06); }
+  .body .att p { margin: 4px 0 0; white-space: normal; }
+  .loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 11px; letter-spacing: 4px; color: var(--dim); text-transform: uppercase; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="sky" aria-label="Replay of a COBOL to Python migration shown as stars traveling through pipeline stations"></canvas>
+<div class="loading" id="loading">Loading replay…</div>
+<div class="controls" role="toolbar" aria-label="Replay controls">
+  <button id="play" aria-label="Pause">Pause</button>
+  <button id="restart">Restart</button>
+  <span class="sep"></span>
+  <select id="speed" aria-label="Speed"><option value="0.6">0.6×</option><option value="1" selected>1×</option><option value="1.6">1.6×</option><option value="2.5">2.5×</option></select>
+  <span class="sep"></span>
+  <select id="replay" aria-label="Replay"></select>
+</div>
+<aside class="panel" id="panel" aria-hidden="true">
+  <header>
+    <div><h2 id="p-title"></h2><div class="meta" id="p-meta"></div></div>
+    <button class="close" id="p-close" aria-label="Close">×</button>
+  </header>
+  <nav class="tabs" id="p-tabs"></nav>
+  <div class="body" id="p-body"></div>
+</aside>
+<script src="galaxy.js"></script>
+</body>
+</html>

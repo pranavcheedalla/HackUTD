@@ -1,0 +1,274 @@
+{
+ "kind": "mutation",
+ "mode": "controlled_mutation",
+ "label": "CONTROLLED MUTATION (injected rounding bug, not a model output)",
+ "session": "20261107-193451-real-ec3c96-mutation",
+ "started_at": "2026-11-07T19:34:52",
+ "modules": [
+  {
+   "id": "invoice",
+   "file": "invoice.cbl",
+   "program_id": "INVOICE",
+   "kind": "program",
+   "depends_on": [],
+   "status": "done",
+   "error": null,
+   "attempts": 2,
+   "tests_passed": 30,
+   "tests_total": 30,
+   "history": [
+    {
+     "attempt": 1,
+     "passed": 26,
+     "total": 30,
+     "failures": [
+      {
+       "input": "1|12.35|0.01",
+       "expected": "TOTAL=00012.34",
+       "actual": "TOTAL=00012.35"
+      },
+      {
+       "input": "1|0.01|50.00",
+       "expected": "TOTAL=00000.00",
+       "actual": "TOTAL=00000.01"
+      },
+      {
+       "input": "2|99980.00|49.99",
+       "expected": "TOTAL=99999.99",
+       "actual": "TOTAL=00000.00"
+      },
+      {
+       "input": " 001 | 00012.35 | 000.01 ",
+       "expected": "TOTAL=00012.34",
+       "actual": "TOTAL=00012.35"
+      }
+     ],
+     "explanation": {
+      "verdict": "new_code_bug",
+      "reason": "The Python code rounds 12.345 to 12.35 instead of truncating to 12.34 like COBOL.",
+      "input": "1|12.35|0.01"
+     }
+    },
+    {
+     "attempt": 2,
+     "passed": 30,
+     "total": 30,
+     "failures": [],
+     "explanation": null
+    }
+   ],
+   "divergences": [],
+   "unit_tests_status": "needs_review",
+   "unit_tests_quarantined": [
+    "test_discount_hundred_boundary",
+    "test_leading_zeros_allowed",
+    "test_monotonic_quantity_price_discount",
+    "test_total_line_fixed_width"
+   ],
+   "spec": {
+    "module_id": "invoice",
+    "summary": "A COBOL program that reads a pipe-delimited line containing quantity, unit price, and discount percent, validates each token character-by-character, computes an exact total truncated to six decimals, checks for overflow, truncates to two decimals for the invoice total, and displays the formatted result or an error message.",
+    "inputs": [
+     {
+      "name": "quantity-count",
+      "type": "integer",
+      "format": "token 1, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(3): unsigned number, 3 integer digits, max 999"
+     },
+     {
+      "name": "unit-price",
+      "type": "decimal",
+      "format": "token 2, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(5)V99: unsigned number, 5 integer digits + 2 implied decimals (no decimal point stored), max 99999.99"
+     },
+     {
+      "name": "discount-percent",
+      "type": "decimal",
+      "format": "token 3, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(3)V99: unsigned number, 3 integer digits + 2 implied decimals (no decimal point stored), max 999.99"
+     }
+    ],
+    "outputs": [
+     {
+      "name": "printed-total",
+      "type": "display-edited decimal",
+      "format": "PIC 9(5).99, 8 characters wide with explicit decimal point and two decimal places"
+     },
+     {
+      "name": "display-line",
+      "type": "text",
+      "format": "literal \"TOTAL=\" concatenated with printed-total, 14 characters wide"
+     }
+    ],
+    "business_rules": [
+     "The input line must contain exactly two pipe delimiters; otherwise ERROR:INVALID_INPUT is displayed and the program stops.",
+     "Each token is validated character-by-character: only digits and at most one decimal point are allowed; a leading sign such as '-' is rejected as 'when other'.",
+     "For quantity, whole-digits must be between 1 and 3 and fraction-digits must be 0; for price, whole-digits between 1 and 5 and fraction-digits between 0 and 2; for discount, whole-digits between 1 and 3 and fraction-digits between 0 and 2.",
+     "A decimal point with zero fraction-digits invalidates the token.",
+     "Tokens are converted with NUMVAL after validation; leading zeros are allowed within the digit-count limits.",
+     "Discount percent must not exceed 100; if it does, ERROR:INVALID_INPUT is displayed and the program stops.",
+     "The exact total is computed as quantity-count * unit-price * (100 - discount-percent) / 100 with intermediate decimal precision and truncated to six decimal places in EXACT-TOTAL (PIC 9(8)V9(6)) without ROUNDED.",
+     "If EXACT-TOTAL is greater than or equal to 100000, ERROR:OVERFLOW is displayed and the program stops.",
+     "EXACT-TOTAL is moved to INVOICE-TOTAL (PIC 9(5)V99), truncating beyond two decimal places without rounding.",
+     "INVOICE-TOTAL is moved to PRINTED-TOTAL (PIC 9(5).99), producing an 8-character edited output with leading zero fill and an explicit decimal point.",
+     "The final display line is \"TOTAL=\" followed immediately by the 8-character PRINTED-TOTAL."
+    ],
+    "edge_cases": [
+     "Input \"3|19.99|10.00\" produces output \"TOTAL=00053.97\".",
+     "Input \"1|12.35|0.01\" computes exact-total as 12.348765, moves to invoice-total as 12.34, and produces output \"TOTAL=00012.34\".",
+     "Input \"1|0.01|50.00\" produces output \"TOTAL=00000.00\".",
+     "Input \"1|99999.99|0.00\" produces output \"TOTAL=99999.99\".",
+     "Input \"999|100.00|0.00\" produces output \"TOTAL=99900.00\".",
+     "Input \"2|50000.00|0.00\" produces output \"ERROR:OVERFLOW\".",
+     "Input \"0|19.99|10.00\" produces output \"TOTAL=00000.00\".",
+     "Input \"3|0.00|10.00\" produces output \"TOTAL=00000.00\".",
+     "Input \"3|19.99|0.00\" produces output \"TOTAL=00059.97\".",
+     "Input \"3|19.99|100.00\" produces output \"TOTAL=00000.00\".",
+     "Input \"999|99999.99|100.00\" produces output \"TOTAL=00000.00\" because the discount factor is zero.",
+     "Input \"-1|19.99|10.00\" produces output \"ERROR:INVALID_INPUT\" because the minus sign fails character validation before NUMVAL.",
+     "Input \"1|-19.99|10.00\" produces output \"ERROR:INVALID_INPUT\".",
+     "Input \"1|19.99|-1.00\" produces output \"ERROR:INVALID_INPUT\".",
+     "Input \"1|19.99|100.01\" produces output \"ERROR:INVALID_INPUT\" because discount exceeds 100."
+    ],
+    "quirks": [
+     "Validation counts digits before and after the decimal point but does not enforce a maximum token length beyond the PIC X(256) buffer.",
+     "A token consisting only of a decimal point is invalid because whole-digits is zero.",
+     "A token with a decimal point and no digits after it is invalid because fraction-digits is zero while dot-seen is one.",
+     "Multiple decimal points in a token are invalid.",
+     "The ACCEPT buffer capacity is 256 characters but is not a required line length; short lines are not padded.",
+     "UNSTRING splits the line on pipes into three 256-character fields without padding tokens.",
+     "COMPUTE truncates to six decimal places without ROUNDED; digits beyond six decimal places are discarded.",
+     "MOVE to PIC 9(5)V99 truncates beyond two decimal places without rounding; for example, 12.348765 becomes 12.34.",
+     "PIC 9 output fields are zero-filled; only PICTURE Z suppresses zeros.",
+     "There is no ON SIZE ERROR; results above field capacity silently lose high-order digits.",
+     "[static check, line 62] EXACT-TOTAL (PIC 9(8)V9(6): unsigned number, 8 integer digits + 6 implied decimals (no decimal point stored), max 99999999.999999) is stored WITHOUT ROUNDED: digits beyond 6 decimal place(s) are TRUNCATED, not rounded (e.g. 12.3333339 is stored as 12.333333, not 12.333334).",
+     "[static check, line 70] INVOICE-TOTAL (PIC 9(5)V99: unsigned number, 5 integer digits + 2 implied decimals (no decimal point stored), max 99999.99) is stored WITHOUT ROUNDED: digits beyond 2 decimal place(s) are TRUNCATED, not rounded (e.g. 12.339 is stored as 12.33, not 12.34)."
+    ]
+   },
+   "cobol": "identification division.\nprogram-id. invoice.\nenvironment division.\nconfiguration section.\nrepository. function all intrinsic.\ndata division.\nworking-storage section.\n01 input-line       pic x(256).\n01 raw-quantity     pic x(256).\n01 raw-price        pic x(256).\n01 raw-discount     pic x(256).\n01 token-text       pic x(256).\n01 quantity-count   pic 9(3).\n01 unit-price       pic 9(5)v99.\n01 discount-percent pic 9(3)v99.\n01 exact-total      pic 9(8)v9(6).\n01 invoice-total    PIC 9(5)V99.\n01 printed-total    pic 9(5).99.\n01 valid-input      pic 9 value 1.\n01 delimiter-count binary-long value 0.\n01 token-length     binary-long.\n01 digit-index      binary-long.\n01 whole-digits     binary-long.\n01 fraction-digits  binary-long.\n01 max-whole        binary-long.\n01 max-fraction     binary-long.\n01 dot-seen         pic 9.\n\nprocedure division.\nmain.\n    accept input-line\n    inspect input-line tallying delimiter-count for all \"|\"\n    if delimiter-count not = 2\n        display \"ERROR:INVALID_INPUT\"\n        stop run\n    end-if\n    unstring input-line delimited by \"|\"\n        into raw-quantity raw-price raw-discount\n    end-unstring\n    move trim(raw-quantity) to token-text\n    move 3 to max-whole\n    move 0 to max-fraction\n    perform validate-number\n    move trim(raw-price) to token-text\n    move 5 to max-whole\n    move 2 to max-fraction\n    perform validate-number\n    move trim(raw-discount) to token-text\n    move 3 to max-whole\n    perform validate-number\n    if valid-input = 0\n        display \"ERROR:INVALID_INPUT\"\n        stop run\n    end-if\n    move numval(raw-quantity) to quantity-count\n    move numval(raw-price) to unit-price\n    move numval(raw-discount) to discount-percent\n    if discount-percent > 100\n        display \"ERROR:INVALID_INPUT\"\n        stop run\n    end-if\n    compute exact-total =\n        quantity-count * unit-price * (100 - discount-percent) / 100\n    *> Integer overflow is an error; fractional cents are silently discarded.\n    if exact-total >= 100000\n        display \"ERROR:OVERFLOW\"\n        stop run\n    end-if\n    *> Legacy quirk: MOVE into PIC 9(5)V99 truncates; it never rounds.\n    move exact-total to invoice-total\n    move invoice-total to printed-total\n    display \"TOTAL=\" printed-total\n    stop run.\n\nvalidate-number.\n    compute token-length = length(trim(token-text))\n    move 0 to whole-digits fraction-digits dot-seen\n    perform varying digit-index from 1 by 1\n        until digit-index > token-length\n        evaluate true\n            when token-text(digit-index:1) >= \"0\" and\n                 token-text(digit-index:1) <= \"9\"\n                if dot-seen = 0\n                    add 1 to whole-digits\n                else\n                    add 1 to fraction-digits\n                end-if\n            when token-text(digit-index:1) = \".\"\n                if dot-seen = 1 or max-fraction = 0\n                    move 0 to valid-input\n                end-if\n                move 1 to dot-seen\n            when other\n                move 0 to valid-input\n        end-evaluate\n    end-perform\n    if whole-digits = 0 or whole-digits > max-whole or\n       fraction-digits > max-fraction or\n       (dot-seen = 1 and fraction-digits = 0)\n        move 0 to valid-input\n    end-if.\n",
+   "python": "\"\"\"Migration of COBOL program 'invoice' to Python 3.11.\n\nByte-for-byte equivalent DISPLAY output for every input.\n\"\"\"\nfrom decimal import Decimal, ROUND_DOWN\n\n\n# ---------------------------------------------------------------------------\n# COBOL data-semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = __import__(\"re\").sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return __import__(\"re\").sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Invoice program logic\n# ---------------------------------------------------------------------------\n\ndef _trim_spaces(text: str) -> str:\n    \"\"\"COBOL FUNCTION TRIM removes ASCII spaces only.\"\"\"\n    return text.strip(\" \")\n\n\ndef _validate_number(token_text: str, max_whole: int, max_fraction: int, valid_input: int) -> int:\n    \"\"\"COBOL paragraph VALIDATE-NUMBER.\n\n    Returns updated valid-input flag (1 = still valid, 0 = invalid).\n    Once set to 0 it never goes back to 1 (no reset in this paragraph).\n    \"\"\"\n    token_length = len(_trim_spaces(token_text))\n    whole_digits = 0\n    fraction_digits = 0\n    dot_seen = 0\n\n    for digit_index in range(1, token_length + 1):\n        ch = token_text[digit_index - 1]  # COBOL is 1-indexed\n        if \"0\" <= ch <= \"9\":\n            if dot_seen == 0:\n                whole_digits += 1\n            else:\n                fraction_digits += 1\n        elif ch == \".\":\n            if dot_seen == 1 or max_fraction == 0:\n                valid_input = 0\n            dot_seen = 1\n        else:  # when other (includes leading '-', letters, etc.)\n            valid_input = 0\n\n    if (\n        whole_digits == 0\n        or whole_digits > max_whole\n        or fraction_digits > max_fraction\n        or (dot_seen == 1 and fraction_digits == 0)\n    ):\n        valid_input = 0\n\n    return valid_input\n\n\ndef main(input_line: str) -> str:\n    \"\"\"Return everything the COBOL program would print, lines joined by '\\n', no trailing newline.\"\"\"\n    # ACCEPT input-line PIC X(256) - buffer limited to 256 chars\n    input_line = input_line[:256]\n\n    # INSPECT ... TALLYING delimiter-count FOR ALL \"|\"\n    delimiter_count = input_line.count(\"|\")\n\n    if delimiter_count != 2:\n        return \"ERROR:INVALID_INPUT\"\n\n    # UNSTRING input-line DELIMITED BY \"|\" INTO raw-quantity raw-price raw-discount\n    parts = input_line.split(\"|\")\n    # COBOL UNSTRING into exactly 3 fields; extra delimiters would overflow,\n    # but with exactly 2 delimiters we always get exactly 3 tokens.\n    raw_quantity = parts[0]\n    raw_price = parts[1]\n    raw_discount = parts[2]\n\n    valid_input = 1  # PIC 9 value 1\n\n    # Validate quantity\n    token_text = _trim_spaces(raw_quantity)\n    valid_input = _validate_number(token_text, 3, 0, valid_input)\n\n    # Validate price\n    token_text = _trim_spaces(raw_price)\n    valid_input = _validate_number(token_text, 5, 2, valid_input)\n\n    # Validate discount\n    token_text = _trim_spaces(raw_discount)\n    valid_input = _validate_number(token_text, 3, 2, valid_input)\n\n    if valid_input == 0:\n        return \"ERROR:INVALID_INPUT\"\n\n    # MOVE NUMVAL(...) to numeric fields (human-readable parse)\n    quantity_count = Decimal(_trim_spaces(raw_quantity))\n    unit_price = Decimal(_trim_spaces(raw_price))\n    discount_percent = Decimal(_trim_spaces(raw_discount))\n\n    # Store into PIC fields (truncation applies at each store)\n    quantity_count = pic_store(quantity_count, 3, 0, signed=False)\n    unit_price = pic_store(unit_price, 5, 2, signed=False)\n    discount_percent = pic_store(discount_percent, 3, 2, signed=False)\n\n    # Discount percent must not exceed 100\n    if discount_percent > 100:\n        return \"ERROR:INVALID_INPUT\"\n\n    # COMPUTE exact-total = quantity-count * unit-price * (100 - discount-percent) / 100\n    # Intermediate results keep full precision; truncation only at store into EXACT-TOTAL.\n    exact_total = quantity_count * unit_price * (Decimal(100) - discount_percent) / Decimal(100)\n    exact_total = pic_store(exact_total, 8, 6, signed=False, rounded=False)\n\n    # Overflow check\n    if exact_total >= 100000:\n        return \"ERROR:OVERFLOW\"\n\n    # MOVE exact-total to INVOICE-TOTAL (PIC 9(5)V99) - truncates beyond 2 decimals\n    invoice_total = pic_store(exact_total, 5, 2, signed=False, rounded=False)\n\n    # MOVE invoice-total to PRINTED-TOTAL (PIC 9(5).99)\n    printed_total = pic_store(invoice_total, 5, 2, signed=False, rounded=False)\n\n    # DISPLAY \"TOTAL=\" printed-total\n    # PIC 9(5).99 is numeric-edited: 5 integer digits, explicit '.', 2 decimal digits\n    formatted = edit_picture(printed_total, \"9(5).99\")\n\n    return \"TOTAL=\" + formatted\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.read()\n    # Strip only the trailing newline that the test harness adds, if any.\n    # COBOL ACCECT reads one line; we pass the line content to main.\n    if line.endswith(\"\\n\"):\n        line = line[:-1]\n    print(main(line))\n",
+   "golden": [
+    {
+     "input": "3|19.99|10.00",
+     "output": "TOTAL=00053.97"
+    },
+    {
+     "input": "1|12.35|0.01",
+     "output": "TOTAL=00012.34"
+    },
+    {
+     "input": "1|0.01|50.00",
+     "output": "TOTAL=00000.00"
+    },
+    {
+     "input": "1|99999.99|0.00",
+     "output": "TOTAL=99999.99"
+    },
+    {
+     "input": "999|100.00|0.00",
+     "output": "TOTAL=99900.00"
+    },
+    {
+     "input": "2|50000.00|0.00",
+     "output": "ERROR:OVERFLOW"
+    },
+    {
+     "input": "0|19.99|10.00",
+     "output": "TOTAL=00000.00"
+    },
+    {
+     "input": "3|0.00|10.00",
+     "output": "TOTAL=00000.00"
+    },
+    {
+     "input": "3|19.99|0.00",
+     "output": "TOTAL=00059.97"
+    },
+    {
+     "input": "3|19.99|100.00",
+     "output": "TOTAL=00000.00"
+    },
+    {
+     "input": "-1|19.99|10.00",
+     "output": "ERROR:INVALID_INPUT"
+    },
+    {
+     "input": "1|-19.99|10.00",
+     "output": "ERROR:INVALID_INPUT"
+    },
+    {
+     "input": "1|19.99|-1.00",
+     "output": "ERROR:INVALID_INPUT"
+    },
+    {
+     "input": "1|19.99|100.01",
+     "output": "ERROR:INVALID_INPUT"
+    },
+    {
+     "input": "999|99999.99|100.00",
+     "output": "TOTAL=00000.00"
+    },
+    {
+     "input": "2|99980.00|49.99",
+     "output": "TOTAL=99999.99"
+    },
+    {
+     "input": " 001 | 00012.35 | 000.01 ",
+     "output": "TOTAL=00012.34"
+    },
+    {
+     "input": "1\t|2|3",
+     "output": "ERROR:INVALID_INPUT"
+    },
+    {
+     "input": "1|1.|0",
+     "output": "ERROR:INVALID_INPUT"
+    },
+    {
+     "input": "abc|10|0",
+     "output": "ERROR:INVALID_INPUT"
+    },
+    {
+     "input": "2|50000.01|0.00",
+     "output": "ERROR:OVERFLOW"
+    },
+    {
+     "input": "1|99999.99|0.01",
+     "output": "TOTAL=99989.99"
+    },
+    {
+     "input": "1|0.00|10.00",
+     "output": "TOTAL=00000.00"
+    },
+    {
+     "input": "3|19.99|100.01",
+     "output": "ERROR:INVALID_INPUT"
+    },
+    {
+     "input": "1|19.99|100.00",
+     "output": "TOTAL=00000.00"
+    },
+    {
+     "input": "1|19.99|99.99",
+     "output": "TOTAL=00000.00"
+    },
+    {
+     "input": "1|12.345|0.00",
+     "output": "ERROR:INVALID_INPUT"
+    },
+    {
+     "input": "1|12.349|0.00",
+     "output": "ERROR:INVALID_INPUT"
+    },
+    {
+     "input": "1|12.3333339|0.00",
+     "output": "ERROR:INVALID_INPUT"
+    },
+    {
+     "input": "1|12.339|0.00",
+     "output": "ERROR:INVALID_INPUT"
+    }
+   ]
+  }
+ ],
+ "events": [],
+ "name": "planted-bug",
+ "title": "Planted one-cent bug \u00b7 invoice"
+}

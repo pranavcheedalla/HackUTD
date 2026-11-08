@@ -1,0 +1,711 @@
+{
+ "kind": "run",
+ "mode": "real_model",
+ "session": "20261107-193920-real-09217f",
+ "started_at": "2026-11-07T19:39:20",
+ "modules": [
+  {
+   "id": "discount",
+   "file": "discount.cbl",
+   "program_id": "DISCOUNT",
+   "kind": "subprogram",
+   "depends_on": [],
+   "status": "done",
+   "error": null,
+   "attempts": 2,
+   "tests_passed": 30,
+   "tests_total": 30,
+   "history": [
+    {
+     "attempt": 1,
+     "passed": 27,
+     "total": 30,
+     "failures": [],
+     "explanation": null
+    },
+    {
+     "attempt": 2,
+     "passed": 30,
+     "total": 30,
+     "failures": [],
+     "explanation": null
+    }
+   ],
+   "divergences": [],
+   "unit_tests_status": "passed",
+   "unit_tests_quarantined": [],
+   "spec": {
+    "module_id": "discount",
+    "summary": "A discount rate is selected based on customer tier or subtotal threshold and returned to the caller. The program does not calculate a discount amount.",
+    "inputs": [
+     {
+      "name": "lk-tier",
+      "type": "string",
+      "format": "token 1, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC X: text, 1 chars"
+     },
+     {
+      "name": "lk-subtotal",
+      "type": "decimal",
+      "format": "token 2, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(7)V99: unsigned number, 7 integer digits + 2 implied decimals (no decimal point stored), max 9999999.99"
+     },
+     {
+      "name": "lk-rate",
+      "type": "decimal",
+      "format": "token 3, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(2)V99: unsigned number, 2 integer digits + 2 implied decimals (no decimal point stored), max 99.99"
+     }
+    ],
+    "outputs": [
+     {
+      "name": "LK-RATE",
+      "type": "decimal",
+      "format": "PIC 9(2)V99: selected discount rate as 2 integer digits + 2 implied decimals"
+     }
+    ],
+    "business_rules": [
+     "If LK-TIER equals 'G', LK-RATE is set to 12.50 (12.50 percent).",
+     "If LK-TIER equals 'S', LK-RATE is set to 7.25 (7.25 percent).",
+     "If LK-SUBTOTAL is greater than or equal to 1000.00, LK-RATE is set to 5.00 (5.00 percent).",
+     "For all other cases, LK-RATE is set to 0.00.",
+     "EVALUATE TRUE branches are evaluated sequentially; the first true condition is taken and remaining conditions are skipped.",
+     "LK-TIER comparison is case-sensitive and matches exactly one character.",
+     "The program does not perform any discount amount calculation (subtotal * rate); it only selects and outputs the rate percentage."
+    ],
+    "edge_cases": [
+     "LK-TIER = 'G' with LK-SUBTOTAL = 2000.00: LK-RATE = 12.50 (first WHEN TRUE branch taken, subtotal comparison not evaluated).",
+     "LK-TIER = 'X' with LK-SUBTOTAL = 500.00: LK-RATE = 0.00 (no tier match, subtotal below 1000, OTHER branch).",
+     "LK-TIER = 'S' with LK-SUBTOTAL = 1000.00: LK-RATE = 7.25 (tier match taken before subtotal comparison).",
+     "LK-TIER = '' with LK-SUBTOTAL = 1500.00: LK-RATE = 5.00 (tier not 'G' or 'S', subtotal >= 1000 taken).",
+     "LK-SUBTOTAL = 999.99 with LK-TIER = 'A': LK-RATE = 0.00 (subtotal below 1000, OTHER branch)."
+    ],
+    "quirks": [
+     "LK-RATE PIC 9(2)V99 stores value as an integer with an implied decimal point; no decimal point is stored in the field itself.",
+     "MOVE 12.50 TO LK-RATE stores as 1250, displayed as '12.50'.",
+     "MOVE 7.25 TO LK-RATE stores as 725, displayed as '7.25'.",
+     "MOVE 5.00 TO LK-RATE stores as 500, displayed as '5.00'.",
+     "MOVE 0 TO LK-RATE stores as 0, displayed as '0.00' (zero-padded to 2 integer digits and 2 implied decimals).",
+     "LK-SUBTOTAL >= 1000.00 comparison uses the full implied decimal value; 999.99 is false, 1000.00 is true."
+    ]
+   },
+   "cobol": "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. DISCOUNT.\n      * Subprogram called by INVOICE: picks a discount rate (percent).\n       DATA DIVISION.\n       LINKAGE SECTION.\n       01  LK-TIER               PIC X.\n       01  LK-SUBTOTAL           PIC 9(7)V99.\n       01  LK-RATE               PIC 9(2)V99.\n       PROCEDURE DIVISION USING LK-TIER LK-SUBTOTAL LK-RATE.\n           EVALUATE TRUE\n               WHEN LK-TIER = 'G'\n                   MOVE 12.50 TO LK-RATE\n               WHEN LK-TIER = 'S'\n                   MOVE 7.25 TO LK-RATE\n               WHEN LK-SUBTOTAL >= 1000.00\n                   MOVE 5.00 TO LK-RATE\n               WHEN OTHER\n                   MOVE 0 TO LK-RATE\n           END-EVALUATE\n           GOBACK.\n",
+   "python": "from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\nHELPER_NAMES = (\"pic_store\", \"pic_from_text\", \"split_fixed\", \"display_num\", \"edit_picture\")\n\n\n# ---------------------------------------------------------------------------\n# Module: discount\n# COBOL subprogram: PROCEDURE DIVISION USING LK-TIER LK-SUBTOTAL LK-RATE.\n# ---------------------------------------------------------------------------\n\n# LINKAGE SECTION fields\n#   01 LK-TIER      PIC X\n#   01 LK-SUBTOTAL  PIC 9(7)V99   (unsigned, 7 integer digits + 2 implied decimals)\n#   01 LK-RATE      PIC 9(2)V99   (unsigned, 2 integer digits + 2 implied decimals)\n\n\ndef call(lk_tier: str, lk_subtotal: Decimal, lk_rate: Decimal) -> tuple:\n    \"\"\"Execute the DISCOUNT subprogram logic.\n\n    Parameters arrive in USING order. Numeric params are Decimal; text param is str.\n    Returns a tuple of every parameter after the call, each already stored per its PIC.\n    \"\"\"\n    # --- LK-TIER: PIC X -------------------------------------------------------\n    # Text field: cut to 1 char, pad with spaces if shorter.\n    tier = (lk_tier or \"\")[:1].ljust(1)\n\n    # --- LK-SUBTOTAL: PIC 9(7)V99 --------------------------------------------\n    # Store into the field (truncates extra decimals, drops high-order digits,\n    # unsigned so sign is lost).\n    subtotal = pic_store(lk_subtotal, 7, 2, signed=False)\n\n    # --- LK-RATE: PIC 9(2)V99 ------------------------------------------------\n    rate = pic_store(lk_rate, 2, 2, signed=False)\n\n    # --- PROCEDURE DIVISION: EVALUATE TRUE ------------------------------------\n    # Branches evaluated sequentially; first true condition taken, rest skipped.\n    if tier == \"G\":\n        # MOVE 12.50 TO LK-RATE\n        rate = pic_store(Decimal(\"12.50\"), 2, 2, signed=False)\n    elif tier == \"S\":\n        # MOVE 7.25 TO LK-RATE\n        rate = pic_store(Decimal(\"7.25\"), 2, 2, signed=False)\n    elif subtotal >= Decimal(\"1000.00\"):\n        # MOVE 5.00 TO LK-RATE\n        rate = pic_store(Decimal(\"5.00\"), 2, 2, signed=False)\n    else:\n        # MOVE 0 TO LK-RATE\n        rate = pic_store(Decimal(\"0\"), 2, 2, signed=False)\n\n    return (tier, subtotal, rate)\n\n\ndef _numval(text: str) -> Decimal:\n    \"\"\"Parse like COBOL FUNCTION NUMVAL; empty/invalid -> Decimal('0').\"\"\"\n    try:\n        return Decimal(text.strip())\n    except Exception:\n        return Decimal(\"0\")\n\n\ndef main(input_line: str) -> str:\n    \"\"\"Test-driver entry point.\n\n    Input: params joined by \"|\" in USING order, numbers as decimal text.\n    Returns ONE line: NAME=value|NAME=value|... using COBOL names.\n    \"\"\"\n    parts = input_line.split(\"|\")\n\n    # LK-TIER (PIC X) - text, taken as-is cut/padded to length 1\n    lk_tier = parts[0] if len(parts) > 0 else \"\"\n\n    # LK-SUBTOTAL (PIC 9(7)V99) - parse like FUNCTION NUMVAL, then store into PIC\n    lk_subtotal_raw = parts[1] if len(parts) > 1 else \"\"\n    lk_subtotal = pic_store(_numval(lk_subtotal_raw), 7, 2, signed=False)\n\n    # LK-RATE (PIC 9(2)V99) - parse like FUNCTION NUMVAL, then store into PIC\n    lk_rate_raw = parts[2] if len(parts) > 2 else \"\"\n    lk_rate = pic_store(_numval(lk_rate_raw), 2, 2, signed=False)\n\n    tier, subtotal, rate = call(lk_tier, lk_subtotal, lk_rate)\n\n    # Output formatting per spec:\n    #   Numeric: zero-padded as 9(int).9(dec) (\"9(int)\" if no decimals,\n    #            leading \"-\" if signed and negative)\n    #   Text: exactly as stored (fixed length)\n    tier_out = tier\n    subtotal_out = display_num(subtotal, 7, 2, signed=False)\n    rate_out = display_num(rate, 2, 2, signed=False)\n\n    return f\"LK-TIER={tier_out}|LK-SUBTOTAL={subtotal_out}|LK-RATE={rate_out}\"\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline().rstrip(\"\\n\")\n    print(main(line), end=\"\")\n",
+   "golden": [
+    {
+     "input": "X|1.00|1.00",
+     "output": "LK-TIER=X|LK-SUBTOTAL=0000001.00|LK-RATE=00.00"
+    },
+    {
+     "input": "||",
+     "output": "LK-TIER= |LK-SUBTOTAL=0000000.00|LK-RATE=00.00"
+    },
+    {
+     "input": "G|1.00|1.00",
+     "output": "LK-TIER=G|LK-SUBTOTAL=0000001.00|LK-RATE=12.50"
+    },
+    {
+     "input": "S|1.00|1.00",
+     "output": "LK-TIER=S|LK-SUBTOTAL=0000001.00|LK-RATE=07.25"
+    },
+    {
+     "input": "g|1.00|1.00",
+     "output": "LK-TIER=g|LK-SUBTOTAL=0000001.00|LK-RATE=00.00"
+    },
+    {
+     "input": "|1.00|1.00",
+     "output": "LK-TIER= |LK-SUBTOTAL=0000001.00|LK-RATE=00.00"
+    },
+    {
+     "input": "X|999.99|1.00",
+     "output": "LK-TIER=X|LK-SUBTOTAL=0000999.99|LK-RATE=00.00"
+    },
+    {
+     "input": "X|1000.00|1.00",
+     "output": "LK-TIER=X|LK-SUBTOTAL=0001000.00|LK-RATE=05.00"
+    },
+    {
+     "input": "X|1000.01|1.00",
+     "output": "LK-TIER=X|LK-SUBTOTAL=0001000.01|LK-RATE=05.00"
+    },
+    {
+     "input": "X|0.00|1.00",
+     "output": "LK-TIER=X|LK-SUBTOTAL=0000000.00|LK-RATE=00.00"
+    },
+    {
+     "input": "X|9999999.99|1.00",
+     "output": "LK-TIER=X|LK-SUBTOTAL=9999999.99|LK-RATE=05.00"
+    },
+    {
+     "input": "X||1.00",
+     "output": "LK-TIER=X|LK-SUBTOTAL=0000000.00|LK-RATE=00.00"
+    },
+    {
+     "input": "X|1.00|0.00",
+     "output": "LK-TIER=X|LK-SUBTOTAL=0000001.00|LK-RATE=00.00"
+    },
+    {
+     "input": "X|1.00|99.99",
+     "output": "LK-TIER=X|LK-SUBTOTAL=0000001.00|LK-RATE=00.00"
+    },
+    {
+     "input": "X|1.00|",
+     "output": "LK-TIER=X|LK-SUBTOTAL=0000001.00|LK-RATE=00.00"
+    },
+    {
+     "input": "G|2000.00|0.00",
+     "output": "LK-TIER=G|LK-SUBTOTAL=0002000.00|LK-RATE=12.50"
+    },
+    {
+     "input": "S|1000.00|0.00",
+     "output": "LK-TIER=S|LK-SUBTOTAL=0001000.00|LK-RATE=07.25"
+    },
+    {
+     "input": "X|500.00|0.00",
+     "output": "LK-TIER=X|LK-SUBTOTAL=0000500.00|LK-RATE=00.00"
+    },
+    {
+     "input": "|1500.00|0.00",
+     "output": "LK-TIER= |LK-SUBTOTAL=0001500.00|LK-RATE=05.00"
+    },
+    {
+     "input": "A|999.99|0.00",
+     "output": "LK-TIER=A|LK-SUBTOTAL=0000999.99|LK-RATE=00.00"
+    },
+    {
+     "input": "A|1000.00|0.00",
+     "output": "LK-TIER=A|LK-SUBTOTAL=0001000.00|LK-RATE=05.00"
+    },
+    {
+     "input": "A|1000.01|0.00",
+     "output": "LK-TIER=A|LK-SUBTOTAL=0001000.01|LK-RATE=05.00"
+    },
+    {
+     "input": "G|9999999.99|0.00",
+     "output": "LK-TIER=G|LK-SUBTOTAL=9999999.99|LK-RATE=12.50"
+    },
+    {
+     "input": "S|9999999.99|0.00",
+     "output": "LK-TIER=S|LK-SUBTOTAL=9999999.99|LK-RATE=07.25"
+    },
+    {
+     "input": "A|9999999.99|0.00",
+     "output": "LK-TIER=A|LK-SUBTOTAL=9999999.99|LK-RATE=05.00"
+    },
+    {
+     "input": "A|0.00|0.00",
+     "output": "LK-TIER=A|LK-SUBTOTAL=0000000.00|LK-RATE=00.00"
+    },
+    {
+     "input": "A|0.01|0.00",
+     "output": "LK-TIER=A|LK-SUBTOTAL=0000000.01|LK-RATE=00.00"
+    },
+    {
+     "input": "G|0.00|0.00",
+     "output": "LK-TIER=G|LK-SUBTOTAL=0000000.00|LK-RATE=12.50"
+    },
+    {
+     "input": "S|0.00|0.00",
+     "output": "LK-TIER=S|LK-SUBTOTAL=0000000.00|LK-RATE=07.25"
+    },
+    {
+     "input": "g|1000.00|0.00",
+     "output": "LK-TIER=g|LK-SUBTOTAL=0001000.00|LK-RATE=05.00"
+    }
+   ]
+  },
+  {
+   "id": "interest",
+   "file": "interest.cbl",
+   "program_id": "INTEREST",
+   "kind": "program",
+   "depends_on": [],
+   "status": "done",
+   "error": null,
+   "attempts": 1,
+   "tests_passed": 24,
+   "tests_total": 24,
+   "history": [
+    {
+     "attempt": 1,
+     "passed": 24,
+     "total": 24,
+     "failures": [],
+     "explanation": null
+    }
+   ],
+   "divergences": [],
+   "unit_tests_status": "needs_review",
+   "unit_tests_quarantined": [
+    "test_known_interest_exact",
+    "test_larger_known_interest_exact"
+   ],
+   "spec": {
+    "module_id": "interest",
+    "summary": "A simple interest calculator that reads a fixed-width 15-character input line containing principal, rate, and years. It validates that years is at least 1, computes interest and total using exact intermediate arithmetic rounded to the receiving field, and outputs formatted dollar amounts. If years is 0, it prints an error and stops.",
+    "inputs": [
+     {
+      "name": "IN-PRINCIPAL",
+      "type": "decimal",
+      "format": "cols 1-9, PIC 9(7)V99, unsigned number, 7 integer digits + 2 implied decimals (no decimal point stored), max 9999999.99"
+     },
+     {
+      "name": "IN-RATE",
+      "type": "decimal",
+      "format": "cols 10-13, PIC 9(2)V99, unsigned number, 2 integer digits + 2 implied decimals (no decimal point stored), max 99.99"
+     },
+     {
+      "name": "IN-YEARS",
+      "type": "integer",
+      "format": "cols 14-15, PIC 9(2), unsigned number, 2 integer digits, max 99"
+     }
+    ],
+    "outputs": [
+     {
+      "name": "OUT-INTEREST",
+      "type": "decimal",
+      "format": "PIC Z(6)9.99, display-edited number, 10 chars wide, 2 decimals shown, leading zeros replaced by spaces"
+     },
+     {
+      "name": "OUT-TOTAL",
+      "type": "decimal",
+      "format": "PIC Z(7)9.99, display-edited number, 11 chars wide, 2 decimals shown, leading zeros replaced by spaces"
+     }
+    ],
+    "business_rules": [
+     "If IN-YEARS equals 0, the program displays \"ERROR: YEARS MUST BE AT LEAST 1\" and stops; no arithmetic is performed.",
+     "Interest is calculated as IN-PRINCIPAL * IN-RATE * IN-YEARS / 100, with intermediate decimals computed exactly and the final result rounded to 2 implied decimals by ROUNDED before storage in WS-INTEREST (PIC 9(7)V99).",
+     "Total is calculated as IN-PRINCIPAL + WS-INTEREST, stored in WS-TOTAL (PIC 9(8)V99) without ON SIZE ERROR; if the result exceeds 8 integer digits + 2 decimals, leftmost digits are silently lost.",
+     "WS-INTEREST is moved to OUT-INTEREST (PIC Z(6)9.99) and WS-TOTAL is moved to OUT-TOTAL (PIC Z(7)9.99); the MOVE operation applies display editing, replacing leading zeros with spaces.",
+     "DISPLAY \"INTEREST: \" concatenates the literal text \"INTEREST: \" with the edited OUT-INTEREST value and outputs a 20-character string.",
+     "DISPLAY \"TOTAL:    \" concatenates the literal text \"TOTAL:    \" with the edited OUT-TOTAL value and outputs a 21-character string."
+    ],
+    "edge_cases": [
+     "IN-YEARS = 0 triggers the error message and STOP RUN; interest and total are not computed.",
+     "IN-PRINCIPAL = 0, IN-RATE = 0, IN-YEARS = 1 produces zero interest and total equal to principal.",
+     "IN-PRINCIPAL = 9999999.99, IN-RATE = 99.99, IN-YEARS = 99 computes a product that exceeds 9999999.99; without ON SIZE ERROR, WS-INTEREST silently loses its leftmost digits, wrapping around to the lower 7 digits + 2 decimals.",
+     "Resulting interest of exactly 0.00 displays as \"      0.00\" (6 spaces followed by 0.00) under Z(6)9.99 editing.",
+     "Total exceeding 99999999.99 silently loses its leftmost digits in WS-TOTAL, wrapping to the lower 8 digits + 2 decimals."
+    ],
+    "quirks": [
+     "Implied decimal: PIC 9(7)V99 stores no decimal point; the value 100.00 is stored as 10000.",
+     "ROUNDED rounding: COMPUTE ... ROUNDED rounds the final result to the receiving field's precision; e.g., 1*12.35*(100-0.01)/100 = 12.348765 moves to PIC 9(5)V99 as 12.34.",
+     "No ON SIZE ERROR: arithmetic results larger than the receiving field silently lose their leftmost digits; e.g., PIC 9(3) receiving 1234 becomes 234.",
+     "Display editing Z(6)9.99: leading zeros are replaced with spaces; the output width is fixed at 10 characters with exactly 2 decimal places.",
+     "DISPLAY concatenation: DISPLAY \"INTEREST: \" OUT-INTEREST produces exactly 20 characters (\"INTEREST: \" is 10 chars including trailing space, OUT-INTEREST is 10 chars). DISPLAY \"TOTAL:    \" OUT-TOTAL produces exactly 21 characters (\"TOTAL:    \" is 10 chars including trailing spaces, OUT-TOTAL is 11 chars).",
+     "ACCEPT fixed-width line: the 15-character input line is read left-to-right into cols 1-9, 10-13, 14-15."
+    ]
+   },
+   "cobol": "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. INTEREST.\n      * Simple interest calculator.\n      * Input: one fixed-width line, 15 characters, no decimal points\n      *   cols 1-9   principal  PIC 9(7)V99\n      *   cols 10-13 rate (%)   PIC 9(2)V99\n      *   cols 14-15 years      PIC 9(2)\n       DATA DIVISION.\n       WORKING-STORAGE SECTION.\n       01  WS-INPUT.\n           05  IN-PRINCIPAL      PIC 9(7)V99.\n           05  IN-RATE           PIC 9(2)V99.\n           05  IN-YEARS          PIC 9(2).\n       01  WS-INTEREST           PIC 9(7)V99.\n       01  WS-TOTAL              PIC 9(8)V99.\n       01  OUT-INTEREST          PIC Z(6)9.99.\n       01  OUT-TOTAL             PIC Z(7)9.99.\n       PROCEDURE DIVISION.\n       MAIN-PARA.\n           ACCEPT WS-INPUT\n           IF IN-YEARS = 0\n               DISPLAY \"ERROR: YEARS MUST BE AT LEAST 1\"\n               STOP RUN\n           END-IF\n           COMPUTE WS-INTEREST ROUNDED =\n               IN-PRINCIPAL * IN-RATE * IN-YEARS / 100\n           COMPUTE WS-TOTAL = IN-PRINCIPAL + WS-INTEREST\n           MOVE WS-INTEREST TO OUT-INTEREST\n           MOVE WS-TOTAL TO OUT-TOTAL\n           DISPLAY \"INTEREST: \" OUT-INTEREST\n           DISPLAY \"TOTAL:    \" OUT-TOTAL\n           STOP RUN.\n",
+   "python": "\"\"\"Port of COBOL program INTEREST to Python 3.11.\n\nByte-for-byte equivalent DISPLAY output for every input.\n\"\"\"\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\n\n# ---------------------------------------------------------------------------\n# COBOL data semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Working-storage record for program INTEREST\n# ---------------------------------------------------------------------------\n\nclass InterestWS:\n    \"\"\"Working-storage fields mirroring the COBOL 01 levels.\"\"\"\n\n    def __init__(self):\n        # INPUT RECORD (fixed-width 15 chars)\n        self.in_principal = Decimal(\"0\")   # PIC 9(7)V99\n        self.in_rate = Decimal(\"0\")        # PIC 9(2)V99\n        self.in_years = Decimal(\"0\")       # PIC 9(2)\n\n        # COMPUTED FIELDS\n        self.ws_interest = Decimal(\"0\")    # PIC 9(7)V99\n        self.ws_total = Decimal(\"0\")       # PIC 9(8)V99\n\n        # EDITED OUTPUT FIELDS\n        self.out_interest = \" \" * 10       # PIC Z(6)9.99\n        self.out_total = \" \" * 11          # PIC Z(7)9.99\n\n\n# ---------------------------------------------------------------------------\n# Paragraph: MAIN-PARA\n# ---------------------------------------------------------------------------\n\ndef main_para(input_line: str) -> str:\n    \"\"\"Execute the COBOL MAIN-PARA logic and return the DISPLAY output.\"\"\"\n    ws = InterestWS()\n    lines = []\n\n    # ACCEPT WS-INPUT  -> fixed-width split: cols 1-9, 10-13, 14-15\n    principal_raw, rate_raw, years_raw = split_fixed(input_line, [9, 4, 2])\n\n    # PIC 9 fields are unsigned; spaces count as zeros; implied decimal point.\n    ws.in_principal = pic_from_text(principal_raw, 7, 2, signed=False)\n    ws.in_rate = pic_from_text(rate_raw, 2, 2, signed=False)\n    ws.in_years = pic_from_text(years_raw, 2, 0, signed=False)\n\n    # IF IN-YEARS = 0  -> error and STOP RUN (no arithmetic)\n    if ws.in_years == 0:\n        lines.append(\"ERROR: YEARS MUST BE AT LEAST 1\")\n        return \"\\n\".join(lines)\n\n    # COMPUTE WS-INTEREST ROUNDED = IN-PRINCIPAL * IN-RATE * IN-YEARS / 100\n    # Intermediate arithmetic keeps full precision; ROUNDED applies only at store.\n    interest_exact = ws.in_principal * ws.in_rate * ws.in_years / Decimal(100)\n    ws.ws_interest = pic_store(interest_exact, 7, 2, signed=False, rounded=True)\n\n    # COMPUTE WS-TOTAL = IN-PRINCIPAL + WS-INTEREST   (no ON SIZE ERROR)\n    # High-order digits are silently dropped if they exceed PIC 9(8)V99.\n    ws.ws_total = pic_store(ws.in_principal + ws.ws_interest, 8, 2, signed=False, rounded=False)\n\n    # MOVE WS-INTEREST TO OUT-INTEREST   (PIC Z(6)9.99)\n    ws.out_interest = edit_picture(ws.ws_interest, \"Z(6)9.99\")\n\n    # MOVE WS-TOTAL TO OUT-TOTAL   (PIC Z(7)9.99)\n    ws.out_total = edit_picture(ws.ws_total, \"Z(7)9.99\")\n\n    # DISPLAY \"INTEREST: \" OUT-INTEREST   (concatenation, no separator)\n    lines.append(\"INTEREST: \" + ws.out_interest)\n\n    # DISPLAY \"TOTAL:    \" OUT-TOTAL\n    lines.append(\"TOTAL:    \" + ws.out_total)\n\n    return \"\\n\".join(lines)\n\n\n# ---------------------------------------------------------------------------\n# Module entry point required by the migration harness\n# ---------------------------------------------------------------------------\n\ndef main(input_line: str) -> str:\n    \"\"\"Return everything the COBOL program would print for one input line.\n\n    Lines are joined by \"\\n\" with NO trailing newline. Never raises.\n    \"\"\"\n    try:\n        return main_para(input_line)\n    except Exception:\n        # COBOL does not crash on odd input; return empty output as safe fallback.\n        return \"\"\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    data = sys.stdin.read()\n    # COBOL ACCEPT reads exactly one line; strip only the trailing newline\n    # that the harness adds, preserving any other characters.\n    if data.endswith(\"\\n\"):\n        data = data[:-1]\n    print(main(data), end=\"\")\n",
+   "golden": [
+    {
+     "input": "000000000000000",
+     "output": "ERROR: YEARS MUST BE AT LEAST 1"
+    },
+    {
+     "input": "999999999999999",
+     "output": "INTEREST: 9900999.01\nTOTAL:    19900999.00"
+    },
+    {
+     "input": "000100000050003",
+     "output": "INTEREST:     150.00\nTOTAL:        1150.00"
+    },
+    {
+     "input": "000250075042510",
+     "output": "INTEREST:    1062.82\nTOTAL:        3563.57"
+    },
+    {
+     "input": "000010000123599",
+     "output": "INTEREST:    1222.65\nTOTAL:        1322.65"
+    },
+    {
+     "input": "000000000000001",
+     "output": "INTEREST:       0.00\nTOTAL:           0.00"
+    },
+    {
+     "input": "000000000050001",
+     "output": "INTEREST:       0.00\nTOTAL:           0.00"
+    },
+    {
+     "input": "000100000000001",
+     "output": "INTEREST:       0.00\nTOTAL:        1000.00"
+    },
+    {
+     "input": "000100000050000",
+     "output": "ERROR: YEARS MUST BE AT LEAST 1"
+    },
+    {
+     "input": "999999999000101",
+     "output": "INTEREST:    1000.00\nTOTAL:    10000999.99"
+    },
+    {
+     "input": "000000001000101",
+     "output": "INTEREST:       0.00\nTOTAL:           0.01"
+    },
+    {
+     "input": "000100000050001",
+     "output": "INTEREST:      50.00\nTOTAL:        1050.00"
+    },
+    {
+     "input": "000100000050002",
+     "output": "INTEREST:     100.00\nTOTAL:        1100.00"
+    },
+    {
+     "input": "000100000999901",
+     "output": "INTEREST:     999.90\nTOTAL:        1999.90"
+    },
+    {
+     "input": "000100000000101",
+     "output": "INTEREST:       0.10\nTOTAL:        1000.10"
+    },
+    {
+     "input": "999999999050001",
+     "output": "INTEREST:  500000.00\nTOTAL:    10499999.99"
+    },
+    {
+     "input": "000000001050001",
+     "output": "INTEREST:       0.00\nTOTAL:           0.01"
+    },
+    {
+     "input": "000100000123501",
+     "output": "INTEREST:     123.50\nTOTAL:        1123.50"
+    },
+    {
+     "input": "000100000123901",
+     "output": "INTEREST:     123.90\nTOTAL:        1123.90"
+    },
+    {
+     "input": "999999999999901",
+     "output": "INTEREST: 9998999.99\nTOTAL:    19998999.98"
+    },
+    {
+     "input": "500000000999999",
+     "output": "INTEREST: 4950500.00\nTOTAL:     9950500.00"
+    },
+    {
+     "input": "000012345067809",
+     "output": "INTEREST:      75.33\nTOTAL:         198.78"
+    },
+    {
+     "input": "000010000000000",
+     "output": "ERROR: YEARS MUST BE AT LEAST 1"
+    },
+    {
+     "input": "999999999999900",
+     "output": "ERROR: YEARS MUST BE AT LEAST 1"
+    }
+   ]
+  },
+  {
+   "id": "invoice",
+   "file": "invoice.cbl",
+   "program_id": "INVOICE",
+   "kind": "program",
+   "depends_on": [
+    "discount"
+   ],
+   "status": "done",
+   "error": null,
+   "attempts": 1,
+   "tests_passed": 20,
+   "tests_total": 20,
+   "history": [
+    {
+     "attempt": 1,
+     "passed": 20,
+     "total": 20,
+     "failures": [],
+     "explanation": null
+    }
+   ],
+   "divergences": [],
+   "unit_tests_status": "needs_review",
+   "unit_tests_quarantined": [
+    "test_worked_examples_exact"
+   ],
+   "spec": {
+    "module_id": "invoice",
+    "summary": "A COBOL invoice program reads a 12-character fixed-width input line containing quantity, unit price, and customer tier, validates the quantity, computes subtotal and tier-based discount via an external DISCOUNT subroutine, and displays formatted financial output or an error message.",
+    "inputs": [
+     {
+      "name": "INV-QTY",
+      "type": "integer",
+      "format": "cols 1-4, PIC 9(4), unsigned 4-digit integer, max 9999"
+     },
+     {
+      "name": "INV-UNIT-PRICE",
+      "type": "decimal",
+      "format": "cols 5-11, PIC 9(5)V99, unsigned 5 integer digits + 2 implied decimals, no decimal point stored, max 99999.99"
+     },
+     {
+      "name": "INV-CUST-TIER",
+      "type": "string",
+      "format": "col 12, PIC X, 1 character: 'G' for TIER-GOLD, 'S' for TIER-SILVER"
+     }
+    ],
+    "outputs": [
+     {
+      "name": "OUT-SUBTOTAL",
+      "type": "decimal",
+      "format": "PIC Z(6)9.99, 10 characters wide, display-edited with leading zero suppression, 2 decimal places shown"
+     },
+     {
+      "name": "OUT-DISC",
+      "type": "decimal",
+      "format": "PIC Z(4)9.99, 8 characters wide, display-edited with leading zero suppression, 2 decimal places shown"
+     },
+     {
+      "name": "OUT-NET",
+      "type": "decimal",
+      "format": "PIC -Z(6)9.99, 11 characters wide, display-edited with leading zero suppression and sign, 2 decimal places shown"
+     },
+     {
+      "name": "DISPLAY line 28",
+      "type": "string",
+      "format": "ERROR: QUANTITY MUST BE AT LEAST 1"
+     },
+     {
+      "name": "DISPLAY line 33",
+      "type": "string",
+      "format": "ERROR: SUBTOTAL TOO LARGE"
+     },
+     {
+      "name": "DISPLAY line 43",
+      "type": "string",
+      "format": "SUBTOTAL: "
+     },
+     {
+      "name": "DISPLAY line 44",
+      "type": "string",
+      "format": "DISCOUNT: "
+     },
+     {
+      "name": "DISPLAY line 45",
+      "type": "string",
+      "format": "NET:     "
+     }
+    ],
+    "business_rules": [
+     "ACCEPT reads one fixed-width 12-character line into INV-RECORD.",
+     "INV-QTY occupies columns 1-4 as PIC 9(4); leading zeros are allowed.",
+     "INV-UNIT-PRICE occupies columns 5-11 as PIC 9(5)V99; the value is stored without a decimal point and interpreted with 2 implied decimal places.",
+     "INV-CUST-TIER occupies column 12 as PIC X; TIER-GOLD is 'G' and TIER-SILVER is 'S'.",
+     "If INV-QTY equals zero, display \"ERROR: QUANTITY MUST BE AT LEAST 1\" and STOP RUN; no arithmetic is performed.",
+     "WS-SUBTOTAL is computed as INV-QTY * INV-UNIT-PRICE with intermediate decimal precision retained; if the result exceeds PIC 9(7)V99 capacity, ON SIZE ERROR displays \"ERROR: SUBTOTAL TOO LARGE\" and STOP RUN.",
+     "CALL 'DISCOUNT' USING INV-CUST-TIER WS-SUBTOTAL WS-DISC-RATE sets WS-DISC-RATE based on tier.",
+     "WS-DISC-AMT is computed as WS-SUBTOTAL * WS-DISC-RATE / 100 using exact intermediate decimal arithmetic; truncation to 2 decimal places occurs only when stored into PIC 9(5)V99 WS-DISC-AMT; no ON SIZE ERROR, so results above 99999.99 silently lose high-order digits.",
+     "WS-NET is computed as WS-SUBTOTAL - WS-DISC-AMT using exact intermediate decimal arithmetic; no ON SIZE ERROR, so results above PIC S9(7)V99 capacity silently lose high-order digits.",
+     "MOVE WS-SUBTOTAL TO OUT-SUBTOTAL, MOVE WS-DISC-AMT TO OUT-DISC, and MOVE WS-NET TO OUT-NET convert numeric values to display-edited output with leading zero suppression (Z) and fixed decimal positions.",
+     "DISPLAY \"SUBTOTAL: \" OUT-SUBTOTAL outputs the literal followed by the edited subtotal on one line.",
+     "DISPLAY \"DISCOUNT: \" OUT-DISC outputs the literal followed by the edited discount on one line.",
+     "DISPLAY \"NET:     \" OUT-NET outputs the literal followed by the edited net on one line."
+    ],
+    "edge_cases": [
+     "INV-QTY = 0 triggers the error path and stops before any arithmetic.",
+     "INV-QTY = 9999 and INV-UNIT-PRICE = 99999.99 yields subtotal 999890001.00, exceeding PIC 9(7)V99 max 9999999.99, triggering ON SIZE ERROR.",
+     "INV-QTY = 1, INV-UNIT-PRICE = 12.35, TIER-GOLD: WS-SUBTOTAL = 12.35, WS-DISC-RATE = 15.00, WS-DISC-AMT = 12.35 * 15.00 / 100 = 1.8525 truncated to 1.85, WS-NET = 10.50.",
+     "INV-QTY = 1, INV-UNIT-PRICE = 12.35, TIER-SILVER: WS-SUBTOTAL = 12.35, WS-DISC-RATE = 10.00, WS-DISC-AMT = 12.35 * 10.00 / 100 = 1.235 truncated to 1.23, WS-NET = 11.12.",
+     "INV-QTY = 1, INV-UNIT-PRICE = 12.35, rate 100.00: WS-DISC-AMT = 12.35 * 100.00 / 100 = 12.35 exactly, WS-NET = 0.00.",
+     "Leading zeros in INV-QTY or INV-UNIT-PRICE are accepted within their digit-count limits.",
+     "WS-NET can be negative if WS-DISC-AMT exceeds WS-SUBTOTAL; OUT-NET PIC -Z(6)9.99 displays the sign when negative."
+    ],
+    "quirks": [
+     "Truncation occurs at the receiving field, not at each arithmetic operator; e.g. 1 * 12.35 * (100 - 0.01) / 100 = 12.348765, stored into PIC 9(5)V99 as 12.34.",
+     "WS-DISC-AMT has no ON SIZE ERROR; overflow above 99999.99 silently loses high-order digits.",
+     "WS-NET has no ON SIZE ERROR; overflow above PIC S9(7)V99 capacity silently loses high-order digits.",
+     "OUT-NET PIC -Z(6)9.99 is 11 characters wide including the sign position.",
+     "OUT-SUBTOTAL PIC Z(6)9.99 is 10 characters wide; OUT-DISC PIC Z(4)9.99 is 8 characters wide.",
+     "[static check, line 38] WS-DISC-AMT (PIC 9(5)V99: unsigned number, 5 integer digits + 2 implied decimals (no decimal point stored), max 99999.99) is stored WITHOUT ROUNDED: digits beyond 2 decimal place(s) are TRUNCATED, not rounded (e.g. 12.339 is stored as 12.33, not 12.34)."
+    ]
+   },
+   "cobol": "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. INVOICE.\n      * Invoice total with tier discount.\n      * Input: one fixed-width line, 12 characters (see INVREC).\n       DATA DIVISION.\n       WORKING-STORAGE SECTION.\n       COPY INVREC.\n       01  WS-SUBTOTAL           PIC 9(7)V99.\n       01  WS-DISC-RATE          PIC 9(2)V99.\n       01  WS-DISC-AMT           PIC 9(5)V99.\n       01  WS-NET                PIC S9(7)V99.\n       01  OUT-SUBTOTAL          PIC Z(6)9.99.\n       01  OUT-DISC              PIC Z(4)9.99.\n       01  OUT-NET               PIC -Z(6)9.99.\n       PROCEDURE DIVISION.\n       MAIN-PARA.\n           ACCEPT INV-RECORD\n           IF INV-QTY = ZERO\n               DISPLAY \"ERROR: QUANTITY MUST BE AT LEAST 1\"\n               STOP RUN\n           END-IF\n           COMPUTE WS-SUBTOTAL = INV-QTY * INV-UNIT-PRICE\n               ON SIZE ERROR\n                   DISPLAY \"ERROR: SUBTOTAL TOO LARGE\"\n                   STOP RUN\n           END-COMPUTE\n           CALL 'DISCOUNT' USING INV-CUST-TIER WS-SUBTOTAL\n                                 WS-DISC-RATE\n           COMPUTE WS-DISC-AMT = WS-SUBTOTAL * WS-DISC-RATE / 100\n           COMPUTE WS-NET = WS-SUBTOTAL - WS-DISC-AMT\n           MOVE WS-SUBTOTAL TO OUT-SUBTOTAL\n           MOVE WS-DISC-AMT TO OUT-DISC\n           MOVE WS-NET TO OUT-NET\n           DISPLAY \"SUBTOTAL: \" OUT-SUBTOTAL\n           DISPLAY \"DISCOUNT: \" OUT-DISC\n           DISPLAY \"NET:     \" OUT-NET\n           STOP RUN.\n",
+   "python": "\"\"\"Module: invoice\n\nPython 3.11 migration of COBOL program INVOICE.\nByte-for-byte equivalent DISPLAY output for every input.\n\"\"\"\n\nfrom decimal import Decimal\nimport discount\n\n\n# ---------------------------------------------------------------------------\n# COBOL data semantics helpers (copied verbatim per migration rules)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    from decimal import ROUND_DOWN, ROUND_HALF_UP\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    import re\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    import re\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    import re\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Working-storage fields (mirror COBOL 01-level items)\n# ---------------------------------------------------------------------------\n\n# INV-RECORD group (12 chars total)\n#   INV-QTY        PIC 9(4)        cols 1-4\n#   INV-UNIT-PRICE PIC 9(5)V99     cols 5-11  (7 digits, implied 2 decimals)\n#   INV-CUST-TIER  PIC X           col 12\nINV_QTY_INT = 4\nINV_QTY_DEC = 0\nINV_PRICE_INT = 5\nINV_PRICE_DEC = 2\nINV_TIER_LEN = 1\n\n# WS-SUBTOTAL      PIC 9(7)V99\nWS_SUBTOTAL_INT = 7\nWS_SUBTOTAL_DEC = 2\n\n# WS-DISC-RATE     PIC 9(2)V99\nWS_DISC_RATE_INT = 2\nWS_DISC_RATE_DEC = 2\n\n# WS-DISC-AMT      PIC 9(5)V99   (no ON SIZE ERROR)\nWS_DISC_AMT_INT = 5\nWS_DISC_AMT_DEC = 2\n\n# WS-NET           PIC S9(7)V99  (no ON SIZE ERROR)\nWS_NET_INT = 7\nWS_NET_DEC = 2\nWS_NET_SIGNED = True\n\n# OUT-SUBTOTAL     PIC Z(6)9.99   -> expanded \"ZZZZZZ9.99\" (10 chars)\n# OUT-DISC         PIC Z(4)9.99   -> expanded \"ZZZZ9.99\"   (8 chars)\n# OUT-NET          PIC -Z(6)9.99  -> expanded \"-ZZZZZZ9.99\" (11 chars)\n\n\ndef main(input_line: str) -> str:\n    \"\"\"Return everything the COBOL program would print, lines joined by \"\\n\",\n    no trailing newline. Never raises.\"\"\"\n    lines = []\n\n    # ---- ACCEPT INV-RECORD -------------------------------------------------\n    # Fixed-width split: 4 + 7 + 1 = 12 characters. Short line padded with\n    # spaces; long line truncated.\n    qty_text, price_text, tier_text = split_fixed(input_line, [4, 7, 1])\n\n    # PIC 9 fields read by ACCEPT: implied decimal point, spaces count as zeros.\n    inv_qty = pic_from_text(qty_text, INV_QTY_INT, INV_QTY_DEC, signed=False)\n    inv_unit_price = pic_from_text(\n        price_text, INV_PRICE_INT, INV_PRICE_DEC, signed=False\n    )\n    inv_cust_tier = tier_text  # PIC X, kept as-is (1 char)\n\n    # ---- IF INV-QTY = ZERO -------------------------------------------------\n    if inv_qty == Decimal(\"0\"):\n        lines.append(\"ERROR: QUANTITY MUST BE AT LEAST 1\")\n        return \"\\n\".join(lines)\n\n    # ---- COMPUTE WS-SUBTOTAL = INV-QTY * INV-UNIT-PRICE (ON SIZE ERROR) ----\n    # Intermediate result keeps full precision; truncation/capacity check only\n    # when stored into PIC 9(7)V99.\n    subtotal_full = inv_qty * inv_unit_price\n    max_subtotal = Decimal(10) ** WS_SUBTOTAL_INT  # 10^7 = 10000000.00 capacity\n    if subtotal_full >= max_subtotal:\n        # Integer part needs more than 7 digits -> ON SIZE ERROR branch.\n        lines.append(\"ERROR: SUBTOTAL TOO LARGE\")\n        return \"\\n\".join(lines)\n    ws_subtotal = pic_store(\n        subtotal_full, WS_SUBTOTAL_INT, WS_SUBTOTAL_DEC, signed=False\n    )\n\n    # ---- CALL 'DISCOUNT' USING INV-CUST-TIER WS-SUBTOTAL WS-DISC-RATE ------\n    # COBOL passes BY REFERENCE; callee may modify any argument. Unpack the\n    # returned tuple back into the caller's variables. The caller then stores\n    # ws_subtotal / ws_disc_rate again per its own PIC (they already fit).\n    tier, ws_subtotal, ws_disc_rate = discount.call(\n        inv_cust_tier, ws_subtotal, Decimal(\"0\")\n    )\n    # Re-store per caller PICs (no-op here since they already fit, but keeps\n    # semantics exact if the callee had produced out-of-range values).\n    ws_subtotal = pic_store(ws_subtotal, WS_SUBTOTAL_INT, WS_SUBTOTAL_DEC, signed=False)\n    ws_disc_rate = pic_store(\n        ws_disc_rate, WS_DISC_RATE_INT, WS_DISC_RATE_DEC, signed=False\n    )\n\n    # ---- COMPUTE WS-DISC-AMT = WS-SUBTOTAL * WS-DISC-RATE / 100 ------------\n    # Exact intermediate decimal arithmetic; truncation to 2 decimals occurs\n    # only when stored into PIC 9(5)V99. No ON SIZE ERROR -> overflow silently\n    # loses high-order digits.\n    disc_amt_full = ws_subtotal * ws_disc_rate / Decimal(\"100\")\n    ws_disc_amt = pic_store(\n        disc_amt_full, WS_DISC_AMT_INT, WS_DISC_AMT_DEC, signed=False\n    )\n\n    # ---- COMPUTE WS-NET = WS-SUBTOTAL - WS-DISC-AMT ------------------------\n    # Exact intermediate arithmetic; no ON SIZE ERROR -> overflow above\n    # PIC S9(7)V99 silently loses high-order digits.\n    ws_net_full = ws_subtotal - ws_disc_amt\n    ws_net = pic_store(\n        ws_net_full, WS_NET_INT, WS_NET_DEC, signed=WS_NET_SIGNED\n    )\n\n    # ---- MOVE to edited output fields --------------------------------------\n    out_subtotal = edit_picture(ws_subtotal, \"Z(6)9.99\")\n    out_disc = edit_picture(ws_disc_amt, \"Z(4)9.99\")\n    out_net = edit_picture(ws_net, \"-Z(6)9.99\")\n\n    # ---- DISPLAY lines ------------------------------------------------------\n    # Each DISPLAY statement is one line; items concatenate with NO separator.\n    lines.append(\"SUBTOTAL: \" + out_subtotal)\n    lines.append(\"DISCOUNT: \" + out_disc)\n    lines.append(\"NET:     \" + out_net)\n\n    return \"\\n\".join(lines)\n\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline().rstrip(\"\\n\")\n    print(main(line), end=\"\")\n",
+   "golden": [
+    {
+     "input": "00010010000G",
+     "output": "SUBTOTAL:     100.00\nDISCOUNT:    12.50\nNET:           87.50"
+    },
+    {
+     "input": "00010010000S",
+     "output": "SUBTOTAL:     100.00\nDISCOUNT:     7.25\nNET:           92.75"
+    },
+    {
+     "input": "00050002550G",
+     "output": "SUBTOTAL:     127.50\nDISCOUNT:    15.93\nNET:          111.57"
+    },
+    {
+     "input": "00100005000S",
+     "output": "SUBTOTAL:     500.00\nDISCOUNT:    36.25\nNET:          463.75"
+    },
+    {
+     "input": "00030001235G",
+     "output": "SUBTOTAL:      37.05\nDISCOUNT:     4.63\nNET:           32.42"
+    },
+    {
+     "input": "00000010000G",
+     "output": "ERROR: QUANTITY MUST BE AT LEAST 1"
+    },
+    {
+     "input": "99999999999G",
+     "output": "ERROR: SUBTOTAL TOO LARGE"
+    },
+    {
+     "input": "99990000001S",
+     "output": "SUBTOTAL:      99.99\nDISCOUNT:     7.24\nNET:           92.75"
+    },
+    {
+     "input": "00019999999G",
+     "output": "SUBTOTAL:   99999.99\nDISCOUNT: 12499.99\nNET:        87500.00"
+    },
+    {
+     "input": "00019999999S",
+     "output": "SUBTOTAL:   99999.99\nDISCOUNT:  7249.99\nNET:        92750.00"
+    },
+    {
+     "input": "00010000001G",
+     "output": "SUBTOTAL:       0.01\nDISCOUNT:     0.00\nNET:            0.01"
+    },
+    {
+     "input": "00010000001S",
+     "output": "SUBTOTAL:       0.01\nDISCOUNT:     0.00\nNET:            0.01"
+    },
+    {
+     "input": "00010001235X",
+     "output": "SUBTOTAL:      12.35\nDISCOUNT:     0.00\nNET:           12.35"
+    },
+    {
+     "input": "00010001235 ",
+     "output": "SUBTOTAL:      12.35\nDISCOUNT:     0.00\nNET:           12.35"
+    },
+    {
+     "input": "00020001235G",
+     "output": "SUBTOTAL:      24.70\nDISCOUNT:     3.08\nNET:           21.62"
+    },
+    {
+     "input": "00010001235G",
+     "output": "SUBTOTAL:      12.35\nDISCOUNT:     1.54\nNET:           10.81"
+    },
+    {
+     "input": "99990100000G",
+     "output": "SUBTOTAL: 9999000.00\nDISCOUNT: 49875.00\nNET:      9949125.00"
+    },
+    {
+     "input": "00010000000G",
+     "output": "SUBTOTAL:       0.00\nDISCOUNT:     0.00\nNET:            0.00"
+    },
+    {
+     "input": "00010000100S",
+     "output": "SUBTOTAL:       1.00\nDISCOUNT:     0.07\nNET:            0.93"
+    },
+    {
+     "input": "00010000101G",
+     "output": "SUBTOTAL:       1.01\nDISCOUNT:     0.12\nNET:            0.89"
+    }
+   ]
+  }
+ ],
+ "events": [
+  {
+   "t": "2026-11-07T19:39:37",
+   "module": "discount",
+   "node": "extract_spec",
+   "msg": "A discount rate is selected based on customer tier or subtotal threshold and returned to the caller. The program does not calculate a discount amount."
+  },
+  {
+   "t": "2026-11-07T19:39:44",
+   "module": "discount",
+   "node": "record",
+   "msg": "recorded 30 golden cases"
+  },
+  {
+   "t": "2026-11-07T19:39:56",
+   "module": "discount",
+   "node": "rewrite",
+   "msg": "attempt 1"
+  },
+  {
+   "t": "2026-11-07T19:39:56",
+   "module": "discount",
+   "node": "verify",
+   "msg": "27/30 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-07T19:40:12",
+   "module": "discount",
+   "node": "rewrite",
+   "msg": "attempt 2 (fixing failures)"
+  },
+  {
+   "t": "2026-11-07T19:40:12",
+   "module": "discount",
+   "node": "verify",
+   "msg": "30/30 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-07T19:40:46",
+   "module": "discount",
+   "node": "accept",
+   "msg": "verified identical. unit tests written"
+  },
+  {
+   "t": "2026-11-07T19:41:02",
+   "module": "interest",
+   "node": "extract_spec",
+   "msg": "A simple interest calculator that reads a fixed-width 15-character input line containing principal, rate, and years. It validates that years is at least 1, computes interest and total using exact intermediate arithmetic rounded to the receiving field, and outputs formatted dollar amounts. If years is 0, it prints an error and stops."
+  },
+  {
+   "t": "2026-11-07T19:41:07",
+   "module": "interest",
+   "node": "record",
+   "msg": "recorded 24 golden cases"
+  },
+  {
+   "t": "2026-11-07T19:41:18",
+   "module": "interest",
+   "node": "rewrite",
+   "msg": "attempt 1"
+  },
+  {
+   "t": "2026-11-07T19:41:18",
+   "module": "interest",
+   "node": "verify",
+   "msg": "24/24 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-07T19:42:03",
+   "module": "interest",
+   "node": "accept",
+   "msg": "verified identical. unit tests written; 2 quarantined for review: test_known_interest_exact, test_larger_known_interest_exact"
+  },
+  {
+   "t": "2026-11-07T19:42:36",
+   "module": "invoice",
+   "node": "extract_spec",
+   "msg": "A COBOL invoice program reads a 12-character fixed-width input line containing quantity, unit price, and customer tier, validates the quantity, computes subtotal and tier-based discount via an external DISCOUNT subroutine, and displays formatted financial output or an error message."
+  },
+  {
+   "t": "2026-11-07T19:42:40",
+   "module": "invoice",
+   "node": "record",
+   "msg": "recorded 20 golden cases"
+  },
+  {
+   "t": "2026-11-07T19:42:56",
+   "module": "invoice",
+   "node": "rewrite",
+   "msg": "attempt 1"
+  },
+  {
+   "t": "2026-11-07T19:42:56",
+   "module": "invoice",
+   "node": "verify",
+   "msg": "20/20 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-07T19:43:24",
+   "module": "invoice",
+   "node": "accept",
+   "msg": "verified identical. unit tests written; 1 quarantined for review: test_worked_examples_exact"
+  }
+ ],
+ "name": "codebase",
+ "title": "Multi-file codebase \u00b7 discount \u2192 invoice"
+}
