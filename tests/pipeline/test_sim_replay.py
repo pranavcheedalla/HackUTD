@@ -25,7 +25,7 @@ const context=vm.createContext({W:1000,H:520,CY:252,innerWidth:1000,innerHeight:
   intake:{classList:{add(){},remove(){},contains:()=>false},setAttribute(){}},reducedMotion:{matches:true},
   document:{getElementById(id){if(!elements.has(id))elements.set(id,{textContent:'',dataset:{},setAttribute(){}});return elements.get(id)}},
   performance:{now:()=>0},window:{},addEventListener(){},closePanel(){},closeCaption(){},intakeOpen:()=>false,
-  workSince:new Map(),STATIONS:['Discover','Read','Probe','Record','Rewrite','Verify','Verified'].map((s,i)=>[i,s])});
+  panel:{classList:{contains:()=>false}},workSince:new Map(),STATIONS:['Discover','Read','Probe','Record','Rewrite','Verify','Verified'].map((s,i)=>[i,s])});
 const block=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b));
 vm.runInContext(block('  // ---------- helpers ----------','  // ---------- static layers ----------'),context);
 vm.runInContext(block('  // ---------- replay → timeline ----------','  // ---------- module text for the scene ----------'),context);
@@ -37,6 +37,18 @@ read(`FULL=${JSON.stringify(full)}; normalize=r=>r; startSim(FULL)`);
 // It starts working at Read (Discover needs no model), already playing, past the title.
 let w=read('TL.beats.find(b=>b.working)');
 assert.equal(read('SIM.n'),0); assert.equal(w.at,1); assert.equal(read('playing'),true); assert.equal(read('clock'),3.4);
+
+// Details only know what has happened: nothing yet, then the spec, then the answer key.
+assert.equal(read('R.modules[0].spec'),null); assert.equal(read('R.modules[0].golden.length'),0);
+assert.equal(read('R.modules[0].history.length'),0); assert.equal(read('R.modules[0].status'),'pending');
+read('SIM.n=1; simApply()'); assert.ok(read('R.modules[0].spec')); assert.equal(read('R.modules[0].golden.length'),0);
+read('SIM.n=2; simApply()'); assert.ok(read('R.modules[0].golden.length')>0); assert.equal(read('R.modules[0].status'),'running');
+// ALERTS mid-run shows only its first, failed attempt until the retry has happened.
+const alertsFirstVerify=full.events.findIndex(e=>e.module==='alerts'&&e.node==='verify')+1;
+read(`SIM.n=${alertsFirstVerify}; simApply()`);
+const alerts=read("R.modules.find(m=>m.id==='alerts')");
+assert.equal(alerts.history.length,1); assert.ok(alerts.history[0].passed<alerts.history[0].total); assert.equal(alerts.status,'running');
+read('startSim(FULL)');
 
 // Play it: every working step waits a compressed real duration, then its real event lands.
 const waits=[]; let guard=0, failSeen=false;

@@ -142,7 +142,8 @@
     const list = stops(), i = travel ? travel.index : stopIndex(list), b = list[i];
     playBtn.disabled = !R || !!entrance;
     previousBtn.disabled = !R || !!entrance || !!travel || (i === 0 && !betweenStops(list, i));
-    nextBtn.disabled = !R || !!entrance || !!travel || i >= list.length - 1;
+    const canFinishStep = !!SIM && !!TL && TL.beats.some(q => q.working);  // a replayed run: Next lands the working step's result
+    nextBtn.disabled = !R || !!entrance || !!travel || (i >= list.length - 1 && !canFinishStep);
     const label2 = b ? `${entrance ? 'Arriving → ' : travel ? 'Travelling → ' : ''}${b.k === 'outro' ? 'Summary' : STATIONS[b.at][1]} · ${i + 1}/${list.length}` : '';
     if (stepStatus.textContent !== label2) stepStatus.textContent = label2;
     stepStatus.dataset.time = clock.toFixed(3);
@@ -638,7 +639,16 @@
     full.events.forEach(e => total.set(e.module, (total.get(e.module) || 0) + 1));
     const modules = full.modules.map(m => {
       const n = seen.get(m.id) || 0;
-      return n && n >= (total.get(m.id) || 0) ? m : { ...m, status: n ? 'running' : 'pending', error: null };
+      if (n && n >= (total.get(m.id) || 0)) return m;  // finished: the whole record
+      // still running: only what the run had produced by now, so Details never shows the future
+      const mine = evs.filter(e => e.module === m.id), has = node => mine.some(e => e.node === node);
+      const rewrites = mine.filter(e => e.node === 'rewrite' && !/^blocked/.test(e.msg || '')).length;
+      const hist = (m.history || []).slice(0, mine.filter(e => e.node === 'verify').length), last = hist[hist.length - 1];
+      const src = (m.attempt_sources || []).slice(0, rewrites), golden = has('record') ? m.golden || [] : [];
+      return { ...m, status: n ? 'running' : 'pending', error: null, spec: has('extract_spec') ? m.spec : null, golden,
+               python: rewrites ? (src.length ? src[src.length - 1].python : m.python) : '', attempt_sources: src,
+               history: hist, attempts: rewrites, tests_passed: last ? last.passed : 0, tests_total: last ? last.total : golden.length,
+               heldout: null, divergences: [], unit_tests_status: null, unit_tests_quarantined: [] };
     });
     return { ...full, events: evs, modules, live: false, sim: true, finished: SIM.n >= full.events.length };
   }
@@ -649,6 +659,7 @@
       const nb = beatAt(prevWork.t0 + .01);
       if (!nb.working || nb.mi !== prevWork.mi || nb.at !== prevWork.at || nb.h !== prevWork.h) clock = prevWork.t0;
     }
+    if (panel.classList.contains('open')) refreshPanel();
     const w = TL.beats.find(b => b.working);
     if (w) {
       const ev = SIM.full.events, gap = SIM.n ? evTime(ev[SIM.n]) - evTime(ev[SIM.n - 1]) : 10;
@@ -830,7 +841,7 @@
     playing = false; playBtn.textContent = 'Play'; focusX = worldX;
   }
   function openPanel(i, worldX) {
-    focus = null; if (worldX !== undefined) hold(worldX);
+    focus = null; pBody.classList.remove('still'); if (worldX !== undefined) hold(worldX);
     pMod = R.modules[i]; pStar = i; document.getElementById('p-title').textContent = pMod.file || pMod.id;
     const st = pMod.status === 'done' ? `verified · ${pMod.tests_passed}/${pMod.tests_total}` : (pMod.error || pMod.status);
     document.getElementById('p-meta').textContent = `${pMod.kind} · ${st} · ${pMod.attempts} attempt${pMod.attempts === 1 ? '' : 's'}`;
@@ -843,11 +854,20 @@
     if (focusX !== null) { focus = null; focusX = null; if (resumeAfter) { playing = true; playBtn.textContent = 'Pause'; } }
   }
   // a station panel: that step's real output for the program on screen (web/stations/*.js)
-  function openStation(i) {
+  let stationTab = 0;
+  // re-render the open readout with the latest data, keeping its tab and scroll (a replay that is playing)
+  function refreshPanel() {
+    const top = pBody.scrollTop; pBody.classList.add('still');  // update in place: no drift-in replay
+    if (panel.classList.contains('station') && focus !== null) openStation(focus, true);
+    else if (pStar !== null && R.modules[pStar]) { pMod = R.modules[pStar]; renderTab(); }
+    pBody.scrollTop = top;
+  }
+  function openStation(i, refresh = false) {
     const S = window.Stations && window.Stations.get(i + 1);
     const b = beatAt(Math.min(clock, TL.end - 1e-3)), mi = b.mi !== undefined ? b.mi : (b.k === 'outro' ? R.modules.length - 1 : 0);
     const m = R.modules[mi];
-    hold(i * GAP); focus = i; pStar = null; capFocus = null;
+    if (!refresh) { hold(i * GAP); stationTab = 0; pBody.classList.remove('still'); }
+    focus = i; pStar = null; capFocus = null;
     document.getElementById('p-title').textContent = `${STATIONS[i][0]} — ${STATIONS[i][1]}`;
     document.getElementById('p-meta').textContent = `${m.file || m.id} · ${m.kind}${S && S.agent ? ' · ' + S.agent : ''}`;
     let out;
@@ -855,11 +875,11 @@
     catch (err) { console.error(`station ${i + 1} render:`, err); out = window.Stations.H.empty('This view hit an error. See the console.'); }
     const tabs = out && typeof out === 'object' && Array.isArray(out.tabs) ? out.tabs : null;
     pTabs.style.display = tabs && tabs.length > 1 ? '' : 'none';
-    const show = k => { setBody(tabs ? tabs[k].html : String(out || ''));
+    const show = k => { stationTab = k; setBody(tabs ? tabs[k].html : String(out || ''));
       [...pTabs.children].forEach((bn, j) => bn.classList.toggle('on', j === k)); };
     pTabs.innerHTML = tabs ? tabs.map((tb, j) => `<button data-st="${j}">${esc(tb.label)}</button>`).join('') : '';
     pTabs.onclick = e => { const k = e.target.dataset && e.target.dataset.st; if (k !== undefined) show(+k); };
-    show(0); panel.classList.add('open', 'station'); panel.setAttribute('aria-hidden', 'false');
+    show(tabs ? Math.min(stationTab, tabs.length - 1) : 0); panel.classList.add('open', 'station'); panel.setAttribute('aria-hidden', 'false');
   }
   const programTabs = e => { const k = e.target.dataset && e.target.dataset.k; if (!k) return; pTab = k; [...pTabs.children].forEach(bn => bn.classList.toggle('on', bn.dataset.k === k)); renderTab(); };
   document.getElementById('p-close').onclick = closePanel;

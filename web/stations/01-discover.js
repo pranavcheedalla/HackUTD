@@ -30,7 +30,7 @@ Stations.register(1, {
       m.id === cur ? H.raw(H.esc(m.file) + ' ' + H.tag('on screen', 'accent')) : m.file,
       m.kind,
       deps(m).join(', ') || '—',
-      done(m) ? 'verified' : (m.error || 'not verified'),
+      done(m) ? 'verified' : m.status === 'running' ? 'in progress' : m.status === 'pending' ? 'waiting' : (m.error || 'not verified'),
     ]);
     const programs = mods.length
       ? capped(mods, H.table(['File', 'Kind', 'Calls', 'Result'], rows, { tone: i => done(shown[i]) ? 'ok' : 'bad' }))
