@@ -1,4 +1,4 @@
-# NorthBase
+# NorthBound
 
 The demo frontend. Each COBOL program is a star that travels left to right through the
 pipeline: Discover → Read → Probe → Record → Rewrite → Verify → Verified. The scene is black
@@ -21,7 +21,7 @@ Recordings open paused at Discover. Use **Next → / ← Back** or the keyboard 
 python tools/serve.py          # then open http://127.0.0.1:8765
 ```
 
-The page opens on the NorthBase landing page, ready for a COBOL zip. **Read the case
+The page opens on the NorthBound landing page, ready for a COBOL zip. **Read the case
 file →** opens the story; **← Home** or **Hand it the codebase →** returns to the landing
 page. The replay toolbar starts with **Home**, and Details has its own **Home** control.
 Home pauses the replay and returns
@@ -39,7 +39,7 @@ preferences skip the zoom and arrive paused immediately.
 
 - **Dropping a .zip of COBOL** replays a known codebase, or starts a live run for a new codebase.
 - **Run live instead** starts a real Nemotron run on the uploaded codebase.
-- **Home** returns to the NorthBase landing page, ready for another zip.
+- **Home** returns to the NorthBound landing page, ready for another zip.
 
 If live isn't possible (no `NVIDIA_API_KEY` in `.env`, or a run already in progress), the page
 says so. During a live run, **Switch to recording** jumps to the saved run of the same codebase.

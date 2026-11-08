@@ -1,4 +1,4 @@
-# NorthBase — Legacy → Verified
+# NorthBound — Legacy → Verified
 
 An integrated NVIDIA Nemotron / LangGraph backend that reads COBOL, documents it,
 records its real outputs, writes Python, and accepts a rewrite only after exact

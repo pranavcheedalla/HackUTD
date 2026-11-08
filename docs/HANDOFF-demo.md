@@ -1,4 +1,4 @@
-# NorthBase handoff (Nov 8; deadline 10:00 AM CST)
+# NorthBound handoff (Nov 8; deadline 10:00 AM CST)
 
 > To continue on any computer, paste this file into Claude Code or Codex, opened in a fresh
 > HackUTD checkout.
@@ -17,7 +17,7 @@ You don't need anything for recordings only: `cd web && python3 -m http.server 8
 
 ## What's implemented
 
-This checkout includes the backend, real recordings, NorthBase intake, and presenter
+This checkout includes the backend, real recordings, NorthBound intake, and presenter
 controls. PR #10 contains the latest frontend and navigation work. See
 `docs/HANDOFF-claude.md` for the recent changes and continuation instructions.
 
@@ -30,7 +30,7 @@ controls. PR #10 contains the latest frontend and navigation work. See
 - **Codebases:** `samples/legacy` ("Invoicing", 3 programs) and `samples/bank` ("Retail bank", 5 programs, 2 shared subprograms).
   `demo/retail-bank.zip` is the bank, ready to drop on stage.
 - **Frontend (`web/`):**
-  - NorthBase landing page opens by default, with a large wordmark slightly left of center and a shooting star in the same sky;
+  - NorthBound landing page opens by default, with a large wordmark slightly left of center and a shooting star in the same sky;
   - Read the case file opens TSB 2018 and New Jersey 2020, with sources; Home returns to the landing page from the story, replay, or Details;
   - a recognised zip zooms through the drop star into paused Discover; reduced motion skips the zoom;
   - black/silver legacy sky → violet rewrite → mint aurora after acceptance;
@@ -47,7 +47,7 @@ controls. PR #10 contains the latest frontend and navigation work. See
 
 ## Demo script (about 3 minutes)
 
-1. **Open NorthBase → Read the case file (30 s):** "Hard to change, and dangerous to change without proof." Click **Hand it the codebase →** to return to the landing page.
+1. **Open NorthBound → Read the case file (30 s):** "Hard to change, and dangerous to change without proof." Click **Hand it the codebase →** to return to the landing page.
 2. Drop demo/retail-bank.zip; after the star entrance the codebase **runs through on its own like a live run**: each station shows Nemotron working (with the real run's elapsed time, `REAL RUN · mm:ss`), then the real result lands and the star moves on, including ALERTS failing and retrying. About 4 minutes at 1×, 2.5 at 1.6×. Say: 'this replays a real run from tonight, step by step; the full live run takes about 7 minutes.' Pause, Next (skips a wait) and Back still work.
 3. **Pause on the moments that matter** (or use Next/Back):
    - the ALERTS mismatch, caught and fixed;
