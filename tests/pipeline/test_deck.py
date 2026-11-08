@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_three_slides_that_hand_off_to_northbound_and_back():
     deck = (ROOT / "web" / "deck.html").read_text()
-    assert len(re.findall(r'<section class="slide" data-n="\d"', deck)) == 3
+    assert len(re.findall(r'<section class="slide[^"]*" data-n="\d"', deck)) == 3
     assert "location.href = './'" in deck  # slide 2 → the live product
     assert "deck.html#3" in (ROOT / "web" / "galaxy.js").read_text()  # C in NorthBound → the wrap-up
     # only assets the page already ships with: no external fonts or scripts
