@@ -162,6 +162,9 @@
       if (r.status === 200) { rep = await r.json(); render(); }
     } catch (err) { /* the galaxy already reports a lost run */ }
     box.classList.toggle('under-panel', !!(panel && panel.classList.contains('open')));
+    // sit above the toolbar and the canvas's LIVE label, however many lines the toolbar wraps to
+    const bar = document.querySelector('.controls');
+    if (bar) box.style.bottom = `${Math.max(52, innerHeight - bar.getBoundingClientRect().top + 44)}px`;
     setTimeout(poll, POLL_MS);
   }
   poll();
