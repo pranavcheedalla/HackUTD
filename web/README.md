@@ -25,7 +25,13 @@ directly with `#codebase` or `#planted-bug`.
 | ← → | Jump 3 seconds |
 | Esc | Close the panel |
 
-Click any star to open its COBOL, Python, spec, answer key, and attempts.
+The replay narrates itself: while the star stops at a station, a short caption appears next to
+the ring with one sentence and one proof, such as the 12.34 vs 12.35 mismatch. The captions are
+written in `web/captions.js` from the replay data.
+
+- Click a ring, or press 1–7, to bring back that station's caption.
+- Click `DETAILS →`, press the same number again, or press Enter, to open the full station readout.
+- Click any other star to open its COBOL, Python, spec, answer key, and attempts.
 
 ## Add a replay
 
