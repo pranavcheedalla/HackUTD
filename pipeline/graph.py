@@ -30,6 +30,7 @@ UNIT_DIR = ROOT / "tests" / "unit"
 DRIVERS_DIR = ROOT / "runs" / "drivers"  # generated test drivers for subprograms
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "3"))
 MIN_TESTS = int(os.getenv("MIN_TESTS", "5"))  # never call a module verified on fewer distinct cases
+MAX_RECORDED_FAILURES = 5  # failed cases kept per attempt in runs/state.json
 
 
 class GraphState(TypedDict, total=False):
@@ -57,6 +58,7 @@ class GraphState(TypedDict, total=False):
     params: list             # LINKAGE params (subprograms only)
     depends_on: list
     dep_modules: list        # [{module_id, program_id, params, status}] per dependency
+    history: list            # one attempt_record per verify: counts, failed cases, explanation
 
 
 def _safe(node_name: str):
@@ -182,9 +184,30 @@ def verify(state: GraphState) -> GraphState:
         status.update(out, "verify", out["error"])
         return out
     out = {**state, "tests_passed": res["passed"], "tests_total": res["total"],
-           "last_failures": res["failures"], "status": "verifying"}
+           "last_failures": res["failures"], "status": "verifying",
+           "history": [*(state.get("history") or []), attempt_record(state, res)]}
     status.update(out, "verify", f"{res['passed']}/{res['total']} equivalence tests passed")
     return out
+
+
+def attempt_record(state: GraphState, res: dict) -> dict:
+    """What one verify saw, kept after the module passes so a replay can show the real mismatch.
+    A failure that will be retried also gets one explanation (after the last attempt the
+    explain node explains up to five instead). An explainer error never fails the module."""
+    attempt = state.get("attempts", 0)
+    record = {"attempt": attempt, "passed": res["passed"], "total": res["total"],
+              "failures": [dict(f) for f in res["failures"][:MAX_RECORDED_FAILURES]],
+              "explanation": None}
+    if res["failures"] and attempt < MAX_ATTEMPTS:
+        try:
+            verdict = agents.explain_divergence(state["spec"], state["cobol_src"],
+                                                state.get("python_src") or "", res["failures"][0])
+            record["explanation"] = {"verdict": verdict.get("verdict"), "reason": verdict.get("reason"),
+                                     "input": res["failures"][0]["input"]}
+        except Exception as e:  # the explanation is a bonus; the retry goes ahead without it
+            record["explanation"] = {"verdict": None, "reason": f"explainer unavailable: {type(e).__name__}",
+                                     "input": res["failures"][0]["input"]}
+    return record
 
 
 @_safe("accept")

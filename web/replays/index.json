@@ -1,0 +1,12 @@
+[
+ {
+  "name": "codebase",
+  "title": "Multi-file codebase \u00b7 discount \u2192 invoice",
+  "kind": "run"
+ },
+ {
+  "name": "planted-bug",
+  "title": "Planted one-cent bug \u00b7 invoice",
+  "kind": "mutation"
+ }
+]
