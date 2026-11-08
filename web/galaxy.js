@@ -398,7 +398,8 @@
     mods.forEach((q, i) => q.depends_on.forEach(d => { const j = mods.findIndex(z => z.id === d); if (j >= 0 && waiting.includes(i) && waiting.includes(j)) { const [a1, a2] = cpos(i), [b1, b2] = cpos(j); x.beginPath(); x.moveTo(a1, a2); x.lineTo(b1, b2); x.stroke(); } }));
     x.setLineDash([]);
     waiting.forEach(i => { const [qx, qy] = cpos(i); const blockedQ = (mods[i].error || '').startsWith('blocked') && i === mi;
-      star(qx, qy, t + i, blockedQ ? .3 : .38, '215,222,240', '235,238,248', i); txt(mods[i].id.toUpperCase(), qx, qy - 18, 9, .45, 2); });
+      star(qx, qy, t + i, blockedQ ? .3 : .38, '215,222,240', '235,238,248', i);
+      if (b.k !== 'intro') txt(mods[i].id.toUpperCase(), qx, qy - 18, 9, .45, 2); });  // names wait until the intro title has faded
 
     // constellation at Verified: programs already accepted
     const vx = 6 * GAP + ox, vpos = i => [vx + CONST[i % CONST.length][0], CY + CONST[i % CONST.length][1]];
