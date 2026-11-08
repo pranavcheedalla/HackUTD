@@ -204,7 +204,9 @@ def _safe_upload(data: bytes, name: str) -> tuple[int, dict]:
     # the same code as a sample we ship? then it is that codebase: same name, same recording
     fp = _fingerprint(dest)
     for folder in sorted(p for p in SAMPLES.iterdir() if p.is_dir() and p.name != "uploads"):
-        if _fingerprint(folder) == fp:
+        known_fp = _fingerprint(folder)
+        optional = {str(n).lower() for n in _about(folder).get("optional") or []}  # e.g. an older zip without them
+        if fp == known_fp or (optional and fp == frozenset(f for f in known_fp if f[0] not in optional)):
             known = _about(folder)
             (dest / "codebase.json").write_text(json.dumps({
                 "title": known.get("title") or folder.name, "about": known.get("about", ""),

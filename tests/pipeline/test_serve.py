@@ -75,3 +75,12 @@ def test_a_different_zip_is_its_own_codebase(uploads):
     code, body = serve._safe_upload(_zip({"x/a.cbl": b"       PROGRAM-ID. A.\n"}), "x.zip")
     assert code == 200 and "same_as" not in serve._about(uploads / body["codebase"])
     assert body['recording'] is None and body['title'] == 'x'
+
+
+def test_the_original_five_program_bank_zip_still_plays_the_demo(uploads):
+    """Copies of the demo zip made before SETTLE joined the bank are still the bank."""
+    files = {f"retail-bank/{f.relative_to(ROOT / 'samples' / 'bank')}": f.read_bytes()
+             for f in (ROOT / "samples" / "bank").rglob("*")
+             if f.is_file() and f.suffix.lower() in {".cbl", ".cpy"} and f.name != "settle.cbl"}
+    code, body = serve._safe_upload(_zip(files), "retail-bank.zip")
+    assert code == 200 and body["files"] == 6 and body["recording"] == "retail"
