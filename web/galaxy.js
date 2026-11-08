@@ -117,7 +117,7 @@
   function restart() { clock = 0; cam = 0; cs = 0; trail = []; }
   addEventListener('keydown', e => {
     if (e.target.tagName === 'SELECT') return;
-    if (intakeOpen()) { if (e.key === 'Escape' && R) closeIntake(); return; }
+    if (intakeOpen()) { if (e.key === 'Escape' && R) closeIntake(); if (e.key === 'Enter' && caseFile.classList.contains('open')) document.getElementById('case-go').click(); return; }
     if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
     if (e.key === 'r' || e.key === 'R') restart();
     if (e.key === 'Escape') { if (panel.classList.contains('open')) closePanel(); else closeCaption(); }
@@ -740,7 +740,16 @@
   const sel = document.getElementById('replay'), intake = document.getElementById('intake');
   const fallbackBtn = document.getElementById('fallback'), backBtn = document.getElementById('backlive');
   let API = null, pollTimer = null, liveSession = null, recordings = [];
-  function intakeOpen() { return intake.classList.contains('open'); }
+  const caseFile = document.getElementById('case');
+  function intakeOpen() { return intake.classList.contains('open') || caseFile.classList.contains('open'); }
+  // the case file: the real-world problem, before the codebase goes in
+  function openCase() {
+    playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.remove('open');
+    caseFile.classList.add('open'); caseFile.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on');
+  }
+  function closeCase() { caseFile.classList.remove('open'); caseFile.setAttribute('aria-hidden', 'true'); }
+  document.getElementById('case-go').onclick = () => { closeCase(); openIntake(); };
+  document.getElementById('in-back').onclick = () => { openCase(); };
   function normalize(rep) { (rep.modules || []).forEach(q => { q.depends_on = q.depends_on || []; q.history = q.history || []; }); return rep; }
   function stopLive() { clearTimeout(pollTimer); pollTimer = null; liveSession = null; fallbackBtn.hidden = true; }
   // a run still going on the server: offer the way back to it from a recording or the intake
@@ -814,8 +823,8 @@
 
   // the intake: pick a codebase or drop a zip of one
   function note(text, bad) { const n = document.getElementById('in-note'); n.textContent = text || ''; n.classList.toggle('bad', !!bad); }
-  function openIntake() { playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.add('open'); intake.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on'); renderIntake(); }
-  function closeIntake() { intake.classList.remove('open'); intake.setAttribute('aria-hidden', 'true'); document.body.classList.remove('intake-on'); note(''); }
+  function openIntake() { closeCase(); playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.add('open'); intake.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on'); renderIntake(); }
+  function closeIntake() { closeCase(); intake.classList.remove('open'); intake.setAttribute('aria-hidden', 'true'); document.body.classList.remove('intake-on'); note(''); }
   document.getElementById('intake-btn').onclick = openIntake;
   async function renderIntake() {
     const list = document.getElementById('in-list'), live = !!(API && API.live);
@@ -827,7 +836,7 @@
     if (running) items.unshift({ name: 'Live run in progress', about: 'A real Nemotron run is going right now. Watch where it is.', session: running });
     const recorded = new Set(items.map(c => c.recording).filter(Boolean));
     recordings.filter(r => !recorded.has(r.name)).forEach(r => items.push({ name: r.title, about: r.kind === 'mutation' ? 'A one-cent rounding bug planted in a verified rewrite, to show the check catches it.' : '', recording: r.name }));
-    list.innerHTML = items.map((c, i) => `<div class="cb"><div class="cb-name">${esc(c.name)}</div>` +
+    list.innerHTML = items.map((c, i) => `<div class="cb${c.codebase === 'samples/bank' || c.same_as === 'samples/bank' ? ' featured' : ''}"><div class="cb-name">${esc(c.name)}</div>` +
       (c.session ? '<div class="cb-meta">live now</div>' : c.programs ? `<div class="cb-meta">${c.programs} program${c.programs === 1 ? '' : 's'}${c.copybooks ? ` · ${c.copybooks} cop${c.copybooks === 1 ? 'ybook' : 'ybooks'}` : ''}${c.uploaded ? ' · uploaded' : ''}</div>` : '<div class="cb-meta">recording</div>') +
       (c.about ? `<div class="cb-about">${esc(c.about)}</div>` : '') +
       `<div class="cb-act">${c.session ? `<button class="live" data-i="${i}" data-a="watch">Watch live</button>` : ''}${c.codebase ? `<button class="live" data-i="${i}" data-a="live" ${live ? '' : 'disabled title="Live runs need the local server and an NVIDIA API key"'}>Run live</button>` : ''}` +
@@ -868,7 +877,7 @@
     if (follow && API) return attach(follow[1]);
     if (recordings.some(r => r.name === want)) return load(want);
     document.getElementById('loading').style.display = 'none';
-    openIntake();
+    if (want === 'codebases') openIntake(); else openCase();  // the story first; #codebases skips straight to the list
   })().catch(showError);
   requestAnimationFrame(frame);
   // for rehearsing a moment: galaxy.seek(seconds), galaxy.t

@@ -124,6 +124,21 @@
   .in-note.bad { color: #ffc4d4; }
   .in-foot { font-size: 9px; letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.3); }
   @media (max-width: 640px) { .cb { grid-template-columns: 1fr; } .cb-act { grid-column: 1; grid-row: auto; margin-top: 6px; } }
+  /* case file: the real-world problem, before the codebase goes in */
+  .case .in-wrap { gap: 26px; }
+  .ev { display: flex; flex-direction: column; gap: 8px; padding: 18px 0 2px; border-top: 1px dotted rgba(232,234,242,.08); }
+  .ev-when { font-size: 9.5px; letter-spacing: 3.5px; text-transform: uppercase; color: rgba(212,196,255,.8); }
+  .ev-what { font: 400 16.5px/1.55 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; color: rgba(242,241,248,.88); max-width: 640px; }
+  .ev-src { font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: rgba(232,234,242,.34); }
+  .ev-src a { color: rgba(232,234,242,.5); text-decoration: none; border-bottom: 1px dotted rgba(232,234,242,.25); }
+  .ev-src a:hover { color: rgba(242,241,248,.9); }
+  .case-bridge { margin: 4px 0 0; font: 400 15px/1.6 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; color: rgba(232,234,242,.68); max-width: 640px; }
+  .case-go { align-self: flex-start; background: none; border: 0; padding: 6px 0; cursor: pointer; font: 10.5px var(--mono); letter-spacing: 3.5px; text-transform: uppercase; color: #c9f5e6; display: inline-flex; align-items: center; gap: 10px; }
+  .case-go::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+  .case-go:hover { color: #e6fff6; }
+  .in-back { align-self: flex-start; background: none; border: 0; padding: 0; cursor: pointer; font: 9px var(--mono); letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.38); margin-bottom: -14px; }
+  .in-back:hover { color: rgba(242,241,248,.85); }
+  .cb.featured .cb-name::after { content: '  ·  the case'; font: 9px var(--mono); letter-spacing: 3px; text-transform: uppercase; color: rgba(212,196,255,.75); vertical-align: middle; }
   .loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 11px; letter-spacing: 4px; color: var(--dim); text-transform: uppercase; pointer-events: none; }
 </style>
 </head>
@@ -142,8 +157,27 @@
   <button id="fallback" hidden>Switch to recording</button>
   <button id="backlive" hidden>Back to live</button>
 </div>
+<section class="intake case" id="case" aria-hidden="true">
+  <div class="in-wrap">
+    <div class="in-title">Case file  ·  two real events</div>
+    <p class="in-lede">The systems that run money and public benefits are often written in COBOL: hard to change, and dangerous to change without proof.</p>
+    <div class="ev">
+      <div class="ev-when">April 2018  ·  TSB Bank, United Kingdom</div>
+      <div class="ev-what">A move to a new banking platform went wrong. Customers were locked out of their accounts, some services were disrupted for weeks, and regulators later fined the bank £48.65 million.</div>
+      <div class="ev-src">Sources: <a href="https://www.finextra.com/newsarticle/41525/tsb-fined-486-million-over-operational-resilience-failures" target="_blank" rel="noopener">Finextra</a>  ·  <a href="https://www.itpro.com/business-strategy/it-infrastructure/369753/tsb-bank-fined-48-million-over-botched-it-upgrade" target="_blank" rel="noopener">ITPro</a></div>
+    </div>
+    <div class="ev">
+      <div class="ev-when">April 2020  ·  New Jersey, United States</div>
+      <div class="ev-what">As pandemic unemployment claims surged, the state's decades-old COBOL systems strained, and the governor publicly asked for volunteer COBOL programmers.</div>
+      <div class="ev-src">Sources: <a href="https://www.cnbc.com/2020/04/06/new-jersey-seeks-cobol-programmers-to-fix-unemployment-system.html" target="_blank" rel="noopener">CNBC</a>  ·  <a href="https://www.theregister.com/2020/04/05/new_jersey_cobol_volunteers_mainframes/" target="_blank" rel="noopener">The Register</a></div>
+    </div>
+    <p class="case-bridge">A bank's real code is private, so we wrote a working model of one: a retail bank's statements, fees, interest, alerts and loans, in COBOL. Then we handed it to the agents.</p>
+    <button class="case-go" id="case-go">Hand it the codebase  →</button>
+  </div>
+</section>
 <section class="intake" id="intake" aria-hidden="true">
   <div class="in-wrap">
+    <button class="in-back" id="in-back">←  Case file</button>
     <div class="in-title">Legacy  →  Verified</div>
     <p class="in-lede">Drop a COBOL codebase. NVIDIA Nemotron agents move it to Python, and the original program checks every answer.</p>
     <label class="drop" id="drop" title="Drop a .zip of COBOL files">

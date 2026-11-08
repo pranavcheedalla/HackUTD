@@ -67,8 +67,31 @@ def _recordings() -> dict:
     return {r["codebase"]: r["name"] for r in index if r.get("codebase")}
 
 
-def _codebases() -> list[dict]:
+def _about(folder: Path) -> dict:
+    """Optional <codebase>/codebase.json: {"title", "about", "same_as"}."""
+    try:
+        data = json.loads((folder / "codebase.json").read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _recording_for(rel: str) -> str | None:
+    """The saved replay of a codebase, or of the sample a dropped zip turned out to be."""
     recs = _recordings()
+    if not rel:
+        return None
+    return recs.get(rel) or recs.get(str(_about(ROOT / rel).get("same_as") or ""))
+
+
+def _fingerprint(folder: Path) -> frozenset:
+    """What makes two codebases the same code: each source file's name and contents."""
+    import hashlib
+    return frozenset((f.name.lower(), hashlib.sha256(f.read_bytes()).hexdigest())
+                     for f in folder.rglob("*") if f.is_file() and f.suffix.lower() in SOURCE_EXT)
+
+
+def _codebases() -> list[dict]:
     out = []
     folders = sorted(p for p in SAMPLES.iterdir() if p.is_dir() and p.name != "uploads")
     if UPLOADS.is_dir():
@@ -80,15 +103,11 @@ def _codebases() -> list[dict]:
         if not programs:
             continue
         rel = folder.relative_to(ROOT).as_posix()
-        about = {}
-        try:  # optional samples/<name>/codebase.json: {"title", "about"}
-            about = json.loads((folder / "codebase.json").read_text())
-        except (OSError, ValueError):
-            pass
+        about = _about(folder)
         out.append({"codebase": rel, "name": str(about.get("title") or folder.name)[:60], "about": str(about.get("about") or "")[:200],
                     "programs": len(programs),
                     "copybooks": len(files) - len(programs), "uploaded": folder.parent == UPLOADS,
-                    "recording": recs.get(rel)})
+                    "same_as": about.get("same_as"), "recording": _recording_for(rel)})
     return out
 
 
@@ -155,6 +174,15 @@ def _safe_upload(data: bytes, name: str) -> tuple[int, dict]:
         kept += 1
     if not kept:
         return 400, {"error": "No COBOL files (.cbl, .cob, .cpy) found in that zip."}
+    # the same code as a sample we ship? then it is that codebase: same name, same recording
+    fp = _fingerprint(dest)
+    for folder in sorted(p for p in SAMPLES.iterdir() if p.is_dir() and p.name != "uploads"):
+        if _fingerprint(folder) == fp:
+            known = _about(folder)
+            (dest / "codebase.json").write_text(json.dumps({
+                "title": known.get("title") or folder.name, "about": known.get("about", ""),
+                "same_as": folder.relative_to(SAMPLES.parent).as_posix()}))
+            break
     return 200, {"codebase": dest.relative_to(ROOT).as_posix(), "files": kept}
 
 
@@ -175,7 +203,7 @@ def _replay(session: str) -> tuple[int, dict]:
         pass
     rep.update(name=session, title=Path(meta.get("legacy_dir") or session).name, live=True,
                finished=meta.get("status") in ("done", "failed"), codebase=meta.get("legacy_dir"),
-               recording=_recordings().get(meta.get("legacy_dir") or ""))
+               recording=_recording_for(meta.get("legacy_dir") or ""))
     return 200, rep
 
 

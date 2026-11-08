@@ -83,3 +83,15 @@ def test_recorded_failures_are_capped(quiet, monkeypatch):
 def test_history_is_a_declared_graph_key():
     # LangGraph silently drops undeclared keys between nodes
     assert "history" in graph.GraphState.__annotations__
+
+
+def test_retry_gets_the_explanation_with_the_failing_case(quiet, monkeypatch):
+    _equivalence(monkeypatch, 26, [FAIL])
+    monkeypatch.setattr(graph.agents, "explain_divergence",
+                        lambda *a: {"verdict": "new_code_bug", "reason": "COBOL truncates; the rewrite rounded."})
+    out = graph.verify(_state())
+    assert out["last_failures"][0]["why"] == "COBOL truncates; the rewrite rounded."
+    assert "why" not in out["history"][0]["failures"][0]  # the recorded case stays as it was
+    import importlib
+    text = importlib.import_module("agents.rewrite").format_failures(out["last_failures"])
+    assert "why:      COBOL truncates; the rewrite rounded." in text
