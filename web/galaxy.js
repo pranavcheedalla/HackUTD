@@ -82,23 +82,25 @@
         : [{ attempt: 1, passed: m.tests_passed, total: m.tests_total, failures: [], explanation: null }];
       let pos = 0;
       const mv = (to, d = 1.7, back = false) => { push({ k: 'move', mi, a: pos, b: to, back }, d); pos = to; };
-      push({ k: 'dwell', mi, at: 0 }, 1.6);
-      mv(1); push({ k: 'dwell', mi, at: 1 }, 2.6);
-      mv(2); push({ k: 'dwell', mi, at: 2 }, 2.2);
-      mv(3); push({ k: 'dwell', mi, at: 3 }, 2.2);
+      const talk = (at, d) => (window.Captions && Captions.narrates(mi, at) ? Math.max(d, READ) : d);  // time to read the caption
+      push({ k: 'dwell', mi, at: 0 }, talk(0, 1.6));
+      mv(1); push({ k: 'dwell', mi, at: 1 }, talk(1, 2.6));
+      mv(2); push({ k: 'dwell', mi, at: 2 }, talk(2, 2.2));
+      mv(3); push({ k: 'dwell', mi, at: 3 }, talk(3, 2.2));
       hist.forEach((h, hi) => {
         if (pos === 5) mv(4, 2.8, true); else mv(4);
-        push({ k: 'dwell', mi, at: 4, h: hi }, hi ? 2.4 : 2.2);
+        push({ k: 'dwell', mi, at: 4, h: hi }, talk(4, hi ? 2.4 : 2.2));
         mv(5);
         const fail = h.passed < h.total;
-        push({ k: 'dwell', mi, at: 5, h: hi, fail }, fail ? 5.2 : 2.6);
+        push({ k: 'dwell', mi, at: 5, h: hi, fail }, fail ? 6.4 : talk(5, 2.6));
       });
-      if (m.status === 'done') { mv(6); push({ k: 'dwell', mi, at: 6, done: true }, 3); }
+      if (m.status === 'done') { mv(6); push({ k: 'dwell', mi, at: 6, done: true }, talk(6, 3)); }
       else push({ k: 'dwell', mi, at: 5, failedEnd: true }, 3.6);
     });
     push({ k: 'outro' }, 6);
     return { beats, end: t };
   }
+  const READ = 4.2;  // seconds a narrated stop holds
   function beatAt(t) {
     const b = TL.beats; let lo = 0, hi = b.length - 1;
     while (lo < hi) { const mid = (lo + hi) >> 1; if (b[mid].t1 < t) lo = mid + 1; else hi = mid; }
@@ -117,8 +119,9 @@
     if (e.target.tagName === 'SELECT') return;
     if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
     if (e.key === 'r' || e.key === 'R') restart();
-    if (e.key === 'Escape') closePanel();
-    if (/^[1-7]$/.test(e.key) && R) openStation(+e.key - 1);
+    if (e.key === 'Escape') { if (panel.classList.contains('open')) closePanel(); else closeCaption(); }
+    if ((e.key === 'Enter' || e.key === 'd' || e.key === 'D') && capFocus !== null) openStation(capFocus);
+    if (/^[1-7]$/.test(e.key) && R) { const n = +e.key - 1; if (capFocus === n && !panel.classList.contains('open')) openStation(n); else openCaption(n); }
     if (e.key === 'ArrowRight') clock = Math.min(TL.end, clock + 3);
     if (e.key === 'ArrowLeft') { clock = Math.max(0, clock - 3); trail = []; }
   });
@@ -238,33 +241,127 @@
     } else txt(mid, px, y, sz, .98, 1, 'left', '245,246,252', '300');
     txt(post, px + wm, y, sz, .5, 1, 'left', '225,228,240', '300');
   }
-  function annotation(t, ox, lc) {
-    const fb = lastFail; if (!fb) return;
-    const dur = fb.t1 - fb.t0 + 1.8, dt = t - fb.t0 - .5; if (dt < 0 || dt > dur) return;
-    const m = R.modules[fb.mi], h = m.history[fb.h], f = (h.failures || [])[0], ex = h.explanation || {};
-    const fout = clamp((dur - dt) / .8), axp = 5 * GAP + ox;
-    const lead = clamp(dt / .45), y1 = CY - 26, top = 184, y0 = y1 - (y1 - top) * lead;
-    const lg = x.createLinearGradient(0, top, 0, y1);
-    lg.addColorStop(0, `rgba(${lc},${.05 * fout})`); lg.addColorStop(1, `rgba(${lc},${.45 * fout})`);
-    x.strokeStyle = lg; x.lineWidth = .8; x.beginPath(); x.moveTo(axp, y1); x.lineTo(axp, y0); x.stroke();
-    if (lead >= 1) { x.fillStyle = `rgba(${lc},${.6 * fout})`; x.fillRect(axp - 1, top - 3, 2, 2); }
-    const va = clamp((dt - .35) / .5) * fout;
-    // top to bottom: what differed, the two values, then why
-    txt(`${h.total - h.passed} OF ${h.total} OUTPUTS DIFFER  ·  ATTEMPT ${h.attempt}`, axp, 42, 9, .34 * clamp((dt - .5) / .5) * fout, 3);
-    if (f) {
-      txt(`INPUT  ${clip(f.input, 40)}`, axp, 68, 10, .5 * va, 2);
-      const [pa, pb] = diffParts(f.expected, f.actual);
-      x.save(); x.globalAlpha = va; diffLine(pa, axp, 98, 'COBOL', false, false); diffLine(pb, axp, 124, 'REWRITE', true, true); x.restore();
-    } else {
-      txt(`${h.passed} / ${h.total}`, axp, 112, 22, .9 * va, 1, 'center', '245,246,252', '300');
+
+
+  // ---------- narration: one sentence and one proof next to the ring ----------
+  const SANS = '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif';
+  let capFocus = null, capOn = 0;
+  function sans(s, px, py, sz, a, col = '242,241,248', wt = '400') {
+    x.font = `${wt} ${sz}px ${SANS}`; x.fillStyle = `rgba(${col},${a})`; x.textAlign = 'left'; setLS(0); x.fillText(s, px, py);
+  }
+  function wrapSans(s, max, sz) {
+    const go = m => { x.font = `400 ${sz}px ${SANS}`; const out = []; let cur = '';
+      for (const w of String(s).split(/\s+/)) { const tr = cur ? cur + ' ' + w : w; if (x.measureText(tr).width > m && cur) { out.push(cur); cur = w; } else cur = tr; }
+      if (cur) out.push(cur); return out; };
+    let out = go(max);
+    // no lonely last word: narrow the measure until the last line carries at least two
+    for (let m = max * .92; out.length > 1 && !/\s/.test(out[out.length - 1]) && m > max * .55; m *= .92) out = go(m);
+    return out;
+  }
+  function moduleNow() {
+    const b = beatAt(Math.min(clock, TL.end - 1e-3));
+    return b.mi !== undefined ? b.mi : (b.k === 'outro' ? R.modules.length - 1 : 0);
+  }
+  function openCaption(i) {
+    closePanel(); hold(i * GAP); capFocus = i; focus = i;
+  }
+  function closeCaption() {
+    if (capFocus === null) return;
+    capFocus = null; focus = null; focusX = null;
+    if (resumeAfter) { playing = true; playBtn.textContent = 'Pause'; }
+  }
+  // which caption is up right now: a clicked ring, or the stop the star is sitting at
+  function activeCaption(t, b, u) {
+    if (!window.Captions) return null;
+    if (capFocus !== null) {
+      const mi = moduleNow(), m = R.modules[mi], hist = m.history || [];
+      const ai = capFocus === 5 ? Math.max(0, hist.findIndex(a => a.passed < a.total)) : Math.max(0, hist.length - 1);
+      return { n: capFocus, mi, a: 1, since: 0, ai, clicked: true };
     }
-    const reason = ex.reason ? String(ex.reason).toUpperCase() : 'SENT BACK TO REWRITE WITH THE FAILING CASES';
-    const n = Math.max(0, Math.floor((dt - 1.1) * 38));
-    if (n > 0) {
-      const lines = wrap(reason, Math.min(500, W - 80), 10, 2.5).slice(0, 3); let left = n;
-      lines.forEach((ln, k) => { if (left <= 0) return; const shown = ln.slice(0, left); left -= ln.length;
-        txt(shown, axp, 150 + k * 15, 10, .66 * fout, 2.5); });
+    let nb = b, tail = 1;
+    if (b.k === 'move' && b.back && lastFail) { nb = lastFail; tail = clamp(1 - (t - b.t0) / 1.1); }  // the reason lingers as the star goes back
+    if (nb.k !== 'dwell' || nb.blocked || !Captions.narrates(nb.mi, nb.at)) return null;
+    const dt = t - nb.t0, dur = nb.t1 - nb.t0;
+    const a = clamp((dt - .35) / .55) * (nb === b ? clamp((dur - dt) / .6) : tail) * (nb.fail && nb === b ? 1 : 1);
+    return { n: nb.at, mi: nb.mi, a, since: nb.t0 + .35, ai: nb.h !== undefined ? nb.h : (R.modules[nb.mi].history || []).length - 1, dt };
+  }
+  function narration(t, ox, lc, b, u) {
+    const ac = activeCaption(t, b, u);
+    capOn = ac ? ac.a : 0; if (!ac || ac.a < .01) return;
+    const m = R.modules[ac.mi], hist = m.history || [], attempt = hist[ac.ai] || null;
+    const cp = Captions.get(ac.n + 1, { module: m, replay: R, attempt, attemptIndex: ac.ai, mutation: R.kind === 'mutation' });
+    if (!cp) return;
+    const key = `${ac.n}|${ac.mi}|${ac.ai}`;
+    if (ac.clicked && narration.lastKey !== key) { narration.lastKey = key; narration.clickT = performance.now() / 1000; }
+    if (!ac.clicked) narration.lastKey = null;
+    // auto captions are timed from their stop, so scrubbing and replays look identical; clicked ones run on real time
+    const age = ac.clicked ? performance.now() / 1000 - narration.clickT : t - ac.since;
+    const sx = ac.n * GAP + ox, A = ac.a;
+    const right = W - (sx + 96) >= 300, compact = !right;  // narrow screens: a smaller caption above the ring
+    const x0 = right ? sx + 96 : 28, maxW = right ? Math.min(440, W - x0 - 32) : W - 56;
+    const y0 = right ? CY - 152 : 76;  // compact: below the corner labels, above the ring
+    const S1 = compact ? 15.5 : 17, S2 = compact ? 13.5 : 14.5, DZ = compact ? 17 : 20;
+
+    // a soft darkening behind the words, no box: legible over the aurora
+    const veil = x.createRadialGradient(x0 + maxW * .4, y0 + 70, 10, x0 + maxW * .4, y0 + 70, maxW * .75);
+    veil.addColorStop(0, `rgba(5,4,12,${.5 * A})`); veil.addColorStop(1, 'rgba(5,4,12,0)');
+    x.fillStyle = veil; x.fillRect(x0 - maxW * .4, y0 - 60, maxW * 1.7, 260);
+
+    // leader line from the ring to the caption, drawn on as it appears
+    const lead = clamp(age / .5);
+    x.save(); x.strokeStyle = `rgba(${lc},${.42 * A})`; x.lineWidth = .7; x.beginPath();
+    if (compact) { const top = CY - 30, end = CY - 30 - 18 * ease(lead); x.moveTo(sx, top); x.lineTo(sx, end); }  // a short stem up toward the caption
+    else {
+      const ex = sx + 17, ey = CY - 17, kx = x0 - 26, ky = y0 - 4; x.moveTo(ex, ey);
+      const l1 = Math.hypot(kx - ex, ky - ey), tot = l1 + 16, d = tot * ease(lead);
+      if (d <= l1) x.lineTo(ex + (kx - ex) * d / l1, ey + (ky - ey) * d / l1); else { x.lineTo(kx, ky); x.lineTo(kx + (d - l1), ky); }
     }
+    x.stroke(); x.restore();
+
+    const st = STATIONS[ac.n], fileTag = (m.file || m.id).toUpperCase();
+    let y = y0;
+    const step = k => clamp((age - .25 - k * .12) / .45) * A;  // each line drifts in after the one above
+    txt(`${st[0]} — ${st[1].toUpperCase()}  ·  ${fileTag}`, x0, y, 9.5, .5 * step(0), 3, 'left');
+    y += compact ? 24 : 30;
+    for (const ln of wrapSans(cp.sentence, maxW, S1)) { sans(ln, x0, y, S1, .96 * step(1)); y += S1 + 6; }
+    if (cp.sub && !(compact && cp.proof && cp.proof.kind === 'diff')) { y += 1; for (const ln of wrapSans(cp.sub, maxW, S2)) { sans(ln, x0, y, S2, .66 * step(2)); y += S2 + 5; } }
+    y += compact ? 10 : 16;
+    const pr = cp.proof, pa = step(3);
+    if (pr && pr.kind === 'line') { wrap(pr.text, maxW, 12.5, 1.5).slice(0, 2).forEach(ln => { txt(ln, x0, y, 12.5, .82 * pa, 1.5, 'left', '236,232,252'); y += 20; }); y += 4; }
+    if (pr && pr.kind === 'pair') {
+      txt(pr.left, x0, y, 12.5, .55 * pa, 1, 'left'); const wl = measure(pr.left, 12.5, 1);
+      txt('→', x0 + wl + 14, y, 12.5, .45 * pa, 0, 'left', lc); txt(pr.right, x0 + wl + 36, y, 12.5, .9 * pa, 1, 'left', '242,241,248'); y += 24;
+    }
+    if (pr && pr.kind === 'diff') {
+      if (!compact) { txt(`INPUT  ${pr.input}`, x0, y, 9.5, .45 * pa, 2.5, 'left'); y += 26; } else y += 8;
+      const [da, db] = diffParts(pr.expected, pr.actual), row = (parts, label, bad) => {
+        txt(label, x0, y - 4, 9, .42 * pa, 3, 'left', bad ? '255,205,220' : '232,234,242');
+        let px = x0 + 82; const [pre, mid, post] = parts, sz = DZ;
+        txt(pre, px, y, sz, .5 * pa, 1, 'left', '225,228,240', '300'); px += measure(pre, sz, 1, '300');
+        if (bad) {
+          const fl = Math.random() < .1 ? (Math.random() - .5) * 2.5 : 0;
+          x.save(); x.globalCompositeOperation = 'lighter';
+          txt(mid, px + fl + 1.1, y, sz, .4 * pa, 1, 'left', '120,220,255', '300'); txt(mid, px + fl - 1.1, y, sz, .5 * pa, 1, 'left', '255,120,170', '300');
+          x.restore(); txt(mid, px + fl, y, sz, .92 * pa, 1, 'left', '255,215,230', '300');
+        } else txt(mid, px, y, sz, pa, 1, 'left', '248,247,252', '300');
+        txt(post, px + measure(mid, sz, 1, '300'), y, sz, .5 * pa, 1, 'left', '225,228,240', '300');
+        y += compact ? 24 : 28;
+      };
+      row(da, 'COBOL', false); row(db, 'REWRITE', true);
+    }
+    if (cp.note && !compact) {  // narrow screens keep the reason for DETAILS
+      const na = step(4), n = Math.max(0, Math.floor((age - .9) * 60)), lines = wrapSans(cp.note, maxW, 13.5).slice(0, 2);
+      let left = n; y += 6;
+      x.font = `italic 400 13.5px ${SANS}`;
+      lines.forEach(ln => { if (left <= 0) return; const s2 = ln.slice(0, left); left -= ln.length + 1;
+        x.font = `italic 400 13.5px ${SANS}`; x.fillStyle = `rgba(236,232,252,${.72 * na})`; x.textAlign = 'left'; x.fillText(s2, x0, y); y += 19; });
+      txt('NEMOTRON', x0, y + 2, 9, .5 * na, 3, 'left', '212,196,255'); y += 18;
+    }
+    // DETAILS: the full station readout (code, answer key, attempts)
+    y += 12;
+    const da2 = step(5) * (ac.clicked ? .85 : .5);
+    txt('DETAILS  →', x0, y, 9.5, da2, 3, 'left', '212,196,255');
+    hits.push({ x: x0 + 46, y: y - 4, r: 26, id: 'det:' + ac.n });
   }
 
   // ---------- star-chart leader: ties the open readout to its ring or star ----------
@@ -292,8 +389,8 @@
 
   // ---------- the frame ----------
   let lastFail = null;
-  const CLUSTER = [[-70, -86], [62, -104], [-22, -140], [104, -60], [-118, -40], [30, -176]];
-  const CONST = [[-150, -112], [-56, -156], [74, -128], [156, -66], [-196, -54], [12, -194]];
+  const CLUSTER = [[-74, -92], [-164, -118], [-36, -150], [-214, -58], [-128, -44], [-250, -150]];  // left of Discover: the caption owns the right
+  const CONST = [[-150, -112], [-56, -156], [-250, -150], [-96, -58], [-206, -48], [-330, -96]];  // left of Verified, clear of the caption
 
   function frame(now) {
     const dtReal = Math.min(.05, (now - last) / 1000); last = now;
@@ -323,8 +420,9 @@
     const failing = b.k === 'dwell' && b.fail && u > .42;
     const jit = failing && u < .5 && Math.random() < .3 ? (Math.random() - .5) * 7 : 0;
     // an open readout pulls what it describes into the middle of the free sky left of it
-    const freeMid = panel.classList.contains('open') ? (innerWidth - panel.getBoundingClientRect().width) / 2 / K : W / 2;
-    const wx = p * GAP, camT = focusX !== null ? focusX + W / 2 - freeMid : wx;
+    const roomy = W > 760, starAt = roomy ? W * .36 : W / 2;  // left of centre leaves the right side for the caption
+    const freeMid = panel.classList.contains('open') ? (innerWidth - panel.getBoundingClientRect().width) / 2 / K : starAt;
+    const wx = p * GAP, camT = focusX !== null ? focusX + W / 2 - freeMid : wx + W / 2 - starAt;
     cam += (camT - cam) * (focusX !== null ? .08 : b.k === 'swoop' ? .12 : .055);
     const ox = W / 2 - cam, lc = rgb(mix([225, 230, 245], [195, 170, 255], c));
 
@@ -349,7 +447,7 @@
 
     // faint real content behind the active stations
     const st = m._text || (m._text = sceneText(m));
-    const annoOn = lastFail && t >= lastFail.t0 && t <= lastFail.t1 + 2.3;
+    const annoOn = capOn > .02 || (lastFail && t >= lastFail.t0 && t <= lastFail.t1 + 2.3);
     for (let i = 1; i < 7; i++) {
       const sx = i * GAP + ox; if (sx < -GAP || sx > W + GAP || b.k === 'intro') continue;
       const near = Math.max(0, 1 - Math.abs(p - i) * 1.6), lines = b.k === 'outro' ? null : i === 1 ? st.rules : i === 3 ? st.cobol : i === 4 || i === 5 ? st.python : null;
@@ -424,7 +522,7 @@
     if (c > .02) { x.save(); x.globalCompositeOperation = 'multiply'; x.fillStyle = `rgb(${rgb(mix([255, 255, 255], [205, 170, 255], c))})`; x.fillRect(-10, H - 190, W + 20, 190); x.restore(); }
     x.restore();
 
-    if (!panel.classList.contains('open')) annotation(t, ox, lc);  // an open readout already says it
+    if (!panel.classList.contains('open')) narration(t, ox, lc, b, u);  // an open readout already says it
     leader(t, ox, lc);
 
     // intro and outro type
@@ -488,7 +586,7 @@
     const S = window.Stations && window.Stations.get(i + 1);
     const b = beatAt(Math.min(clock, TL.end - 1e-3)), mi = b.mi !== undefined ? b.mi : (b.k === 'outro' ? R.modules.length - 1 : 0);
     const m = R.modules[mi];
-    hold(i * GAP); focus = i; pStar = null;
+    hold(i * GAP); focus = i; pStar = null; capFocus = null;
     document.getElementById('p-title').textContent = `${STATIONS[i][0]} — ${STATIONS[i][1]}`;
     document.getElementById('p-meta').textContent = `${m.file || m.id} · ${m.kind}${S && S.agent ? ' · ' + S.agent : ''}`;
     let out;
@@ -544,11 +642,15 @@
   function hitAt(e) {
     const r = cv.getBoundingClientRect(), mx = (e.clientX - r.left) / K, my = (e.clientY - r.top) / K;
     const near = hits.filter(hh => Math.hypot(hh.x - mx, hh.y - my) < hh.r);
-    return near.find(hh => typeof hh.id === 'number') || near[0];  // a star wins over the ring under it
+    const det = near.find(hh => String(hh.id).startsWith('det:')), ring = near.find(hh => String(hh.id).startsWith('st:'));
+    const star = near.find(hh => typeof hh.id === 'number');
+    // DETAILS first; the travelling star parked on a ring means "this step", so the ring wins; other stars open their program
+    return det || (ring && (!star || star.id === moduleNow()) ? ring : star || ring);
   }
   cv.addEventListener('click', e => {
-    const hh = hitAt(e); if (!hh) return closePanel();
-    if (typeof hh.id === 'string') openStation(+hh.id.slice(3));
+    const hh = hitAt(e); if (!hh) { closeCaption(); return closePanel(); }
+    if (typeof hh.id === 'string' && hh.id.startsWith('det:')) openStation(+hh.id.slice(4));
+    else if (typeof hh.id === 'string') openCaption(+hh.id.slice(3));
     else openPanel(hh.id, hh.x - (W / 2 - cam));  // the star's world position, so the camera can frame it
   });
   cv.addEventListener('mousemove', e => cv.classList.toggle('pointer', !!hitAt(e)));
