@@ -11,7 +11,9 @@ P1 (Hemant) — the assembly line. One graph run = one COBOL module.
 """
 from __future__ import annotations
 
+import json
 import os
+import time
 import traceback
 from pathlib import Path
 from typing import Optional, TypedDict
@@ -28,9 +30,12 @@ SPECS_DIR = ROOT / "specs"
 MODERN_DIR = ROOT / "modern"
 UNIT_DIR = ROOT / "tests" / "unit"
 DRIVERS_DIR = ROOT / "runs" / "drivers"  # generated test drivers for subprograms
+FEEDBACK_DIR = ROOT / "runs" / "feedback"  # human hints, one <module>.json each (tools/serve.py writes them)
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "3"))
 MIN_TESTS = int(os.getenv("MIN_TESTS", "5"))  # never call a module verified on fewer distinct cases
 MAX_RECORDED_FAILURES = 5  # failed cases kept per attempt in runs/state.json
+HINT_WAIT = float(os.getenv("HINT_WAIT", "0"))  # seconds a retry waits for a human hint (0: never waits)
+MAX_HINT_CHARS = 500
 
 
 class GraphState(TypedDict, total=False):
@@ -60,6 +65,7 @@ class GraphState(TypedDict, total=False):
     dep_modules: list        # [{module_id, program_id, params, status}] per dependency
     history: list            # one attempt_record per verify: counts, failed cases, explanation
     attempt_sources: list    # [{attempt, python}] each rewrite's source, kept for the replay
+    human_hints: list        # [{attempt, note, at}] reviewer hints, and the attempt that first used each
 
 
 def _safe(node_name: str):
@@ -136,6 +142,40 @@ def record(state: GraphState) -> GraphState:
     return out
 
 
+def read_hints(module_id: str) -> list[dict]:
+    """Reviewer hints for a module: [{note, at}], oldest first. A missing or broken file is no hints."""
+    try:
+        raw = json.loads((FEEDBACK_DIR / f"{module_id}.json").read_text())
+    except (OSError, ValueError):
+        return []
+    return [{"note": str(h["note"])[:MAX_HINT_CHARS], "at": h.get("at")}
+            for h in raw if isinstance(h, dict) and str(h.get("note") or "").strip()] if isinstance(raw, list) else []
+
+
+def wait_for_hint(state: GraphState, seen: int) -> list[dict]:
+    """Before a retry, give a reviewer up to HINT_WAIT seconds to add a hint. Returns all hints."""
+    hints = read_hints(state["id"])
+    if HINT_WAIT <= 0 or len(hints) > seen:
+        return hints
+    status.update(state, "hint_window", f"waiting up to {HINT_WAIT:g}s for a reviewer hint")
+    deadline = time.monotonic() + HINT_WAIT
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        hints = read_hints(state["id"])
+        if len(hints) > seen:
+            break
+    return hints
+
+
+def with_hints(spec: dict, hints: list[dict]) -> dict:
+    """The spec the rewrite agent sees: reviewer hints added as business rules it must follow.
+    Hints only guide the rewrite; acceptance still needs every golden case to match."""
+    if not hints:
+        return spec
+    rules = list(spec.get("business_rules") or [])
+    return {**spec, "business_rules": rules + [f"Reviewer hint (must follow): {h['note']}" for h in hints]}
+
+
 @_safe("rewrite")
 def rewrite(state: GraphState) -> GraphState:
     dep_modules = state.get("dep_modules") or []
@@ -152,10 +192,14 @@ def rewrite(state: GraphState) -> GraphState:
             for d in dep_modules]
     attempts = state.get("attempts", 0) + 1
     failures = state.get("last_failures") or None
+    used = list(state.get("human_hints") or [])
+    hints = wait_for_hint(state, len(used)) if failures else read_hints(state["id"])
+    new = [{"attempt": attempts, **h} for h in hints[len(used):]]
+    spec = with_hints(state["spec"], hints)
     if deps:
-        src = agents.rewrite(state["spec"], state["cobol_src"], failures, deps=deps)
+        src = agents.rewrite(spec, state["cobol_src"], failures, deps=deps)
     else:
-        src = agents.rewrite(state["spec"], state["cobol_src"], failures)
+        src = agents.rewrite(spec, state["cobol_src"], failures)
     MODERN_DIR.mkdir(exist_ok=True)
     py_path = MODERN_DIR / f"{state['id']}.py"
     py_path.write_text(src)
@@ -164,8 +208,10 @@ def rewrite(state: GraphState) -> GraphState:
     out = {**state, "python_src": src, "py_path": str(py_path),
            "attempts": attempts, "status": "rewriting",
            "attempt_sources": [*(state.get("attempt_sources") or []),
-                               {"attempt": attempts, "python": src[:20000]}]}
-    status.update(out, "rewrite", f"attempt {attempts}" + (" (fixing failures)" if failures else ""))
+                               {"attempt": attempts, "python": src[:20000]}],
+           "human_hints": used + new}
+    status.update(out, "rewrite", f"attempt {attempts}" + (" (fixing failures)" if failures else "")
+                  + (f" (using {len(new)} human hint{'s' * (len(new) > 1)})" if new else ""))
     return out
 
 
@@ -239,7 +285,8 @@ def accept(state: GraphState) -> GraphState:
         unit_status = 'needs_review'
         state = {**state, "unit_tests_quarantined": quarantined}
     out = {**state, "status": "done", "last_failures": [], 'unit_tests_status': unit_status}
-    status.update(out, "accept", f"verified identical. {note}")
+    hinted = "; a human hint guided the rewrite" if state.get("human_hints") else ""
+    status.update(out, "accept", f"verified identical. {note}{hinted}")
     return out
 
 

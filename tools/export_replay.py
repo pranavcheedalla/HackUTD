@@ -88,6 +88,9 @@ def export_session(session: Path) -> dict:
             # each attempt's Python, when the run kept it (pipeline/graph.py rewrite node)
             "attempt_sources": [{"attempt": a.get("attempt"), "python": SECRET.sub("nvapi-…", a.get("python", ""))}
                                 for a in m.get("attempt_sources") or []],
+            # reviewer hints sent during the run, each with the attempt that first followed it
+            "human_hints": [{"attempt": h.get("attempt"), "note": SECRET.sub("nvapi-…", str(h.get("note", ""))),
+                             "at": h.get("at")} for h in m.get("human_hints") or []],
             "heldout": None,  # filled by --audit
         })
     return {"kind": "run", "mode": state.get("mode", "real_model"), "session": session.name,

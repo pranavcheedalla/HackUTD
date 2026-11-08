@@ -10,6 +10,8 @@ It serves web/ and a small JSON API:
     POST /api/upload                      body: a .zip of COBOL; saved to samples/uploads/<name>/
     POST /api/runs        {"codebase"}    start a real run (tools/isolated_run.py); returns the session
     GET  /api/runs/<session>/replay       that session as a replay, built from what it has written so far
+    POST /api/runs/<session>/feedback {"module", "note"}
+                                          a reviewer hint; that module's next rewrite attempt follows it
 
 A run is the same pipeline as the command line, in its own session copy. Only one runs at a time
 (isolated_run.py holds the lock). The page falls back to the recorded replay whenever live isn't
@@ -44,6 +46,9 @@ SOURCE_EXT = {".cbl", ".cob", ".cobol", ".cpy", ".copy"}
 MAX_UPLOAD = 5 * 1024 * 1024
 MAX_FILES = 200
 SESSION_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-(real|fake)-[0-9a-f]{6}$")
+MODULE_RE = re.compile(r"^[a-z0-9_]{1,40}$")
+MAX_HINT_CHARS = 500
+MAX_HINTS = 10  # per module
 
 _lock = threading.Lock()
 _current: dict = {}  # {"session", "codebase", "process", "started"}
@@ -209,6 +214,45 @@ def _replay(session: str) -> tuple[int, dict]:
     return 200, rep
 
 
+def _feedback(session: str, body: dict) -> tuple[int, dict]:
+    """Save a reviewer hint where the run's rewrite node reads it (pipeline/graph.py read_hints)."""
+    if not SESSION_RE.match(session):
+        return 400, {"error": "Bad session."}
+    module, note = body.get("module"), body.get("note")
+    if not isinstance(module, str) or not MODULE_RE.match(module):
+        return 400, {"error": "Bad module."}
+    note = " ".join(note.split())[:MAX_HINT_CHARS] if isinstance(note, str) else ""
+    if not note:
+        return 400, {"error": "Write a hint first."}
+    folder = SESSIONS / session
+    try:
+        meta = json.loads((folder / "session.json").read_text())
+        state = json.loads((folder / "runs" / "state.json").read_text())
+    except (OSError, ValueError):
+        return 404, {"error": "No such run."}
+    if meta.get("status") != "running":
+        return 409, {"error": "That run has finished; hints only help a run in progress."}
+    current = (state.get("modules") or {}).get(module)
+    if current is None:
+        return 404, {"error": "That program is not in this run."}
+    if current.get("status") in ("done", "failed"):
+        return 409, {"error": f"{module} has already finished."}
+    path = folder / "runs" / "feedback" / f"{module}.json"
+    with _lock:
+        try:
+            hints = json.loads(path.read_text())
+        except (OSError, ValueError):
+            hints = []
+        if len(hints) >= MAX_HINTS:
+            return 409, {"error": "That program already has enough hints."}
+        hints.append({"note": note, "at": time.strftime("%Y-%m-%dT%H:%M:%S")})
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(hints, indent=1))
+        os.replace(tmp, path)  # the pipeline never reads a half-written file
+    return 200, {"module": module, "hints": len(hints)}
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=str(WEB), **k)
@@ -251,6 +295,13 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError:
                 return self._json(400, {"error": "Bad request."})
             return self._json(*_start(codebase))
+        m = re.match(r"^/api/runs/([^/]+)/feedback$", self.path)
+        if m:
+            try:
+                data = json.loads(body or b"{}")
+            except ValueError:
+                return self._json(400, {"error": "Bad request."})
+            return self._json(*_feedback(m.group(1), data if isinstance(data, dict) else {}))
         return self._json(404, {"error": "Not found."})
 
 
