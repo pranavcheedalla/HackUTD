@@ -108,23 +108,58 @@
   }
 
   // ---------- playback ----------
-  let clock = 0, last = performance.now(), speed = 1, playing = true, focus = null, resumeAfter = false, focusX = null;  // focusX: world x the open readout is about
+  let clock = 0, last = performance.now(), speed = 1, playing = false, focus = null, resumeAfter = false, focusX = null;  // focusX: world x the open readout is about
   let cam = 0, cs = 0, trail = [], fr = 0, shoot = null, hits = [];
   const playBtn = document.getElementById('play');
-  playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? 'Pause' : 'Play'; playBtn.setAttribute('aria-label', playBtn.textContent); };
+  playBtn.onclick = () => { if (!R) return; resumeAfter = false; playing = !playing; syncPlayback(); };
+  const previousBtn = document.getElementById('previous-step'), nextBtn = document.getElementById('next-step');
+  const stepStatus = document.getElementById('step-status');
+  previousBtn.onclick = () => step(-1);
+  nextBtn.onclick = () => step(1);
   document.getElementById('restart').onclick = restart;
   document.getElementById('speed').onchange = e => { speed = +e.target.value; };
-  function restart() { clock = 0; cam = 0; cs = 0; trail = []; }
+  function stops() { return TL ? TL.beats.filter(b => ['intro', 'dwell', 'outro'].includes(b.k)) : []; }
+  function stopIndex(list) {
+    let i = 0;
+    while (i + 1 < list.length && clock >= list[i + 1].t0) i++;
+    return i;
+  }
+  function syncPlayback() {
+    const label = playing ? 'Pause' : 'Auto-play';
+    if (playBtn.textContent !== label) playBtn.textContent = label;
+    playBtn.setAttribute('aria-label', label);
+    const list = stops(), i = stopIndex(list), b = list[i];
+    previousBtn.disabled = !R || i === 0;
+    nextBtn.disabled = !R || i >= list.length - 1;
+    const label2 = b ? `${b.k === 'intro' ? 'Overview' : b.k === 'outro' ? 'Summary' : STATIONS[b.at][1]} · ${i + 1}/${list.length}` : '';
+    if (stepStatus.textContent !== label2) stepStatus.textContent = label2;
+    stepStatus.dataset.time = clock.toFixed(3);
+    stepStatus.dataset.playing = String(playing);
+  }
+  function step(direction) {
+    if (!R || !TL || intakeOpen()) return;
+    const list = stops(), i = Math.max(0, Math.min(list.length - 1, stopIndex(list) + direction)), b = list[i];
+    // A clicked readout must not resume playback when an arrow closes it.
+    resumeAfter = false; closePanel(); closeCaption(); focus = null; focusX = null; playing = false;
+    clock = b.t0 + (b.k === 'intro' ? 1.7 : b.k === 'outro' ? 3 : Math.min(4, b.t1 - b.t0 - .65));
+    trail = []; lastFail = null;
+    syncPlayback();
+  }
+  function restart() {
+    resumeAfter = false; closePanel(); closeCaption();
+    clock = R && !R.live ? 1.7 : 0; cam = 0; cs = 0; trail = []; lastFail = null;
+    playing = !!(R && R.live); syncPlayback();
+  }
   addEventListener('keydown', e => {
-    if (e.target.tagName === 'SELECT') return;
+    if (['SELECT', 'INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
     if (intakeOpen()) { if (e.key === 'Escape' && R) closeIntake(); if (e.key === 'Enter' && caseFile.classList.contains('open')) document.getElementById('case-go').click(); return; }
     if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
     if (e.key === 'r' || e.key === 'R') restart();
     if (e.key === 'Escape') { if (panel.classList.contains('open')) closePanel(); else closeCaption(); }
-    if ((e.key === 'Enter' || e.key === 'd' || e.key === 'D') && capFocus !== null) openStation(capFocus);
+    if ((e.key === 'Enter' || e.key === 'd' || e.key === 'D') && capFocus !== null) { e.preventDefault(); openStation(capFocus); }
     if (/^[1-7]$/.test(e.key) && R) { const n = +e.key - 1; if (capFocus === n && !panel.classList.contains('open')) openStation(n); else openCaption(n); }
-    if (e.key === 'ArrowRight') clock = Math.min(TL.end, clock + 3);
-    if (e.key === 'ArrowLeft') { clock = Math.max(0, clock - 3); trail = []; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); if (!e.repeat) step(1); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); if (!e.repeat) step(-1); }
   });
 
   // ---------- module text for the scene ----------
@@ -414,6 +449,7 @@
   function frame(now) {
     const dtReal = Math.min(.05, (now - last) / 1000); last = now;
     requestAnimationFrame(frame);  // first, so one bad frame can never stop the show
+    syncPlayback();
     if (!W || !isFinite(W)) { if (!resize()) return; }
     if (cv.width !== Math.round(innerWidth * DPR) || cv.height !== Math.round(innerHeight * DPR)) resize();
     if (intakeOpen()) { try { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.globalAlpha = 1; drawSky(now / 1000); } catch (err) { console.error(err); } return; }
@@ -637,7 +673,8 @@
       : R.kind === 'mutation' ? 'CONTROLLED MUTATION  ·  PLANTED BUG, NOT A MODEL OUTPUT'
       : `REPLAY OF A REAL ${R.mode === 'real_model' ? 'NEMOTRON' : 'OFFLINE FIXTURE'} RUN  ·  ${(R.started_at || '').slice(0, 16).replace('T', ' ')}`;
     if (innerWidth > 1100 && !panel.classList.contains('open')) txt(label, W - 24, H - 22, 9, .32, 2.5, 'right');
-    if (travelling && !panel.classList.contains('open') && t < 40) txt('CLICK A STAR OR A RING TO INSPECT', W / 2, H - 48, 9, .22 * clamp((t - 6) / 2) * clamp((40 - t) / 3), 3);
+    if (!R.live && !playing && !panel.classList.contains('open')) txt('← BACK · NEXT →  |  CLICK A STAR OR RING TO INSPECT', W / 2, H - 48, 9, .4, 2);
+    else if (travelling && !panel.classList.contains('open') && t < 40) txt('CLICK A STAR OR A RING TO INSPECT', W / 2, H - 48, 9, .22 * clamp((t - 6) / 2) * clamp((40 - t) / 3), 3);
   }
 
   // ---------- side panel ----------
@@ -773,7 +810,7 @@
     const rep = await res.json();
     if (version !== uploadVersion) return;
     R = normalize(rep);
-    TL = buildTimeline(R); restart(); closePanel(); closeCaption(); lastFail = null; playing = true; playBtn.textContent = 'Pause';
+    TL = buildTimeline(R); restart();
     document.getElementById('loading').style.display = 'none'; closeIntake();
     if ([...sel.options].some(o => o.value === name)) sel.value = name;
     history.replaceState(null, '', `#${name}`);

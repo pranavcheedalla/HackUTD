@@ -13,6 +13,8 @@ needs no network, so it plays the same way every time.
 
 Dropping a zip of a known codebase plays its recorded real run (demo mode). Run live instead starts a real run.
 
+Recordings open paused. Use **Next → / ← Back** or the keyboard arrows to move one station at a time, including failed checks and retries. Nothing advances between clicks; stars and readouts remain interactive. **Auto-play** is optional, and Restart returns to the paused overview.
+
 **With live runs (recommended):**
 
 ```bash
@@ -43,7 +45,7 @@ Open a recording directly with `#codebase`, `#bank` or `#planted-bug`.
 |---|---|
 | Space | Pause or play |
 | R | Restart |
-| ← → | Jump 3 seconds |
+| ← → | Previous / next station; remain paused |
 | Esc | Close the panel |
 
 ## Add a replay

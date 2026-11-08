@@ -41,7 +41,7 @@ You don't need anything for recordings only: `cd web && python3 -m http.server 8
 
 1. **Case file (30 s):** "Hard to change, and dangerous to change without proof."
 2. Drop demo/retail-bank.zip; it plays the recorded real run. Say: 'this replays a real run from tonight; live takes about 25 minutes.'
-3. **Let the bank recording play at 1× (adjust speed if needed):**
+3. **Use Next → to walk through the paused recording at your own pace:**
    - the ALERTS mismatch, caught and fixed;
    - then click the Verify ring → `DETAILS`.
 4. **Optional: Run live instead.** Starts a real run of the uploaded codebase; allow about 25 minutes.

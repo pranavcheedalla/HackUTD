@@ -9,7 +9,7 @@
   html, body { margin: 0; height: 100%; background: #07070a; color: var(--ink); font-family: var(--mono); overflow: hidden; }
   canvas { display: block; width: 100vw; height: 100vh; cursor: default; }
   canvas.pointer { cursor: pointer; }
-  .controls { position: fixed; left: 24px; bottom: 20px; display: flex; gap: 14px; align-items: center; opacity: .38; transition: opacity .3s; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; }
+  .controls { position: fixed; left: 24px; right: 24px; bottom: 20px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; opacity: .38; transition: opacity .3s; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; }
   .controls:hover, .controls:focus-within { opacity: .95; }
   .controls button, .controls select { background: none; border: 0; color: var(--ink); font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; padding: 4px 0; }
   .controls select { appearance: none; -webkit-appearance: none; border-bottom: 1px solid var(--line); padding-right: 4px; }
@@ -146,7 +146,10 @@
 <canvas id="sky" aria-label="Replay of a COBOL to Python migration shown as stars traveling through pipeline stations"></canvas>
 <div class="loading" id="loading">Loading replay…</div>
 <div class="controls" role="toolbar" aria-label="Replay controls">
-  <button id="play" aria-label="Pause">Pause</button>
+  <button id="previous-step" aria-label="Previous station" title="Previous station (left arrow)">← Back</button>
+  <button id="next-step" aria-label="Next station" title="Next station (right arrow)">Next →</button>
+  <span id="step-status" role="status" aria-live="polite"></span>
+  <button id="play" aria-label="Auto-play">Auto-play</button>
   <button id="restart">Restart</button>
   <span class="sep"></span>
   <select id="speed" aria-label="Speed"><option value="0.6">0.6×</option><option value="1" selected>1×</option><option value="1.6">1.6×</option><option value="2.5">2.5×</option></select>
