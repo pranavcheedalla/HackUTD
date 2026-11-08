@@ -33,11 +33,25 @@ assert.equal(read('playing'), false);
 assert.equal(read('stopIndex(stops())'),0);
 assert.equal(elements.get('previous-step').disabled,true);
 const count = read('stops().length');
-assert.equal(count,39);
+assert.equal(count,38);
+const finish = () => { read('advanceTravel(10); syncPlayback()'); };
 const visited=[];
 for(let i=1;i<count;i++) {
   elements.get('next-step').onclick();
   assert.equal(read('playing'),false);
+  assert.equal(read('travel !== null'),true);
+  assert.equal(elements.get('previous-step').disabled,true);
+  assert.equal(elements.get('next-step').disabled,true);
+  const from=read('clock'), target=read('travel.target');
+  elements.get('next-step').onclick(); // double clicks must not skip a station
+  assert.equal(read('travel.target'),target);
+  read('advanceTravel(travel.duration / 2)');
+  assert.ok(read('clock') > from && read('clock') < target);
+  if(read('travel.duration')>1) assert.ok(['move','swoop'].includes(read('beatAt(clock).k')));
+  finish();
+  assert.equal(read('travel'),null);
+  assert.equal(read('clock'),target);
+  read('advanceTravel(5)'); assert.equal(read('clock'),target); // no drift after arrival
   assert.equal(read('stopIndex(stops())'),i);
   visited.push(read('JSON.stringify(stops()[stopIndex(stops())])'));
 }
@@ -50,12 +64,30 @@ assert.equal(visited.map(JSON.parse).filter(b=>b.h>0&&b.at===5).length,1);
 elements.get('play').onclick(); assert.equal(read('playing'),true);
 elements.get('previous-step').onclick(); assert.equal(read('playing'),false);
 assert.equal(read('resumeAfter'),false);
+const reverseStart=read('clock'); read('advanceTravel(.2)');
+assert.ok(read('clock')<reverseStart);
+finish();
 listeners.keydown({target:{tagName:'BODY'},key:'ArrowLeft',repeat:false,preventDefault(){}});
+finish();
 assert.equal(read('stopIndex(stops())'),count-3);
 elements.get('restart').onclick();
 assert.equal(read('playing'),false); assert.equal(read('stopIndex(stops())'),0);
 const before=read('clock');
 listeners.keydown({target:{tagName:'BODY'},key:'ArrowRight',repeat:true,preventDefault(){}});
 assert.equal(read('clock'),before);
+// Pause midway, then Back must visibly return to the departure station.
+elements.get('next-step').onclick(); read('advanceTravel(.8)');
+const paused=read('clock');
+elements.get('play').onclick();
+assert.equal(read('travel'),null); assert.equal(read('playing'),false);
+read('advanceTravel(10)'); assert.equal(read('clock'),paused);
+assert.equal(elements.get('previous-step').disabled,false);
+elements.get('previous-step').onclick();
+const halfwayBack=read('clock'); read('advanceTravel(.4)');
+assert.ok(read('clock')<halfwayBack);
+finish(); assert.equal(read('stopIndex(stops())'),0);
+assert.equal(elements.get('previous-step').disabled,true);
+elements.get('next-step').onclick(); elements.get('restart').onclick();
+assert.equal(read('travel'),null); assert.equal(read('playing'),false);
 '''], cwd=ROOT, text=True, capture_output=True, timeout=15)
     assert result.returncode == 0, result.stdout + result.stderr

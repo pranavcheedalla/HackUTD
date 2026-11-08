@@ -13,7 +13,7 @@ needs no network, so it plays the same way every time.
 
 Dropping a zip of a known codebase plays its recorded real run (demo mode). Run live instead starts a real run.
 
-Recordings open paused. Use **Next → / ← Back** or the keyboard arrows to move one station at a time, including failed checks and retries. Nothing advances between clicks; stars and readouts remain interactive. **Auto-play** is optional, and Restart returns to the paused overview.
+Recordings open paused at Discover. Use **Next → / ← Back** or the keyboard arrows: the star travels along the path to the adjacent station, then pauses automatically, including at failed checks and retries. Stars and readouts remain interactive. **Pause** can stop a flight; **Auto-play** is optional and uses the speed selector. Restart returns to paused Discover.
 
 **With live runs (recommended):**
 
