@@ -7,7 +7,7 @@
 
 ```bash
 git clone https://github.com/pranavcheedalla/HackUTD.git && cd HackUTD
-git fetch origin && git checkout person2/attempt-history   # or main, once PR #3 is merged
+git fetch origin && git checkout main && git pull
 cd web && python3 -m http.server 8765                      # open http://127.0.0.1:8765
 ```
 

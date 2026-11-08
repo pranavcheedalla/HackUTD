@@ -28,9 +28,9 @@ of your station file(s).
 ## Setup (5 minutes)
 
 ```bash
-git clone https://github.com/pranavcheedalla/HackUTD.git   # or: cd HackUTD && git fetch origin
+git clone https://github.com/pranavcheedalla/HackUTD.git   # or, if you already have it: cd HackUTD && git fetch origin
 cd HackUTD
-git checkout person2/attempt-history        # or origin/main once PR #3 is merged
+git checkout main
 git pull
 git checkout -b stations/<your-name>        # e.g. stations/hemant
 cd web && python3 -m http.server 8765       # leave this running
