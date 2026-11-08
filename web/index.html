@@ -214,7 +214,6 @@
   <select id="replay" aria-label="Replay" hidden></select>
   <button id="fallback" hidden>Switch to recording</button>
   <button id="run-live-instead" hidden>Run live instead</button>
-  <button id="skip-review" hidden title="Jump to the program that needs a person: its failing check, then the ask">Skip to human loop</button>
   <button id="quick-live" hidden title="One real program through the whole pipeline with live Nemotron calls, about 40 seconds">One program live</button>
   <button id="backlive" hidden>Back to live</button>
 </div>
@@ -276,6 +275,7 @@
 <script src="captions.js"></script>
 <script src="galaxy.js"></script>
 <script src="hints.js"></script>
-<script src="landing.js"></script>  <!-- the legacy terminal on the landing page -->  <!-- live runs: a reviewer's hint for the next rewrite attempt -->
+<script src="landing.js"></script>
+<script src="reveal.js"></script>  <!-- end of a live run: COBOL in, the Python Nemotron wrote out -->  <!-- the legacy terminal on the landing page -->  <!-- live runs: a reviewer's hint for the next rewrite attempt -->
 </body>
 </html>

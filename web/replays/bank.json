@@ -1315,5 +1315,6 @@
  ],
  "name": "bank",
  "title": "Retail bank \u00b7 5 programs",
- "codebase": "samples/bank"
+ "codebase": "samples/bank",
+ "quick_live": "loanpay"
 }

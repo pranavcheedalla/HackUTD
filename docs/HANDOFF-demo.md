@@ -59,7 +59,7 @@ controls. PR #10 contains the latest frontend and navigation work. See
 
    That is the exact hint a person sent in the recorded run (session `20261108-105033-real-83cd24`), so the
    fix that follows is real: the star goes back to Rewrite and attempt 2 matches 28 of 28.
-   **Skip to human loop** (toolbar, during the drop replay) jumps straight to SETTLE failing its check, then the ask.
+   Rehearsal only: press **H** during the drop replay to jump straight to SETTLE failing its check (no visible button, so it never looks staged).
    **The demo ends at SETTLE's 07 Verified** (it does not fly on to the bank's other programs). The moment it
    lands, **● Download modernized code** appears at the bottom and stays; the summary then reads **VERIFIED**,
    `SETTLE.CBL → SETTLE.PY · 28 / 28 OUTPUTS MATCH THE REAL COBOL`. The link downloads
@@ -76,6 +76,9 @@ controls. PR #10 contains the latest frontend and navigation work. See
    - To keep it fast, a quick run writes the spec in one Super pass (no Nano draft + review), writes
      the Python while the answer key is recorded, and skips the bonus unit-test layer (Details say so).
      Verification against the real COBOL is unchanged.
+   - **When it lands on Verified, the page shows COBOL in, Python out:** the COBOL that went in, the Python
+     Nemotron wrote in this run (scrolled to `def main` beside `PROCEDURE DIVISION`), the run's own Nemotron
+     calls with seconds (from its `runs/llm_calls.jsonl`), the session id and the match count. Esc closes it.
    - **Run live instead** still runs the whole bank (5 programs, about 7 minutes).
 
    If a program fails live, that's the point: "it won't ship code that's off by a cent, and it blocks everything that depends on it."
