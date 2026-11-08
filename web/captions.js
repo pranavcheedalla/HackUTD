@@ -93,7 +93,12 @@
   window.Captions = {
     get(n, ctx) {
       const v = views[n]; if (!v || !ctx || !ctx.module) return null;
-      try { return v(ctx); } catch (err) { console.error(`caption ${n}:`, err); return null; }
+      try {
+        const c = v(ctx);
+        // an offline fixture run made no model calls: never credit Nemotron for its canned answers
+        if (c && ctx.replay && ctx.replay.mode === 'offline_fixture') c.sentence = c.sentence.replace(/\bNemotron\b/g, 'The offline fixture');
+        return c;
+      } catch (err) { console.error(`caption ${n}:`, err); return null; }
     },
     // which stops narrate: everything for the first program, then only what differs
     narrates(mi, at) { return mi === 0 || at >= 4; },

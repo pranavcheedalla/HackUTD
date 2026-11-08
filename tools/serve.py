@@ -151,6 +151,9 @@ def _start(codebase: str, only: str | None = None, quick: bool = False) -> tuple
         if only:
             cmd += ["--only", only]
         env = dict(os.environ, REVIEW_WAIT=REVIEW_WAIT, **(QUICK_ENV if quick else {}))
+        tries = _about(ROOT / codebase).get("max_attempts")  # codebase.json: ask a person sooner
+        if isinstance(tries, int) and 1 <= tries <= 3:
+            env["MAX_ATTEMPTS"] = str(tries)
         proc = subprocess.Popen(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=env)
         session = None
         for _ in range(60):  # isolated_run publishes its session name right after copying the repo

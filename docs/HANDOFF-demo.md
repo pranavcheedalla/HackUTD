@@ -86,3 +86,25 @@ controls. PR #10 contains the latest frontend and navigation work. See
 | Caption copy | `web/captions.js` |
 | Server | `tools/serve.py` |
 | Exporter | `tools/export_replay.py` |
+
+## Human feedback demo (branch `feature/human-hints`)
+
+When the agents can't verify a program after their attempts, it pauses and the galaxy asks a person
+("Needs a person", bottom-right). The feedback buys 2 more attempts; acceptance still needs the real COBOL.
+
+**Guaranteed (offline, no model calls, about 15 s):**
+```bash
+REVIEW_WAIT=300 python tools/serve.py      # terminal 1
+tools/demo_feedback.sh                     # terminal 2: opens the page (labelled OFFLINE FIXTURE)
+```
+INVOICE asks after about 10 s. Type e.g. "fractions of a cent are cut off, never rounded" and press Enter: verified 15/15 on attempt 4.
+
+**Live (real Nemotron, about 1.5 min, not guaranteed):** `samples/review` (SETTLE) asks a person after
+1 attempt (`max_attempts` in its codebase.json).
+```bash
+curl -s -X POST http://127.0.0.1:8765/api/runs -d '{"codebase":"samples/review","only":"settle","quick":true}'
+```
+Open `#live=<session>`. Plain "dollars, not cents" was not enough in 2 out of 2 real runs. This fixed it in 1 attempt both times:
+"MOVE of text into a numeric field reads the digits as a whole number with no implied decimal: 000010000 is
+10000.00, and only the last 7 digits are kept. Do not use pic_from_text for these MOVEs."
+Fallback: if it hasn't asked by about 60 s, switch to the offline tab.

@@ -826,7 +826,7 @@
     x.fillStyle = vg; x.fillRect(0, 0, W, H);
 
     if (b.blocked && !panel.classList.contains('open')) txt('BLOCKED', 24, 30, 11, .5, 3, 'left');
-    const label = R.live ? `LIVE  ·  REAL NEMOTRON RUN${R.finished ? '  ·  FINISHED' : ''}`
+    const label = R.live ? `LIVE  ·  ${R.mode === 'offline_fixture' ? 'OFFLINE FIXTURE (NO MODEL CALLS)' : 'REAL NEMOTRON RUN'}${R.finished ? '  ·  FINISHED' : ''}`
       : R.kind === 'mutation' ? 'CONTROLLED MUTATION  ·  PLANTED BUG, NOT A MODEL OUTPUT'
       : R.mode === 'real_model' ? 'REPLAY OF A REAL NEMOTRON RUN' : 'OFFLINE FIXTURE REPLAY';
     // Keep the honest replay disclosure above the toolbar, even when its buttons wrap.
