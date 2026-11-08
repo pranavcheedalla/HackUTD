@@ -17,8 +17,9 @@ You don't need anything for recordings only: `cd web && python3 -m http.server 8
 
 ## What's implemented
 
-The NorthBase intake and presenter controls are in PR #10, pending merge approval.
-The established backend and recordings are on main.
+This checkout includes the backend, real recordings, NorthBase intake, and presenter
+controls. PR #10 contains the latest frontend and navigation work. See
+`docs/HANDOFF-claude.md` for the recent changes and continuation instructions.
 
 - **Backend:** the full pipeline (spec → test inputs → real COBOL answer key → rewrite → verify → retry → accept).
   - Multi-file codebases (CALL, copybooks, dependency order, blocking).
