@@ -231,6 +231,8 @@
   addEventListener('keydown', e => {
     if (entrance) { if (e.key === 'Escape') { e.preventDefault(); openIntake(); } return; }
     if (['SELECT', 'INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+    // the presenter's wrap-up slide, from anywhere in NorthBound (web/deck.html: slides 1-2 lead in, 3 closes)
+    if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); location.href = 'deck.html#3'; return; }
     if (intakeOpen()) { if (e.key === 'Escape' && R) closeIntake(); if (e.key === 'Enter' && caseFile.classList.contains('open')) document.getElementById('case-go').click(); return; }
     if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
     if (e.key === 'r' || e.key === 'R') restart();

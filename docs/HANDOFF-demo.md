@@ -49,6 +49,10 @@ controls. PR #10 contains the latest frontend and navigation work. See
 
 ## Demo script (about 3 minutes)
 
+**Slides:** open `http://127.0.0.1:8765/deck.html`. Slide 1 (who we are) → slide 2 (how it's built) →
+**Into NorthBound** opens the landing page (case file, then the drop). After the live run, press **C**
+anywhere in NorthBound for slide 3 (what we proved). Arrows, space or click move between slides.
+
 1. **Open NorthBound → Read the case file (30 s):** "Hard to change, and dangerous to change without proof." Click **Hand it the codebase →** to return to the landing page.
 2. Drop demo/retail-bank.zip; after the star entrance the codebase **runs through on its own like a live run**: each station shows Nemotron working (with the real run's elapsed time, `REAL RUN · mm:ss`), then the real result lands and the star moves on. Say: 'this replays a real run from tonight, step by step; the full live run takes about 7 minutes.' Pause, Next (skips a wait) and Back still work.
    **SETTLE opens the walkthrough (program 1, card settlement):** a separate real run, labelled on screen. It fails Verify
