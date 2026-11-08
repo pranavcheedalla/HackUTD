@@ -10,11 +10,14 @@ Stations.register(1, {
     const deps = m => m.depends_on || [];
     const up = s => String(s || '').toUpperCase();
     const done = m => m.status === 'done';
+    const plural = (n, word) => (n === 1 ? word : word + 's');
+    const subs = mods.filter(m => m.kind === 'subprogram').length;
+    const calls = mods.reduce((n, m) => n + deps(m).length, 0);
 
     const stats = H.stats([
-      { value: mods.length, label: 'programs' },
-      { value: mods.filter(m => m.kind === 'subprogram').length, label: 'subprograms' },
-      { value: mods.reduce((n, m) => n + deps(m).length, 0), label: 'calls' },
+      { value: mods.length, label: plural(mods.length, 'program') },
+      { value: subs, label: plural(subs, 'subprogram') },
+      { value: calls, label: plural(calls, 'call') },
     ]);
 
     const callers = mods.filter(m => deps(m).length);
