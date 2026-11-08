@@ -879,9 +879,10 @@
     cancelEntrance();
     uploadVersion++;
     travel = null; resumeAfter = false;
-    playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.remove('open');
+    playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.remove('open'); intake.setAttribute('aria-hidden', 'true');
     caseFile.classList.add('open'); caseFile.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on');
-    history.replaceState(null, '', location.pathname + location.search);
+    caseFile.scrollTop = 0;
+    history.replaceState(null, '', '#case');
   }
   function closeCase() { caseFile.classList.remove('open'); caseFile.setAttribute('aria-hidden', 'true'); }
   document.getElementById('case-go').onclick = () => { closeCase(); openIntake(); };
@@ -944,15 +945,16 @@
     pollTimer = setTimeout(poll, 1500);
   }
   async function startLive(codebase, recording) {
-    uploadVersion++; runLiveBtn.hidden = true; runLiveBtn.onclick = null;
+    const version = ++uploadVersion; runLiveBtn.hidden = true; runLiveBtn.onclick = null;
     note('Starting a real Nemotron run…');
     let r;
     try { r = await fetch('api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codebase }) }); }
-    catch (err) { return note('The local server is not reachable.', true); }
+    catch (err) { if (version === uploadVersion) note('The local server is not reachable.', true); return; }
     const body = await r.json().catch(() => ({}));
+    if (version !== uploadVersion) return;
     if (!r.ok) {
       note(body.error || 'The run could not start.', true);
-      if (recording) setTimeout(() => load(recording).catch(showError), 1600);
+      if (recording) setTimeout(() => { if (version === uploadVersion) load(recording).catch(showError); }, 1600);
       return;
     }
     attach(body.session);
@@ -972,9 +974,20 @@
 
   // the intake: pick a codebase or drop a zip of one
   function note(text, bad) { const n = document.getElementById('in-note'); n.textContent = text || ''; n.classList.toggle('bad', !!bad); }
-  function openIntake() { cancelEntrance(); uploadVersion++; travel = null; resumeAfter = false; closeCase(); playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.add('open'); intake.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on'); history.replaceState(null, '', '#codebases'); note(''); renderIntake(); }
+  function openIntake() {
+    cancelEntrance(); uploadVersion++; travel = null; resumeAfter = false; closeCase();
+    playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption();
+    intake.classList.add('open'); intake.setAttribute('aria-hidden', 'false'); intake.scrollTop = 0;
+    document.body.classList.add('intake-on');
+    history.replaceState(null, '', location.pathname + location.search);
+    document.getElementById('loading').style.display = 'none';
+    note(''); renderIntake(); syncPlayback();
+    document.getElementById('northbase-title').focus({ preventScroll: true });
+  }
   function closeIntake() { closeCase(); intake.classList.remove('open'); intake.setAttribute('aria-hidden', 'true'); document.body.classList.remove('intake-on'); note(''); }
   document.getElementById('intake-btn').onclick = openIntake;
+  document.getElementById('case-home').onclick = openIntake;
+  document.getElementById('panel-home').onclick = openIntake;
   function renderIntake() {
     document.getElementById('in-foot').textContent = API
       ? 'COBOL → Python · every recorded output must match'
@@ -1019,7 +1032,7 @@
     if (follow && API) return attach(follow[1]);
     if (recordings.some(r => r.name === want)) return load(want);
     document.getElementById('loading').style.display = 'none';
-    if (want === 'codebases') openIntake(); else openCase();  // the story first; #codebases skips straight to the list
+    if (want === 'case') openCase(); else openIntake();  // Home is the default; #codebases remains a landing-page alias
   })().catch(showError);
   requestAnimationFrame(frame);
   // for rehearsing a moment: galaxy.seek(seconds), galaxy.t

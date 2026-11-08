@@ -27,9 +27,10 @@
   .panel header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
   .panel h2 { margin: 0; font-weight: 400; font-size: 12px; letter-spacing: 5px; text-transform: uppercase; color: rgba(242,241,248,.94); }
   .panel .meta { font-size: 9.5px; letter-spacing: 3px; color: rgba(232,234,242,.42); text-transform: uppercase; margin-top: 9px; }
-  .panel .close { background: none; border: 0; color: rgba(232,234,242,.38); font: 9.5px var(--mono); letter-spacing: 3px; text-transform: uppercase; cursor: pointer; padding: 2px 0; }
+  .panel-actions { display: flex; align-items: baseline; gap: 18px; }
+  .panel .close, .panel .home { background: none; border: 0; color: rgba(232,234,242,.38); font: 9.5px var(--mono); letter-spacing: 3px; text-transform: uppercase; cursor: pointer; padding: 2px 0; }
   .panel .close::after { content: 'Esc'; }
-  .panel .close:hover { color: var(--ink); }
+  .panel .close:hover, .panel .home:hover { color: var(--ink); }
   .tabs { display: flex; gap: 28px; }
   .tabs button { background: none; border: 0; color: rgba(232,234,242,.36); font: 9.5px var(--mono); letter-spacing: 3px; text-transform: uppercase; padding: 0 0 8px; cursor: pointer; position: relative; transition: color .3s; }
   .tabs button:hover { color: rgba(232,234,242,.7); }
@@ -100,7 +101,7 @@
   body.intake-on .controls { opacity: 0; pointer-events: none; }
   .in-wrap { width: min(760px, 100%); display: flex; flex-direction: column; gap: 30px; margin-block: auto; }
   .northbase-wrap { --brand-x: 43%; --brand-size: clamp(64px, 11.5vw, 176px); --brand-below: calc(var(--brand-size) * .6 + 8px); position: relative; display: block; text-align: center; height: 88vh; margin: 0; }
-  .northbase-title { position: absolute; left: var(--brand-x); top: 50%; transform: translate(-50%, -50%); margin: 0; white-space: nowrap; font: 600 var(--brand-size)/1.05 var(--mono); letter-spacing: -.065em; color: rgba(242,241,248,.98); }
+  .northbase-title { position: absolute; left: var(--brand-x); top: 50%; transform: translate(-50%, -50%); margin: 0; white-space: nowrap; font: 600 var(--brand-size)/1.05 var(--mono); letter-spacing: -.065em; color: rgba(242,241,248,.98); outline: none; }
   .northbase-tagline { position: absolute; left: var(--brand-x); top: calc(50% + var(--brand-below)); transform: translateX(-50%); width: max-content; max-width: 100%; margin: 0; font-size: 9.5px; letter-spacing: 5px; text-transform: uppercase; color: rgba(232,234,242,.45); }
   .northbase-wrap .in-back { position: absolute; top: 14px; left: var(--brand-x); transform: translateX(-50%); margin: 0; white-space: nowrap; }
   .northbase-wrap .drop { position: absolute; top: calc(50% + var(--brand-below) + 41px); left: var(--brand-x); transform: translateX(-50%); flex-direction: column; gap: 18px; }
@@ -151,22 +152,24 @@
 <canvas id="sky" aria-label="Replay of a COBOL to Python migration shown as stars traveling through pipeline stations"></canvas>
 <div class="loading" id="loading">Loading replay…</div>
 <div class="controls" role="toolbar" aria-label="Replay controls">
+  <button id="intake-btn" title="Return to the NorthBase landing page">Home</button>
+  <span class="sep"></span>
   <button id="previous-step" aria-label="Previous station" title="Previous station (left arrow)">← Back</button>
   <button id="next-step" aria-label="Next station" title="Next station (right arrow)">Next →</button>
   <span id="step-status" role="status" aria-live="polite"></span>
   <button id="play" aria-label="Auto-play">Auto-play</button>
-  <button id="restart">Restart</button>
+  <button id="restart" title="Restart the current replay at Discover">Restart</button>
   <span class="sep"></span>
   <select id="speed" aria-label="Speed"><option value="0.6">0.6×</option><option value="1" selected>1×</option><option value="1.6">1.6×</option><option value="2.5">2.5×</option></select>
   <span class="sep"></span>
   <select id="replay" aria-label="Replay" hidden></select>
-  <button id="intake-btn">Upload .zip</button>
   <button id="fallback" hidden>Switch to recording</button>
   <button id="run-live-instead" hidden>Run live instead</button>
   <button id="backlive" hidden>Back to live</button>
 </div>
 <section class="intake case" id="case" aria-hidden="true">
   <div class="in-wrap">
+    <button class="in-back" id="case-home">← Home</button>
     <div class="in-title">NorthBase  ·  Case file</div>
     <p class="in-lede">The systems that run money and public benefits are often written in COBOL: hard to change, and dangerous to change without proof.</p>
     <div class="ev">
@@ -185,8 +188,8 @@
 </section>
 <section class="intake" id="intake" aria-hidden="true" aria-labelledby="northbase-title">
   <div class="in-wrap northbase-wrap">
-    <button class="in-back" id="in-back">←  Case file</button>
-    <h1 class="northbase-title" id="northbase-title">NorthBase</h1>
+    <button class="in-back" id="in-back">Read the case file →</button>
+    <h1 class="northbase-title" id="northbase-title" tabindex="-1">NorthBase</h1>
     <p class="northbase-tagline">Legacy → Verified</p>
     <label class="drop" id="drop" role="button" tabindex="0" aria-label="Drop your .zip of COBOL" title="Drop a .zip of COBOL files">
       <input type="file" id="drop-file" accept=".zip,application/zip" hidden>
@@ -200,7 +203,10 @@
 <aside class="panel" id="panel" aria-hidden="true">
   <header>
     <div><h2 id="p-title"></h2><div class="meta" id="p-meta"></div></div>
-    <button class="close" id="p-close" aria-label="Close"></button>
+    <div class="panel-actions">
+      <button class="home" id="panel-home" title="Return to the NorthBase landing page">Home</button>
+      <button class="close" id="p-close" aria-label="Close"></button>
+    </div>
   </header>
   <nav class="tabs" id="p-tabs"></nav>
   <div class="body" id="p-body"></div>

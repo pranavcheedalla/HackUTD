@@ -21,9 +21,13 @@ Recordings open paused at Discover. Use **Next → / ← Back** or the keyboard 
 python tools/serve.py          # then open http://127.0.0.1:8765
 ```
 
-The page opens on the case file. **Hand it the codebase** opens the NorthBase
-zip drop screen. A shooting star crosses the same sky from left to right; the codebase
-inventory is not displayed. You can also open that screen directly with `#codebases`.
+The page opens on the NorthBase landing page, ready for a COBOL zip. **Read the case
+file →** opens the story; **← Home** or **Hand it the codebase →** returns to the landing
+page. The replay toolbar starts with **Home**, and Details has its own **Home** control.
+Home pauses the replay and returns
+to the landing page; **Restart** returns the current replay to Discover.
+A shooting star crosses the same sky from left to right; the codebase inventory is
+not displayed. `#codebases` remains a landing-page alias; `#case` opens the story directly.
 
 The large wordmark sits slightly left of center on desktop. Station captions keep the
 explanation, proof, and Details link clear of background program labels and source text.
@@ -35,7 +39,7 @@ preferences skip the zoom and arrive paused immediately.
 
 - **Dropping a .zip of COBOL** replays a known codebase, or starts a live run for a new codebase.
 - **Run live instead** starts a real Nemotron run on the uploaded codebase.
-- **Upload .zip** returns to the NorthBase drop screen.
+- **Home** returns to the NorthBase landing page, ready for another zip.
 
 If live isn't possible (no `NVIDIA_API_KEY` in `.env`, or a run already in progress), the page
 says so. During a live run, **Switch to recording** jumps to the saved run of the same codebase.
