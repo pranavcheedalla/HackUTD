@@ -57,7 +57,9 @@
   .hint-log .ok b { color: #b9f0dc; }
   .hint-log .bad b { color: #ffb8cb; }
   .hint-log .working b { color: #d4c4ff; }
-  @media (max-width: 760px) { .hint.ask, .hint.quiet { left: 16px; right: 16px; width: auto; top: auto; } .hint-why { font-size: 17px; } }
+  @media (max-width: 1100px) { .hint.ask { left: 42vw; width: auto; right: 24px; top: 9vh; } }
+  @media (max-width: 760px) { .hint.ask { left: 16px; right: 16px; width: auto; top: 5vh; } .hint.quiet { left: 16px; right: 16px; width: auto; top: auto; }
+    .hint-why { font-size: 17px; } .hint textarea { font-size: 16px; min-height: 120px; } }
   @media (prefers-reduced-motion: reduce) { .hint, .hint.ask .hint-state::before { animation: none; } }`;
   document.head.appendChild(style);
 

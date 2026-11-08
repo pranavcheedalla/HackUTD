@@ -281,6 +281,11 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=str(WEB), **k)
 
+    def end_headers(self):
+        if not self.path.startswith("/api/"):  # always re-check the page's files: a demo must never run a stale copy
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def log_message(self, fmt, *args):  # quiet: only API calls
         if self.path.startswith("/api/") and not self.path.endswith("/replay"):
             sys.stderr.write("[serve] " + fmt % args + "\n")
