@@ -17,7 +17,7 @@
     background: linear-gradient(180deg, rgba(4,3,10,.96) 0%, rgba(4,3,10,.9) 55%, rgba(4,3,10,.5) 78%, rgba(4,3,10,0) 100%); }
   .hint-shade.on { opacity: 1; } .hint-shade.thin { height: 130px; }
   body.intake-on .hint-shade { opacity: 0; }
-  .hint[hidden], .hint [hidden], body.intake-on .hint, .hint.under-panel { display: none; }
+  .hint[hidden], .hint [hidden], body.intake-on .hint, .hint.under-panel { display: none !important; }  /* must beat .hint.ask's grid */
   .hint.ask { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr) minmax(0, 1.15fr); column-gap: 52px; row-gap: 10px;
     align-content: start; padding: 30px 48px 0; animation: hint-drop .75s cubic-bezier(.2,.75,.2,1); }
   .hint.ask .hint-head { grid-column: 1; grid-row: 1; }
@@ -29,6 +29,9 @@
   .hint.ask .hint-act { grid-column: 3; grid-row: 3; }
   .hint.ask .hint-log { display: none; }
   .hint.quiet { display: flex; align-items: baseline; gap: 26px; padding: 26px 48px 0; animation: hint-in .6s ease; }
+  .hint.leaving { animation: hint-lift .8s cubic-bezier(.4,0,.6,1) .7s forwards; pointer-events: none; }
+  .hint-shade.leaving { opacity: 0; transition: opacity .8s ease .7s; }
+  @keyframes hint-lift { to { opacity: 0; transform: translateY(-48px); } }
   @keyframes hint-drop { from { opacity: 0; transform: translateY(-28px); } to { opacity: 1; transform: none; } }
   @keyframes hint-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
   .hint-head { display: flex; align-items: baseline; gap: 18px; white-space: nowrap; }
@@ -213,9 +216,12 @@
     if (!hint) { box.hidden = true; replayAsk = null; return; }
     const reviewedAt = hint.attempt - 2;  // the failed attempt that made it ask (history index)
     const stop = v.TL.beats.find(q => q.mi === b.mi && q.review);  // the stop where it asked a person
-    const inReview = !!stop && b === stop;
-    const retrying = !!stop && !inReview && b.mi === stop.mi && b.k !== 'swoop' && b.t0 >= stop.t1 - 1e-6;
-    if (!inReview && !retrying) { box.hidden = true; replayAsk = null; return; }
+    // only at the stop where it asked, and (while replaying) only while it really is asking
+    // during the walkthrough: only while it waits for the presenter (and the moment after sending);
+    // once the run has the hint, the band is gone for good. A recording opened directly shows it as sent.
+    const inReview = !!stop && b === stop && b.k === 'dwell' && b.at === 5
+      && (v.sim ? stop.working && (m.status === 'needs_review' || v.hintSent) : true);
+    if (!inReview) { box.hidden = true; box.classList.remove('leaving'); replayAsk = null; return; }
     box.hidden = false;
     const hist = full.history || [], h = hist[reviewedAt] || {}, ex = h.explanation || {}, f = (h.failures || [])[0];
     if (inReview) {
@@ -235,15 +241,7 @@
       if (sent && !live) note.value = hint.note;
       if (sent && live && !note.value) note.value = v.typedHint || hint.note;  // Next sent the run's own hint
       if (sent) { say(`Sent  ·  ${upper(m.id)} gets 2 more attempts`); msg.classList.add('ok'); }
-    } else {
-      replayAsk = null;
-      const done = b.at === 6 && m.status === 'done';
-      mode('quiet'); box.classList.remove('sent'); box.classList.toggle('done', done);
-      titleEl.textContent = 'Human feedback';
-      stateEl.textContent = done ? 'verified' : 'agent retrying';
-      whyEl.textContent = '';
-      subEl.textContent = ''; caseEl.replaceChildren();
-      log.replaceChildren(item(done ? 'ok' : 'working', done ? `${m.id} · verified after attempt ${hint.attempt} · hint in this run` : `${m.id} · attempt ${hint.attempt} · hint in this run`, hint.note));
+      box.classList.toggle('leaving', sent && live);  // the work is handed over: the band goes back up
     }
   }
   // Tab at the ask fills in the hint the person sent in this run (a presenter's shortcut)
@@ -258,8 +256,7 @@
     const m = /^#live=([0-9a-z-]+)$/.exec(location.hash);
     if (!m) {
       session = rep = asking = null;
-      try { replayStep(); } catch (err) { box.hidden = true; }
-      place();
+      try { replayStep(); place(); } catch (err) { box.hidden = true; shade.classList.remove('on'); }
       return setTimeout(poll, 80);
     }
     note.readOnly = false; sendBtn.disabled = sending; replayAsk = null;
@@ -274,6 +271,7 @@
   function place() {
     box.classList.toggle('under-panel', !!(panel && panel.classList.contains('open')));
     shade.classList.toggle('on', !box.hidden && !box.classList.contains('under-panel'));
+    shade.classList.toggle('leaving', box.classList.contains('leaving'));
     // sit above the toolbar and the canvas's LIVE label, however many lines the toolbar wraps to
     const bar = document.querySelector('.controls');
     box.style.bottom = '';

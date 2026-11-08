@@ -699,7 +699,7 @@
     if (!skipBtn.hidden && SIM.n > reviewEvent(SIM.full)) skipBtn.hidden = true;
     const w = TL.beats.find(b => b.working);
     if (w && w.review) {  // a person is being asked: wait for the presenter's hint, then a beat to read "sent"
-      if (SIM.hintSent && clock >= SIM.sentAt + 1.6) { SIM.n++; simApply(); }
+      if (SIM.hintSent && clock >= SIM.sentAt + 2.2) { SIM.n++; simApply(); }
       return;
     }
     if (w && clock >= w.t0 + w.workDur) { SIM.n++; simApply(); }
