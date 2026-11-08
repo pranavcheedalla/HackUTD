@@ -673,7 +673,9 @@
                history: hist, attempts: rewrites, tests_passed: last ? last.passed : 0, tests_total: last ? last.total : golden.length,
                heldout: null, divergences: [], unit_tests_status: null, unit_tests_quarantined: [] };
     });
-    return { ...full, events: evs, modules, live: false, sim: true, finished: SIM.n >= full.events.length, next: full.events[SIM.n] };
+    const finished = SIM.n >= SIM.end;  // once ended, the programs it never reached leave the sky
+    return { ...full, events: evs, modules: finished ? modules.filter(m => seen.has(m.id)) : modules,
+             live: false, sim: true, finished, next: full.events[SIM.n] };
   }
   function simApply() {
     const rep = simPartial(), prevWork = TL && TL.beats.find(b => b.working);
@@ -723,8 +725,14 @@
     if (w) clock = Math.max(0, w.t0 - 1.7);  // arrive at Verify as its result lands
     cam = 0; cs = 0; trail = []; lastFail = null; playing = true; syncPlayback();
   }
-  function startSim(full) {
-    SIM = { full, n: 0 }; workSince.clear(); TL = null; simApply();
+  // a recording with a person's hint is the demo's story: it ends once that program is verified
+  function simEnd(full) {
+    const m = (full.modules || []).find(q => (q.human_hints || []).length);
+    if (!m) return full.events.length;
+    return full.events.reduce((end, e, i) => (e.module === m.id ? i + 1 : end), 0);
+  }
+  function startSim(full, file = SIM && SIM.file) {  // file: the dropped zip's name, for the download
+    SIM = { full, n: 0, end: simEnd(full), file }; workSince.clear(); TL = null; simApply();
     skipBtn.hidden = reviewEvent(full) < 0;
     clock = 3.4; cam = 0; cs = 0; trail = []; lastFail = null;  // past the title: the entrance already set the scene
     playing = true; syncPlayback();
@@ -788,7 +796,8 @@
     const sy = CY - arc * 100, px = wx + ox;
     filament(ox, t, c, travelling ? px : W / 2, lc);
 
-    // stations
+    // stations; their labels give way to the outro, which says the same once
+    const labels = b.k === 'outro' ? 1 - clamp((t - b.t0 - .4) / 1.2) : 1;
     for (let i = 0; i < 7; i++) {
       const sx = i * GAP + ox; if (sx < -280 || sx > W + 280) continue;
       const here = b.k === 'dwell' && Math.abs(p - i) < .02, near = Math.max(0, 1 - Math.abs(p - i) * 1.6), rc = i >= 4 ? lc : '230,234,248';
@@ -801,8 +810,8 @@
       x.strokeStyle = hg; x.beginPath(); x.moveTo(sx, CY + 24); x.lineTo(sx, CY + 72); x.stroke();
       x.strokeStyle = `rgba(${rc},${.05 + .18 * near})`; x.beginPath(); x.arc(sx, CY + 80, 6, 0, 7); x.stroke();
       if (here && travelling) for (let r = 0; r < 2; r++) { const rr = 22 + ((u * 1.4 + r * .5) % 1) * 50; x.strokeStyle = `rgba(${rc},${.3 * (1 - (rr - 22) / 50)})`; x.beginPath(); x.arc(sx, CY, rr, 0, 7); x.stroke(); }
-      txt(`${STATIONS[i][0]} — ${STATIONS[i][1].toUpperCase()}`, sx, CY + 120, 12, .25 + .6 * near, 3);
-      if (b.k !== 'intro' && b.k !== 'swoop') txt(subtitle(m, i, here ? b : {}, u), sx, CY + 140, 11, .15 + .5 * near, 2);
+      txt(`${STATIONS[i][0]} — ${STATIONS[i][1].toUpperCase()}`, sx, CY + 120, 12, (.25 + .6 * near) * labels, 3);
+      if (b.k !== 'intro' && b.k !== 'swoop') txt(subtitle(m, i, here ? b : {}, u), sx, CY + 140, 11, (.15 + .5 * near) * labels, 2);
       if (b.k !== 'intro') hits.push({ x: sx, y: CY, r: 34, id: 'st:' + i });
       if (focus === i) { x.strokeStyle = `rgba(${rc},.5)`; x.beginPath(); x.arc(sx, CY, 30 + Math.sin(t * 2) * 2, 0, 7); x.stroke(); }
       const S = window.Stations && window.Stations.get(i + 1);
@@ -861,10 +870,13 @@
     }
     if (b.k === 'outro' && !panel.classList.contains('open')) {
       const a = clamp((t - b.t0 - .4) / 1.2), ok = mods.filter(q => q.status === 'done').length;
-      const total = mods.reduce((s, q) => s + (q.status === 'done' ? q.tests_total : 0), 0);
-      txt(`${ok} / ${n} VERIFIED`, W / 2, H - 78, 20, .9 * a, 8, 'center', '245,246,252', '300');
-      txt(`${total} RECORDED OUTPUTS · EVERY ONE MATCHES THE REAL COBOL`, W / 2, H - 54, 10, .55 * a, 3.5);
+      const total = mods.reduce((s, q) => s + (q.status === 'done' ? q.tests_total : 0), 0), only = n === 1 && ok === 1 && m;
+      txt(only ? 'VERIFIED' : `${ok} / ${n} VERIFIED`, W / 2, H - 116, 20, .9 * a, 8, 'center', '245,246,252', '300');
+      txt(only ? `${(m.file || m.id).toUpperCase()} → ${m.id.toUpperCase()}.PY  ·  ${m.tests_passed} / ${m.tests_total} OUTPUTS MATCH THE REAL COBOL`
+        : `${total} RECORDED OUTPUTS · EVERY ONE MATCHES THE REAL COBOL`, W / 2, H - 90, 10, .6 * a, 3.5);
     }
+    // the code can be taken from the moment the last program is verified, and stays through the summary
+    showGetCode((b.k === 'outro' || (mi === n - 1 && b.k !== 'swoop' && p > 5.98 && m.status === 'done')) && !panel.classList.contains('open'));
 
     if (fr % 3 === 0) grain();
     x.globalAlpha = .06 * (1 - c * .5); x.fillStyle = x.createPattern(grainC, 'repeat'); x.fillRect(0, 0, W, H); x.globalAlpha = 1;
@@ -880,6 +892,44 @@
     const footerY = Math.min(H - 22, H - (playBtn.parentElement.offsetHeight + 34) / K);
     const footerLines = wrap(label, W - 48, 9, 2.5);
     if (!panel.classList.contains('open')) footerLines.forEach((line, i) => txt(line, W - 24, footerY - (footerLines.length - 1 - i) * 13, 9, .32, 2.5, 'right'));
+  }
+
+  // ---------- the verified Python, to take away (under the outro) ----------
+  const getCode = document.getElementById('get-code');
+  // a dropped zip gets its whole codebase back as Python (<zip>-modernized.zip), from the recorded run
+  const verifiedFiles = () => ((SIM ? SIM.full : R) || { modules: [] }).modules
+    .filter(q => q.status === 'done' && q.python).map(q => [`${q.id}.py`, q.python]);
+  function showGetCode(on) {
+    on = on && verifiedFiles().length > 0;
+    if (getCode.hidden === on) getCode.hidden = !on;
+    if (on) getCode.style.top = `${(H - 64) * K}px`;  // under the outro's two lines, in canvas units
+  }
+  getCode.onclick = () => {
+    const files = verifiedFiles(); if (!files.length) return;
+    const stem = SIM && SIM.file ? SIM.file.replace(/\.zip$/i, '') : null, one = files.length === 1 && !stem, a = document.createElement('a');
+    const folder = stem ? `${stem}-modernized` : 'modernized-python';
+    a.href = URL.createObjectURL(one ? new Blob([files[0][1]], { type: 'text/x-python' }) : zip(files.map(([n, py]) => [`${folder}/${n}`, py])));
+    a.download = one ? files[0][0] : `${folder}.zip`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  const CRC = Array.from({ length: 256 }, (_, n) => { for (let k = 0; k < 8; k++) n = n & 1 ? 0xedb88320 ^ (n >>> 1) : n >>> 1; return n >>> 0; });
+  function zip(files) {  // stored, not compressed: a few small text files need no library
+    const enc = new TextEncoder(), body = [], dir = []; let off = 0;
+    const rec = (n, fill) => { const v = new DataView(new ArrayBuffer(n)); fill(v); return new Uint8Array(v.buffer); };
+    for (const [name, text] of files) {
+      const nm = enc.encode(name), data = enc.encode(text);
+      let c = ~0; for (const byte of data) c = CRC[(c ^ byte) & 255] ^ (c >>> 8); c = ~c >>> 0;
+      const common = (v, at) => {  // version, UTF-8 names, stored, 1980-01-01, crc, sizes, name length
+        [20, 0x800, 0, 0, 33].forEach((x16, i) => v.setUint16(at + 2 * i, x16, true));
+        v.setUint32(at + 10, c, true); v.setUint32(at + 14, data.length, true); v.setUint32(at + 18, data.length, true); v.setUint16(at + 22, nm.length, true);
+      };
+      body.push(rec(30, v => { v.setUint32(0, 0x04034b50, true); common(v, 4); }), nm, data);
+      dir.push(rec(46, v => { v.setUint32(0, 0x02014b50, true); v.setUint16(4, 20, true); common(v, 6); v.setUint32(42, off, true); }), nm);
+      off += 30 + nm.length + data.length;
+    }
+    const size = dir.reduce((s, part) => s + part.length, 0);
+    const end = rec(22, v => { v.setUint32(0, 0x06054b50, true); v.setUint16(8, files.length, true); v.setUint16(10, files.length, true); v.setUint32(12, size, true); v.setUint32(16, off, true); });
+    return new Blob([...body, ...dir, end], { type: 'application/zip' });
   }
 
   // ---------- side panel ----------
@@ -1047,7 +1097,7 @@
     history.replaceState(null, '', `#${name}`);
     offerQuickLive((demo && demo.codebase) || R.codebase);
     if (demo) {
-      startSim(R);  // the dropped codebase runs through, step by step, from the recording
+      startSim(R, demo.file);  // the dropped codebase runs through, step by step, from the recording
       runLiveBtn.hidden = !demo.codebase;
       runLiveBtn.onclick = () => { openIntake(); startLive(demo.codebase, name); };
     }
@@ -1144,7 +1194,7 @@
       await new Promise(resolve => setTimeout(resolve, 1200));
       if (version !== uploadVersion) return;
       speed = 1; document.getElementById('speed').value = '1';
-      return load(body.recording, { codebase: body.codebase }).catch(showError);
+      return load(body.recording, { codebase: body.codebase, file: file.name }).catch(showError);
     }
     note(`${body.files} COBOL files found. Starting…`);
     startLive(body.codebase, null);
@@ -1172,14 +1222,14 @@
   window.galaxy = { seek(s) { travel = null; clock = Math.max(0, s); trail = []; lastFail = null; cam = (beatAt(clock).k === 'move' ? beatAt(clock).a : (beatAt(clock).at || 0)) * GAP;
                              for (let i = 0; i < 90; i++) { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.save(); draw(clock); x.restore(); } }, get t() { return clock; },
                     get beats() { return TL && TL.beats.map(b => [b.k, b.mi, b.at, +b.t0.toFixed(1), b.fail || false]); },
-                    runRecording(name) { return load(name, { codebase: null }); },  // the drop path, without a file
+                    runRecording(name, file) { return load(name, { codebase: null, file }); },  // the drop path, without a file
                     // what a recording shows right now (web/hints.js replays a person's hint from it)
                     view() { return R && TL && !R.live ? { R, TL, full: SIM ? SIM.full : R, beat: beatAt(Math.min(clock, TL.end - 1e-3)), clock,
                       sim: !!SIM, hintSent: !!(SIM && SIM.hintSent), typedHint: SIM && SIM.typedHint } : null; },
                     sendHint(text) { sendHint(text); },
                     // rehearsal: jump a running replay to just before its n-th real event (e.g. SETTLE's first)
                     skipToReview() { skipToReview(); },
-                    simTo(n) { if (!SIM) return; SIM.n = Math.max(0, Math.min(n, SIM.full.events.length)); SIM.hintSent = false; simApply();
+                    simTo(n) { if (!SIM) return; SIM.n = Math.max(0, Math.min(n, SIM.end)); SIM.hintSent = false; simApply();
                                const w = TL.beats.find(b => b.working); clock = w ? w.t0 : clock; trail = []; lastFail = null; playing = true; syncPlayback(); },
                     get sim() { return SIM && { revealed: SIM.n, events: SIM.full.events.length }; },
                     get hits() { return hits.map(h => ({ id: h.id, x: h.x * K, y: h.y * K })); } };  // css px, for rehearsal checks

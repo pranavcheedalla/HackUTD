@@ -188,12 +188,18 @@
   .case-go:hover { color: #e6fff6; }
   .in-back { align-self: flex-start; background: none; border: 0; padding: 0; cursor: pointer; font: 9px var(--mono); letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.38); margin-bottom: -14px; }
   .in-back:hover { color: rgba(242,241,248,.85); }
+  .get-code { position: fixed; left: 50%; transform: translate(-50%, -50%); z-index: 3; animation: get-code-in .9s ease both; background: none; border: 0; padding: 6px 0; cursor: pointer; font: 10px var(--mono); letter-spacing: 3.5px; text-transform: uppercase; color: #c9f5e6; display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
+  .get-code::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+  .get-code:hover { color: #e6fff6; }
+  @keyframes get-code-in { from { opacity: 0; } }
+  .get-code[hidden], body.intake-on .get-code { display: none; }
   .loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 11px; letter-spacing: 4px; color: var(--dim); text-transform: uppercase; pointer-events: none; }
 </style>
 </head>
 <body>
 <canvas id="sky" aria-label="Replay of a COBOL to Python migration shown as stars traveling through pipeline stations"></canvas>
 <div class="loading" id="loading">Loading replay…</div>
+<button class="get-code" id="get-code" hidden title="The verified Python from this run">Download modernized code</button>
 <div class="controls" role="toolbar" aria-label="Replay controls">
   <button id="intake-btn" title="Return to the NorthBound landing page">Home</button>
   <span class="sep"></span>

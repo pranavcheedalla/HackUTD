@@ -96,7 +96,7 @@ assert.equal(settle.human_hints.length,1); assert.ok(settle.run_note.includes('h
 read(`FULL=${JSON.stringify(full)}; normalize=r=>r; startSim(FULL)`);
 
 let asked=false, reviewWait=0, hintsBeforeAnswer=null, backAfterReview=false, sawReview=false, guard=0;
-while(read('SIM.n')<full.events.length && guard++<400000){
+while(read('SIM.n')<read('SIM.end') && guard++<400000){
   const w=read('TL.beats.find(b=>b.working)');
   if(w && w.review){ sawReview=true; reviewWait=read('TL.beats.find(b=>b.working).workDur');
     const m=read("R.modules.find(m=>m.id==='settle')"); asked=m.status==='needs_review'; hintsBeforeAnswer=m.human_hints.length;
@@ -115,6 +115,12 @@ assert.equal(read('R.finished'),true);
 // the finished recording keeps the same stop, so Back returns to the ask
 assert.ok(read('buildTimeline(FULL).beats.some(b=>b.review && b.mi===0)'));
 assert.equal(read("R.modules.find(m=>m.id==='settle').status"),'done');
+// the demo ends once SETTLE is verified: no swoop back to Discover for the bank's programs
+const settleEnd=full.events.reduce((end,e,i)=>e.module==='settle'?i+1:end,0);
+assert.equal(read('SIM.n'),settleEnd); assert.ok(settleEnd<full.events.length);
+assert.equal(read("R.modules.map(m=>m.id).join()"),'settle');
+assert.ok(!read("TL.beats.some(b=>b.k==='swoop')")); assert.equal(read('TL.beats[TL.beats.length-1].k'),'outro');
+read('clock=TL.end+5; simTick()'); assert.equal(read('SIM.n'),settleEnd,'nothing starts again after the outro');
 // Skip to human loop: straight to SETTLE's first check, with its ask next
 read('startSim(FULL); skipToReview()');
 const firstCheck=full.events.findIndex(e=>e.module==='settle'&&e.node==='verify');

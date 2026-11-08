@@ -50,7 +50,7 @@ controls. PR #10 contains the latest frontend and navigation work. See
 ## Demo script (about 3 minutes)
 
 1. **Open NorthBound → Read the case file (30 s):** "Hard to change, and dangerous to change without proof." Click **Hand it the codebase →** to return to the landing page.
-2. Drop demo/retail-bank.zip; after the star entrance the codebase **runs through on its own like a live run**: each station shows Nemotron working (with the real run's elapsed time, `REAL RUN · mm:ss`), then the real result lands and the star moves on, including ALERTS failing and retrying. About 4 minutes at 1×, 2.5 at 1.6×. Say: 'this replays a real run from tonight, step by step; the full live run takes about 7 minutes.' Pause, Next (skips a wait) and Back still work.
+2. Drop demo/retail-bank.zip; after the star entrance the codebase **runs through on its own like a live run**: each station shows Nemotron working (with the real run's elapsed time, `REAL RUN · mm:ss`), then the real result lands and the star moves on. Say: 'this replays a real run from tonight, step by step; the full live run takes about 7 minutes.' Pause, Next (skips a wait) and Back still work.
    **SETTLE opens the walkthrough (program 1, card settlement):** a separate real run, labelled on screen. It fails Verify
    (4 of 28) and the replay **waits for you** at Needs a person: a band drops in across the top with the
    failing case. Type the prompt and press Enter (Tab fills it in; Next sends it too):
@@ -60,8 +60,13 @@ controls. PR #10 contains the latest frontend and navigation work. See
    That is the exact hint a person sent in the recorded run (session `20261108-105033-real-83cd24`), so the
    fix that follows is real: the star goes back to Rewrite and attempt 2 matches 28 of 28.
    **Skip to human loop** (toolbar, during the drop replay) jumps straight to SETTLE failing its check, then the ask.
+   **The demo ends at SETTLE's 07 Verified** (it does not fly on to the bank's other programs). The moment it
+   lands, **● Download modernized code** appears at the bottom and stays; the summary then reads **VERIFIED**,
+   `SETTLE.CBL → SETTLE.PY · 28 / 28 OUTPUTS MATCH THE REAL COBOL`. The link downloads
+   `retail-bank-modernized.zip`: the verified Python of all 6 programs from their recorded real runs.
+   A live run's download is that run's own verified `.py`. Reload the page (cmd+shift+R) after a pull.
 3. **Pause on the moments that matter** (or use Next/Back):
-   - the ALERTS mismatch, caught and fixed;
+   - the ALERTS mismatch, caught and fixed (in the `bank` recording, from the toolbar's replay list);
    - then click the Verify ring → `DETAILS`.
 4. **The live proof: One program live (about 25 s).** After the walkthrough, click **One program live**.
    LOANPAY runs for real with live Nemotron calls, in a fresh isolated session each time, so it can be

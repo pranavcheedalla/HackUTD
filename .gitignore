@@ -32,3 +32,4 @@ runs/reviewed-specs/
 # codebases dropped into the live demo
 samples/uploads/
 runs/live-runs.log
+runs/demo-feedback.log
