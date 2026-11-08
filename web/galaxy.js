@@ -6,6 +6,7 @@
   const cv = document.getElementById('sky'), x = cv.getContext('2d');
   const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
   const BASE_H = 520, GAP = 560, CY = 252;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let W = 0, H = BASE_H, K = 1, DPR = 1;
 
   function resize() {
@@ -108,39 +109,127 @@
   }
 
   // ---------- playback ----------
-  let clock = 0, last = performance.now(), speed = 1, playing = true, focus = null, resumeAfter = false, focusX = null;  // focusX: world x the open readout is about
+  let clock = 0, last = performance.now(), speed = 1, playing = false, focus = null, resumeAfter = false, focusX = null;  // focusX: world x the open readout is about
   let cam = 0, cs = 0, trail = [], fr = 0, shoot = null, hits = [];
+  let travel = null;  // one presenter click: fly to the next stop, then wait there
+  let entrance = null;  // the upload star becomes the first program at Discover
   const playBtn = document.getElementById('play');
-  playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? 'Pause' : 'Play'; playBtn.setAttribute('aria-label', playBtn.textContent); };
+  playBtn.onclick = () => {
+    if (!R || entrance) return;
+    resumeAfter = false;
+    if (travel) { travel = null; playing = false; } else playing = !playing;
+    syncPlayback();
+  };
+  const previousBtn = document.getElementById('previous-step'), nextBtn = document.getElementById('next-step');
+  const stepStatus = document.getElementById('step-status');
+  previousBtn.onclick = () => step(-1);
+  nextBtn.onclick = () => step(1);
   document.getElementById('restart').onclick = restart;
   document.getElementById('speed').onchange = e => { speed = +e.target.value; };
-  function restart() { clock = 0; cam = 0; cs = 0; trail = []; }
+  function stops() { return TL ? TL.beats.filter(b => ['dwell', 'outro'].includes(b.k)) : []; }
+  function stopTime(b) { return b.t0 + (b.k === 'outro' ? 3 : Math.min(4, b.t1 - b.t0 - .65)); }
+  function stopIndex(list) {
+    let i = 0;
+    while (i + 1 < list.length && clock >= list[i + 1].t0) i++;
+    return i;
+  }
+  function betweenStops(list, i) { return i < list.length - 1 && clock >= list[i].t1; }
+  function syncPlayback() {
+    const label = playing || travel ? 'Pause' : 'Auto-play';
+    if (playBtn.textContent !== label) playBtn.textContent = label;
+    playBtn.setAttribute('aria-label', label);
+    const list = stops(), i = travel ? travel.index : stopIndex(list), b = list[i];
+    playBtn.disabled = !R || !!entrance;
+    previousBtn.disabled = !R || !!entrance || !!travel || (i === 0 && !betweenStops(list, i));
+    nextBtn.disabled = !R || !!entrance || !!travel || i >= list.length - 1;
+    const label2 = b ? `${entrance ? 'Arriving → ' : travel ? 'Travelling → ' : ''}${b.k === 'outro' ? 'Summary' : STATIONS[b.at][1]} · ${i + 1}/${list.length}` : '';
+    if (stepStatus.textContent !== label2) stepStatus.textContent = label2;
+    stepStatus.dataset.time = clock.toFixed(3);
+    stepStatus.dataset.playing = String(playing);
+    stepStatus.dataset.travelling = String(!!travel);
+    stepStatus.dataset.entering = String(!!entrance);
+  }
+  function step(direction) {
+    if (!R || !TL || intakeOpen() || travel || entrance) return;
+    const list = stops(), current = stopIndex(list), between = betweenStops(list, current);
+    const i = Math.max(0, Math.min(list.length - 1, current + (direction < 0 && between ? 0 : direction))), b = list[i];
+    if (i === current && !between) return;
+    // A clicked readout must not resume playback when an arrow closes it.
+    resumeAfter = false; closePanel(); closeCaption(); focus = null; focusX = null; playing = false;
+    const target = stopTime(b), forward = target > clock;
+    const moves = TL.beats.filter(q => ['move', 'swoop'].includes(q.k) &&
+      q.t1 > Math.min(clock, target) && q.t0 < Math.max(clock, target));
+    // Skip the old/new station's reading time, but animate the existing path in full.
+    // Running that path backwards makes Back retrace the star's route, including retries.
+    const from = moves.length ? (forward ? Math.max(clock, moves[0].t0) : Math.min(clock, moves[moves.length - 1].t1 - .001)) : clock;
+    const to = moves.length ? (forward ? moves[moves.length - 1].t1 - .001 : moves[0].t0 + .001) : target;
+    travel = { from, to, target, index: i, elapsed: 0, duration: moves.length ? 1.6 : .5 };
+    clock = from;
+    trail = []; lastFail = null;
+    syncPlayback();
+  }
+  function advanceTravel(seconds) {
+    if (!travel) return;
+    travel.elapsed = Math.min(travel.duration, travel.elapsed + seconds);
+    clock = travel.from + (travel.to - travel.from) * travel.elapsed / travel.duration;
+    if (travel.elapsed >= travel.duration) { clock = travel.target; travel = null; }
+  }
+  function restart() {
+    cancelEntrance();
+    travel = null; resumeAfter = false; closePanel(); closeCaption();
+    clock = R && !R.live && stops().length ? stopTime(stops()[0]) : 0; cam = 0; cs = 0; trail = []; lastFail = null;
+    playing = !!(R && R.live); syncPlayback();
+  }
+  function sceneAnchor() { return { x: W > 760 ? W * .36 : W / 2, y: CY }; }
+  function cancelEntrance() { finishEntrance(false); }
+  function finishEntrance(completed) {
+    if (!entrance) return;
+    const pending = entrance; entrance = null;
+    intake.classList.remove('entering'); intake.inert = false;
+    intake.setAttribute('aria-hidden', 'false');
+    pending.resolve(completed);
+  }
+  function startEntrance() {
+    cancelEntrance();
+    if (reducedMotion.matches) return Promise.resolve(true);
+    const rect = drop.querySelector('.drop-ring').getBoundingClientRect();
+    return new Promise(resolve => {
+      entrance = { elapsed: 0, duration: 1.5,
+        fromX: clamp((rect.left + rect.width / 2) / innerWidth, .05, .95),
+        fromY: clamp((rect.top + rect.height / 2) / innerHeight, .05, .95), resolve };
+      intake.classList.add('entering'); intake.inert = true;
+      intake.setAttribute('aria-hidden', 'true');
+      syncPlayback();
+    });
+  }
+  function advanceEntrance(seconds) {
+    if (!entrance) return null;
+    entrance.elapsed = Math.min(entrance.duration, entrance.elapsed + seconds);
+    return entrance;
+  }
+  function entrancePose(entry) {
+    const u = clamp(entry.elapsed / entry.duration), reveal = ease(clamp((u - .55) / .45));
+    const source = { x: entry.fromX * W, y: entry.fromY * H }, target = sceneAnchor();
+    return { u, reveal, source, target,
+      x: source.x + (target.x - source.x) * reveal, y: source.y + (target.y - source.y) * reveal,
+      zoom: 1 + 7 * ease(clamp(u / .55)),
+      power: u < .55 ? .28 + 4.72 * ease(u / .55) : 5 - 4 * reveal,
+      shade: u < .55 ? ease(clamp((u - .15) / .4)) : 1 - reveal };
+  }
   addEventListener('keydown', e => {
-    if (e.target.tagName === 'SELECT') return;
+    if (entrance) { if (e.key === 'Escape') { e.preventDefault(); openIntake(); } return; }
+    if (['SELECT', 'INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
     if (intakeOpen()) { if (e.key === 'Escape' && R) closeIntake(); if (e.key === 'Enter' && caseFile.classList.contains('open')) document.getElementById('case-go').click(); return; }
     if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
     if (e.key === 'r' || e.key === 'R') restart();
     if (e.key === 'Escape') { if (panel.classList.contains('open')) closePanel(); else closeCaption(); }
-    if ((e.key === 'Enter' || e.key === 'd' || e.key === 'D') && capFocus !== null) openStation(capFocus);
+    if ((e.key === 'Enter' || e.key === 'd' || e.key === 'D') && capFocus !== null) { e.preventDefault(); openStation(capFocus); }
     if (/^[1-7]$/.test(e.key) && R) { const n = +e.key - 1; if (capFocus === n && !panel.classList.contains('open')) openStation(n); else openCaption(n); }
-    if (e.key === 'ArrowRight') clock = Math.min(TL.end, clock + 3);
-    if (e.key === 'ArrowLeft') { clock = Math.max(0, clock - 3); trail = []; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); if (!e.repeat) step(1); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); if (!e.repeat) step(-1); }
   });
 
   // ---------- module text for the scene ----------
-  function sceneText(m) {
-    const cob = (m.cobol || '').split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim() && !/^\s{6}\*/.test(l));
-    const p = cob.findIndex(l => /PROCEDURE\s+DIVISION/i.test(l));
-    const py = (m.python || '').split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
-    let q = py.findIndex(l => /^def (main|call)\b/.test(l)); if (q < 0) q = 0;
-    const rules = ((m.spec && m.spec.business_rules) || []).slice(0, 5);
-    return {
-      cobol: cob.slice(Math.max(0, p), Math.max(0, p) + 8).map(l => clip(l.trim() ? l.slice(Math.min(7, l.search(/\S/))) : l, 46)),
-      python: py.slice(q, q + 8).map(l => clip(l, 46)),
-      rules: rules.map(r => clip(r, 58)),
-    };
-  }
-
   function subtitle(m, i, b, u) {
     if (b.working) return 'WORKING' + '.'.repeat(1 + Math.floor(performance.now() / 500) % 3);
     const n = R.modules.length;
@@ -182,12 +271,13 @@
     x.fillStyle = core; x.beginPath(); x.arc(cx, cy, 5 * power, 0, 7); x.fill();
     if (hitId !== undefined) hits.push({ x: cx, y: cy, r: Math.max(16, 22 * power), id: hitId });
   }
-  function drawAurora(t, c) {
+  function drawAurora(t, c, accepted = false) {
     if (c < .02) return;
     const w = aur.width, h = aur.height, sx = w / W, sy = h / H;
     ax.setTransform(1, 0, 0, 1, 0, 0); ax.clearRect(0, 0, w, h); ax.setTransform(sx, 0, 0, sy, 0, 0);
     const curtains = [[0, .55, [120, 255, 200], [150, 90, 255]], [.33, .42, [170, 110, 255], [90, 200, 255]], [.7, .5, [110, 240, 210], [200, 120, 255]]];
-    for (const [off, amp, top, bot] of curtains) {
+    for (const [off, amp, greenTop, greenBottom] of curtains) {
+      const top = accepted ? greenTop : [185, 140, 255], bot = accepted ? greenBottom : [90, 200, 255];
       for (let i = 0; i <= W; i += 4) {
         const k = i / W, wave = Math.sin(k * 6 + t * .6 + off * 9) * 32 + Math.sin(k * 13 - t * .9 + off * 4) * 12;
         const y0 = 34 + off * 46 + wave, hh = 120 + 80 * Math.sin(k * 4 + t * .4 + off * 7) ** 2, f = .5 + .5 * Math.sin(k * 9 + t * 1.2 + off * 5);
@@ -247,7 +337,7 @@
 
   // ---------- narration: one sentence and one proof next to the ring ----------
   const SANS = '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif';
-  let capFocus = null, capOn = 0;
+  let capFocus = null;
   function sans(s, px, py, sz, a, col = '242,241,248', wt = '400') {
     x.font = `${wt} ${sz}px ${SANS}`; x.fillStyle = `rgba(${col},${a})`; x.textAlign = 'left'; setLS(0); x.fillText(s, px, py);
   }
@@ -306,7 +396,7 @@
   }
   function narration(t, ox, lc, b, u) {
     const ac = activeCaption(t, b, u);
-    capOn = ac ? ac.a : 0; if (!ac || ac.a < .01) return;
+    if (!ac || ac.a < .01) return;
     const m = R.modules[ac.mi], hist = m.history || [], attempt = hist[ac.ai] || null;
     const cp = ac.working ? workingCaption(ac, m) : Captions.get(ac.n + 1, { module: m, replay: R, attempt, attemptIndex: ac.ai, mutation: R.kind === 'mutation' });
     if (!cp) return;
@@ -318,7 +408,7 @@
     const sx = ac.n * GAP + ox, A = ac.a;
     const right = W - (sx + 96) >= 300, compact = !right;  // narrow screens: a smaller caption above the ring
     const x0 = right ? sx + 96 : 28, maxW = right ? Math.min(440, W - x0 - 32) : W - 56;
-    const y0 = right ? CY - 152 : 76;  // compact: below the corner labels, above the ring
+    const y0 = right ? CY - 152 : 76;
     const S1 = compact ? 15.5 : 17, S2 = compact ? 13.5 : 14.5, DZ = compact ? 17 : 20;
 
     // a soft darkening behind the words, no box: legible over the aurora
@@ -416,11 +506,42 @@
     requestAnimationFrame(frame);  // first, so one bad frame can never stop the show
     if (!W || !isFinite(W)) { if (!resize()) return; }
     if (cv.width !== Math.round(innerWidth * DPR) || cv.height !== Math.round(innerHeight * DPR)) resize();
-    if (intakeOpen()) { try { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.globalAlpha = 1; drawSky(now / 1000); } catch (err) { console.error(err); } return; }
+    if (entrance) {
+      const entry = advanceEntrance(dtReal);
+      try {
+        x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.globalAlpha = 1;
+        x.save(); drawEntrance(entry, now / 1000);
+        if (entry.elapsed >= entry.duration) finishEntrance(true);
+      } catch (err) {
+        cancelEntrance(); note('The transition could not finish. Please try your zip again.', true); console.error(err);
+      } finally { x.restore(); }
+      syncPlayback(); return;
+    }
+    if (intakeOpen()) { syncPlayback(); try { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.globalAlpha = 1; drawSky(now / 1000); } catch (err) { console.error(err); } return; }
     // a live run joined late catches up at double speed until it is close to what's happening now
     const edge = R && R.live && TL && TL.beats.find(q => q.working), catchUp = edge && edge.t0 - clock > 15 ? Math.max(speed, 2) : speed;
-    if (R && playing) clock = Math.min(TL.end + 2, clock + dtReal * catchUp);
+    if (travel) advanceTravel(dtReal);
+    else if (R && playing) clock = Math.min(TL.end + 2, clock + dtReal * catchUp);
+    syncPlayback();
     if (R) { try { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.globalAlpha = 1; x.save(); draw(clock); } catch (err) { if (!frame.warned) { frame.warned = true; console.error(err); } } finally { x.restore(); } }
+  }
+
+  function drawEntrance(entry, t) {
+    const pose = entrancePose(entry);
+    if (pose.u < .55) {
+      x.save();
+      try {
+        x.translate(pose.source.x, pose.source.y); x.scale(pose.zoom, pose.zoom);
+        x.translate(-pose.source.x, -pose.source.y); drawSky(t);
+      } finally { x.restore(); }
+    } else {
+      cam = W / 2 - pose.target.x; cs = 0;
+      draw(clock);
+    }
+    x.fillStyle = `rgba(7,7,10,${pose.shade})`; x.fillRect(0, 0, W, H);
+    star(pose.x, pose.y, clock, pose.power,
+      rgb(mix([232,234,242], [215,225,255], pose.reveal)),
+      rgb(mix([242,241,248], [240,244,255], pose.reveal)));
   }
 
   // ---------- the sky alone, behind the intake ----------
@@ -432,10 +553,24 @@
       const px = ((d[0] + ox * L.par) % (W + 60) + W + 60) % (W + 60) - 30;
       x.fillStyle = `rgba(232,236,250,${L.al * (.35 + .35 * Math.sin(t * (d[4] ? 3.5 : 1.2) + d[3]))})`; x.fillRect(px, d[1], d[2], d[2]);
     }
+    if (intake.classList.contains('open') && !entrance) drawIntakeComet(t);
     const fo = ((ox * .55) % 1800 + 1800) % 1800; x.globalAlpha = .75; x.drawImage(fog, fo - 1800, H - 190); x.drawImage(fog, fo, H - 190); x.globalAlpha = 1;
     if (fr % 3 === 0) grain(); x.globalAlpha = .06; x.fillStyle = x.createPattern(grainC, 'repeat'); x.fillRect(0, 0, W, H); x.globalAlpha = 1;
     const vg = x.createRadialGradient(W / 2, H / 2, H * .2, W / 2, H / 2, W * .75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.8)');
     x.fillStyle = vg; x.fillRect(0, 0, W, H);
+  }
+
+  function drawIntakeComet(t) {
+    if (reducedMotion.matches) return;
+    const u = (t % 6) / 2.2;
+    if (u >= 1) return;
+    const px = -180 + u * (W + 360), py = H * .25 + u * 32;
+    const gradient = x.createLinearGradient(px - 150, py - 8, px, py);
+    gradient.addColorStop(0, 'rgba(232,236,250,0)');
+    gradient.addColorStop(1, 'rgba(232,236,250,.65)');
+    x.strokeStyle = gradient; x.lineWidth = .8;
+    x.beginPath(); x.moveTo(px - 150, py - 8); x.lineTo(px, py); x.stroke();
+    star(px, py, t, .28, '215,222,240', '235,238,248');
   }
 
   // ---------- live: the timeline so far, ending in a "working" stop where the run is now ----------
@@ -500,18 +635,21 @@
     const failing = b.k === 'dwell' && b.fail && u > .42;
     const jit = failing && u < .5 && Math.random() < .3 ? (Math.random() - .5) * 7 : 0;
     // an open readout pulls what it describes into the middle of the free sky left of it
-    const roomy = W > 760, starAt = roomy ? W * .36 : W / 2;  // left of centre leaves the right side for the caption
+    const starAt = sceneAnchor().x;  // left of centre leaves the right side for the caption
     const freeMid = panel.classList.contains('open') ? (innerWidth - panel.getBoundingClientRect().width) / 2 / K : starAt;
     const wx = p * GAP, camT = focusX !== null ? focusX + W / 2 - freeMid : wx + W / 2 - starAt;
     cam += (camT - cam) * (focusX !== null ? .08 : b.k === 'swoop' ? .12 : .055);
     const ox = W / 2 - cam, lc = rgb(mix([225, 230, 245], [195, 170, 255], c));
+    const caption = !panel.classList.contains('open') && activeCaption(t, b, u);
+    // Above-ring captions get clear space instead of a second cluster behind their words.
+    const quietCaption = caption && caption.a > .01 && W - (caption.n * GAP + ox + 96) < 300;
 
     x.save(); x.translate(jit, 0);
     x.fillStyle = `rgb(${rgb(mix([7, 7, 10], [10, 6, 22], c))})`; x.fillRect(-10, 0, W + 20, H);
     const mo = ((ox * .12) % 2400 + 2400) % 2400;
     x.globalAlpha = 1 - c; x.drawImage(milkyG, mo - 2400, 0); x.drawImage(milkyG, mo, 0);
     x.globalAlpha = c; x.drawImage(milkyC, mo - 2400, 0); x.drawImage(milkyC, mo, 0); x.globalAlpha = 1;
-    drawAurora(t, c);
+    drawAurora(t, c, b.k === 'outro' ? allDone : p > 5.98 && m.status === 'done');
     for (const L of layers) for (const d of L.s) {
       const px = ((d[0] + ox * L.par) % (W + 60) + W + 60) % (W + 60) - 30;
       const a = L.al * (.35 + .35 * Math.sin(t * (d[4] ? 3.5 : 1.2) + d[3])), sc = rgb(mix([232, 236, 250], d[5] < .5 ? [205, 175, 255] : [170, 235, 255], c * .8));
@@ -525,13 +663,10 @@
       x.strokeStyle = g; x.lineWidth = 1; x.beginPath(); x.moveTo(sx2 - 90, sy2 - 32); x.lineTo(sx2, sy2); x.stroke(); if (shoot.l > 40) shoot = null;
     }
 
-    // faint real content behind the active stations
-    const st = m._text || (m._text = sceneText(m));
-    const annoOn = capOn > .02 || (lastFail && t >= lastFail.t0 && t <= lastFail.t1 + 2.3);
+    // Probe particles belong to the station; source and rules live in Details.
     for (let i = 1; i < 7; i++) {
       const sx = i * GAP + ox; if (sx < -GAP || sx > W + GAP || b.k === 'intro') continue;
-      const near = Math.max(0, 1 - Math.abs(p - i) * 1.6), lines = b.k === 'outro' ? null : i === 1 ? st.rules : i === 3 ? st.cobol : i === 4 || i === 5 ? st.python : null;
-      if (lines && lines.length) { x.globalAlpha = near * (i === 1 ? .12 : .1) * (annoOn ? 0 : 1); lines.forEach((l, k) => txt(l, sx - 250, 96 + k * 24, 14, 1, 0, 'left', i === 3 || i === 1 ? '232,234,242' : '200,185,255')); x.globalAlpha = 1; }
+      const near = Math.max(0, 1 - Math.abs(p - i) * 1.6);
       if (i === 2 && near > 0) for (let k = 0; k < 30; k++) { const an = k / 30 * 6.283 + t * .3, r = 52 + 16 * Math.sin(k * 1.7 + t); x.fillStyle = `rgba(230,235,250,${.6 * near})`; x.beginPath(); x.arc(sx + Math.cos(an) * r, CY + Math.sin(an) * r * .45, 1, 0, 7); x.fill(); }
     }
 
@@ -570,23 +705,22 @@
 
     // codebase cluster at Discover: programs still waiting their turn
     const dx = ox;
-    const waiting = mods.map((q, i) => i).filter(i => i > mi || (i === mi && (b.k === 'swoop' || b.k === 'intro')));
+    const waiting = quietCaption ? [] : mods.map((q, i) => i).filter(i => i > mi || (i === mi && (b.k === 'swoop' || b.k === 'intro')));
     const cpos = i => [dx + CLUSTER[i % CLUSTER.length][0], CY + CLUSTER[i % CLUSTER.length][1]];
     x.setLineDash([2, 5]); x.strokeStyle = `rgba(${lc},.18)`;
     mods.forEach((q, i) => q.depends_on.forEach(d => { const j = mods.findIndex(z => z.id === d); if (j >= 0 && waiting.includes(i) && waiting.includes(j)) { const [a1, a2] = cpos(i), [b1, b2] = cpos(j); x.beginPath(); x.moveTo(a1, a2); x.lineTo(b1, b2); x.stroke(); } }));
     x.setLineDash([]);
     waiting.forEach(i => { const [qx, qy] = cpos(i); const blockedQ = (mods[i].error || '').startsWith('blocked') && i === mi;
-      star(qx, qy, t + i, blockedQ ? .3 : .38, '215,222,240', '235,238,248', i);
-      if (b.k !== 'intro') txt(mods[i].id.toUpperCase(), qx, qy - 18, 9, .45, 2); });  // names wait until the intro title has faded
+      star(qx, qy, t + i, blockedQ ? .3 : .38, '215,222,240', '235,238,248', i); });
 
     // constellation at Verified: programs already accepted
     const vx = 6 * GAP + ox, vpos = i => [vx + CONST[i % CONST.length][0], CY + CONST[i % CONST.length][1]];
-    const verified = mods.map((q, i) => i).filter(i => done(i) && !(i === mi && travelling));
+    const verified = quietCaption ? [] : mods.map((q, i) => i).filter(i => done(i) && !(i === mi && travelling));
     x.setLineDash([2, 5]); x.strokeStyle = `rgba(${lc},.28)`;
     mods.forEach((q, i) => q.depends_on.forEach(d => { const j = mods.findIndex(z => z.id === d); if (j >= 0 && verified.includes(i) && verified.includes(j)) { const [a1, a2] = vpos(i), [b1, b2] = vpos(j); x.beginPath(); x.moveTo(a1, a2); x.lineTo(b1, b2); x.stroke(); } }));
     x.setLineDash([]);
-    verified.forEach(i => { const [qx, qy] = vpos(i); star(qx, qy, t + i, b.k === 'outro' ? .55 : .4, i % 2 ? '120,230,210' : rgb(mix([215, 225, 255], [185, 140, 255], c)), '235,228,255', i); txt(mods[i].id.toUpperCase(), qx, qy - 20, 9, .55, 2); });
-    mods.forEach((q, i) => { if (i < mi && q.status !== 'done' && !(q.error || '').startsWith('blocked')) { const fx = 5 * GAP + ox + 40 * (i - mi), fy = CY + 34; star(fx, fy, t, .22, '200,190,200', '220,215,220', i); txt(q.id.toUpperCase() + ' · FAILED', fx, fy + 22, 9, .4, 2); } });
+    verified.forEach(i => { const [qx, qy] = vpos(i); star(qx, qy, t + i, b.k === 'outro' ? .55 : .4, i % 2 ? '120,230,210' : rgb(mix([215, 225, 255], [185, 140, 255], c)), '235,228,255', i); });
+    if (!quietCaption) mods.forEach((q, i) => { if (i < mi && q.status !== 'done' && !(q.error || '').startsWith('blocked')) { const fx = 5 * GAP + ox + 40 * (i - mi), fy = CY + 34; star(fx, fy, t, .22, '200,190,200', '220,215,220', i); txt(q.id.toUpperCase() + ' · FAILED', fx, fy + 22, 9, .4, 2); } });
 
     // the travelling star and its tail
     if (travelling) {
@@ -594,7 +728,7 @@
       for (let k = 1; k < trail.length; k++) { const a = k / trail.length, tc = rgb(mix([225, 232, 255], [120, 235, 215], c * (1 - a))); x.strokeStyle = `rgba(${tc},${a * a * .55})`; x.lineWidth = a * 2.4; x.beginPath(); x.moveTo(trail[k - 1][0] + ox, trail[k - 1][1]); x.lineTo(trail[k][0] + ox, trail[k][1]); x.stroke(); }
       const glow = failing ? '255,190,200' : rgb(mix([215, 225, 255], [185, 140, 255], c)), spk = failing ? '255,225,230' : rgb(mix([240, 244, 255], [230, 215, 255], c));
       const ended = b.failedEnd;
-      star(px, sy, t, ended ? .55 : b.working ? 1 + .14 * Math.sin(t * 4) : p > 5.98 ? 1.4 : moving ? 1.05 : 1, ended ? '190,185,195' : glow, ended ? '215,210,215' : spk, mi);
+      if (!entrance) star(px, sy, t, ended ? .55 : b.working ? 1 + .14 * Math.sin(t * 4) : p > 5.98 ? 1.4 : moving ? 1.05 : 1, ended ? '190,185,195' : glow, ended ? '215,210,215' : spk, mi);
       if (ended) txt(`NOT VERIFIED AFTER ${m.attempts} ATTEMPTS`, px, sy - 40, 10, .55, 2.5);
     } else trail = [];
     const fo = ((ox * .55) % 1800 + 1800) % 1800;
@@ -608,7 +742,7 @@
     // intro and outro type
     if (b.k === 'intro') {
       const a = clamp((t - .3) / .9) * clamp((b.t1 - t) / .8);
-      txt('LEGACY  →  VERIFIED', W / 2, 70, 20, .9 * a, 10, 'center', '240,240,246', '300');
+      txt('NorthBase', W / 2, 70, 26, .9 * a, 8, 'center', '240,240,246', '300');
       txt(`${n} COBOL PROGRAM${n > 1 ? 'S' : ''}  ·  ${R.title.toUpperCase()}`, W / 2, 98, 10, .5 * a, 4);
     }
     if (b.k === 'outro' && !panel.classList.contains('open')) {
@@ -624,20 +758,14 @@
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(${rgb(mix([0, 0, 0], [8, 2, 20], c))},.8)`);
     x.fillStyle = vg; x.fillRect(0, 0, W, H);
 
-    // corners
-    if (b.k !== 'intro') {
-      const left = `${(m.file || m.id).toUpperCase()}  ·  ${String(mi + 1).padStart(2, '0')} / ${String(n).padStart(2, '0')}${m.kind === 'subprogram' ? '  ·  SUBPROGRAM' : ''}`;
-      txt(left, 24, 30, 11, .5, 3, 'left');
-      const right = b.k === 'outro' ? 'MIGRATION COMPLETE' : b.blocked ? 'BLOCKED' : failing ? 'MISMATCH' : p > 5.98 ? `VERIFIED  ·  ${m.tests_passed} / ${m.tests_total}` : c > .1 ? 'BECOMING PYTHON' : 'LEGACY COBOL';
-      // narrow screens: drop the status under the file name instead of letting the two collide
-      const fits = measure(left, 11, 3) + measure(right, 11, 3) + 80 < W;
-      if (!panel.classList.contains('open')) txt(right, fits ? W - 24 : 24, fits ? 30 : 48, fits ? 11 : 10, fits ? .5 : .4, 3, fits ? 'right' : 'left');
-    }
-    const label = R.live ? `LIVE  ·  REAL NEMOTRON RUN  ·  ${String(R.codebase || '').toUpperCase()}${R.finished ? '  ·  FINISHED' : ''}`
+    if (b.blocked && !panel.classList.contains('open')) txt('BLOCKED', 24, 30, 11, .5, 3, 'left');
+    const label = R.live ? `LIVE  ·  REAL NEMOTRON RUN${R.finished ? '  ·  FINISHED' : ''}`
       : R.kind === 'mutation' ? 'CONTROLLED MUTATION  ·  PLANTED BUG, NOT A MODEL OUTPUT'
-      : `REPLAY OF A REAL ${R.mode === 'real_model' ? 'NEMOTRON' : 'OFFLINE FIXTURE'} RUN  ·  ${(R.started_at || '').slice(0, 16).replace('T', ' ')}`;
-    if (innerWidth > 1100 && !panel.classList.contains('open')) txt(label, W - 24, H - 22, 9, .32, 2.5, 'right');
-    if (travelling && !panel.classList.contains('open') && t < 40) txt('CLICK A STAR OR A RING TO INSPECT', W / 2, H - 48, 9, .22 * clamp((t - 6) / 2) * clamp((40 - t) / 3), 3);
+      : R.mode === 'real_model' ? 'REPLAY OF A REAL NEMOTRON RUN' : 'OFFLINE FIXTURE REPLAY';
+    // Keep the honest replay disclosure above the toolbar, even when its buttons wrap.
+    const footerY = Math.min(H - 22, H - (playBtn.parentElement.offsetHeight + 34) / K);
+    const footerLines = wrap(label, W - 48, 9, 2.5);
+    if (!panel.classList.contains('open')) footerLines.forEach((line, i) => txt(line, W - 24, footerY - (footerLines.length - 1 - i) * 13, 9, .32, 2.5, 'right'));
   }
 
   // ---------- side panel ----------
@@ -646,6 +774,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const TABS = [['cobol', 'COBOL'], ['python', 'Python'], ['spec', 'Spec'], ['tests', 'Answer key'], ['attempts', 'Attempts']];
   function hold(worldX) {  // pause the replay while a readout is open; resume on close if it was playing
+    travel = null;
     if (focusX === null) resumeAfter = playing;
     playing = false; playBtn.textContent = 'Play'; focusX = worldX;
   }
@@ -729,6 +858,7 @@
     return det || (ring && (!star || star.id === moduleNow()) ? ring : star || ring);
   }
   cv.addEventListener('click', e => {
+    if (entrance) return;
     const hh = hitAt(e); if (!hh) { closeCaption(); return closePanel(); }
     if (typeof hh.id === 'string' && hh.id.startsWith('det:')) openStation(+hh.id.slice(4));
     else if (typeof hh.id === 'string') openCaption(+hh.id.slice(3));
@@ -746,15 +876,19 @@
   function intakeOpen() { return intake.classList.contains('open') || caseFile.classList.contains('open'); }
   // the case file: the real-world problem, before the codebase goes in
   function openCase() {
+    cancelEntrance();
     uploadVersion++;
-    playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.remove('open');
+    travel = null; resumeAfter = false;
+    playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.remove('open'); intake.setAttribute('aria-hidden', 'true');
     caseFile.classList.add('open'); caseFile.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on');
+    caseFile.scrollTop = 0;
+    history.replaceState(null, '', '#case');
   }
   function closeCase() { caseFile.classList.remove('open'); caseFile.setAttribute('aria-hidden', 'true'); }
   document.getElementById('case-go').onclick = () => { closeCase(); openIntake(); };
   document.getElementById('in-back').onclick = () => { openCase(); };
   function normalize(rep) { (rep.modules || []).forEach(q => { q.depends_on = q.depends_on || []; q.history = q.history || []; }); return rep; }
-  function stopLive() { clearTimeout(pollTimer); pollTimer = null; liveSession = null; fallbackBtn.hidden = true; }
+  function stopLive() { cancelEntrance(); travel = null; clearTimeout(pollTimer); pollTimer = null; liveSession = null; fallbackBtn.hidden = true; }
   // a run still going on the server: offer the way back to it from a recording or the intake
   async function runningSession() {
     if (!API) return null;
@@ -773,7 +907,10 @@
     const rep = await res.json();
     if (version !== uploadVersion) return;
     R = normalize(rep);
-    TL = buildTimeline(R); restart(); closePanel(); closeCaption(); lastFail = null; playing = true; playBtn.textContent = 'Pause';
+    TL = buildTimeline(R); restart();
+    if (demo && intake.classList.contains('open')) {
+      if (!await startEntrance() || version !== uploadVersion) return;
+    }
     document.getElementById('loading').style.display = 'none'; closeIntake();
     if ([...sel.options].some(o => o.value === name)) sel.value = name;
     history.replaceState(null, '', `#${name}`);
@@ -808,15 +945,16 @@
     pollTimer = setTimeout(poll, 1500);
   }
   async function startLive(codebase, recording) {
-    uploadVersion++; runLiveBtn.hidden = true; runLiveBtn.onclick = null;
+    const version = ++uploadVersion; runLiveBtn.hidden = true; runLiveBtn.onclick = null;
     note('Starting a real Nemotron run…');
     let r;
     try { r = await fetch('api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codebase }) }); }
-    catch (err) { return note('The local server is not reachable.', true); }
+    catch (err) { if (version === uploadVersion) note('The local server is not reachable.', true); return; }
     const body = await r.json().catch(() => ({}));
+    if (version !== uploadVersion) return;
     if (!r.ok) {
       note(body.error || 'The run could not start.', true);
-      if (recording) setTimeout(() => load(recording).catch(showError), 1600);
+      if (recording) setTimeout(() => { if (version === uploadVersion) load(recording).catch(showError); }, 1600);
       return;
     }
     attach(body.session);
@@ -836,40 +974,31 @@
 
   // the intake: pick a codebase or drop a zip of one
   function note(text, bad) { const n = document.getElementById('in-note'); n.textContent = text || ''; n.classList.toggle('bad', !!bad); }
-  function openIntake() { uploadVersion++; closeCase(); playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.add('open'); intake.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on'); renderIntake(); }
+  function openIntake() {
+    cancelEntrance(); uploadVersion++; travel = null; resumeAfter = false; closeCase();
+    playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption();
+    intake.classList.add('open'); intake.setAttribute('aria-hidden', 'false'); intake.scrollTop = 0;
+    document.body.classList.add('intake-on');
+    history.replaceState(null, '', location.pathname + location.search);
+    document.getElementById('loading').style.display = 'none';
+    note(''); renderIntake(); syncPlayback();
+    document.getElementById('northbase-title').focus({ preventScroll: true });
+  }
   function closeIntake() { closeCase(); intake.classList.remove('open'); intake.setAttribute('aria-hidden', 'true'); document.body.classList.remove('intake-on'); note(''); }
   document.getElementById('intake-btn').onclick = openIntake;
-  async function renderIntake() {
-    const list = document.getElementById('in-list'), live = !!(API && API.live);
-    let items = [];
-    if (API) {
-      try { items = (await (await fetch('api/codebases', { cache: 'no-store' })).json()).codebases || []; } catch (err) { items = []; }
-    }
-    const running = await runningSession();
-    if (running) items.unshift({ name: 'Live run in progress', about: 'A real Nemotron run is going right now. Watch where it is.', session: running });
-    const recorded = new Set(items.map(c => c.recording).filter(Boolean));
-    recordings.filter(r => !recorded.has(r.name)).forEach(r => items.push({ name: r.title, about: r.kind === 'mutation' ? 'A one-cent rounding bug planted in a verified rewrite, to show the check catches it.' : '', recording: r.name }));
-    list.innerHTML = items.map((c, i) => `<div class="cb${c.codebase === 'samples/bank' || c.same_as === 'samples/bank' ? ' featured' : ''}"><div class="cb-name">${esc(c.name)}</div>` +
-      (c.session ? '<div class="cb-meta">live now</div>' : c.programs ? `<div class="cb-meta">${c.programs} program${c.programs === 1 ? '' : 's'}${c.copybooks ? ` · ${c.copybooks} cop${c.copybooks === 1 ? 'ybook' : 'ybooks'}` : ''}${c.uploaded ? ' · uploaded' : ''}</div>` : '<div class="cb-meta">recording</div>') +
-      (c.about ? `<div class="cb-about">${esc(c.about)}</div>` : '') +
-      `<div class="cb-act">${c.session ? `<button class="live" data-i="${i}" data-a="watch">Watch live</button>` : ''}${c.codebase ? `<button class="live" data-i="${i}" data-a="live" ${live ? '' : 'disabled title="Live runs need the local server and an NVIDIA API key"'}>Run live</button>` : ''}` +
-      `${c.recording ? `<button data-i="${i}" data-a="rec">Watch recording</button>` : ''}</div></div>`).join('');
-    list.onclick = e => {
-      const bn = e.target.closest('button'); if (!bn || bn.disabled) return;
-      const c = items[+bn.dataset.i];
-      if (bn.dataset.a === 'watch') attach(c.session);
-      else if (bn.dataset.a === 'live') startLive(c.codebase, c.recording);
-      else load(c.recording).catch(showError);
-    };
-    document.getElementById('drop').style.display = API ? '' : 'none';
-    document.getElementById('in-foot').textContent = !API ? 'Recordings only. For live runs: python tools/serve.py'
-      : live ? 'Live runs use real NVIDIA Nemotron calls and take a few minutes' : 'Live runs need NVIDIA_API_KEY in .env';
+  document.getElementById('case-home').onclick = openIntake;
+  document.getElementById('panel-home').onclick = openIntake;
+  function renderIntake() {
+    document.getElementById('in-foot').textContent = API
+      ? 'COBOL → Python · every recorded output must match'
+      : 'Uploads need the local demo server';
   }
   const drop = document.getElementById('drop'), dropFile = document.getElementById('drop-file');
   async function upload(file) {
     if (!file) return;
     if (!/\.zip$/i.test(file.name)) return note('Drop a .zip of COBOL files (.cbl, .cob, .cpy).', true);
     if (!API) return note('Uploads need the local server: python tools/serve.py.', true);
+    cancelEntrance();
     const version = ++uploadVersion;
     runLiveBtn.hidden = true; runLiveBtn.onclick = null;
     note(`Reading ${file.name}…`);
@@ -887,7 +1016,10 @@
     note(`${body.files} COBOL files found. Starting…`);
     startLive(body.codebase, null);
   }
-  dropFile.onchange = () => upload(dropFile.files[0]);
+  dropFile.onchange = () => { const file = dropFile.files[0]; dropFile.value = ''; upload(file); };
+  drop.onkeydown = e => {
+    if (e.key === 'Enter' || e.code === 'Space') { e.preventDefault(); dropFile.click(); }
+  };
   ['dragenter', 'dragover'].forEach(ev => intake.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(ev => intake.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
   intake.addEventListener('drop', e => upload(e.dataTransfer && e.dataTransfer.files[0]));
@@ -900,11 +1032,11 @@
     if (follow && API) return attach(follow[1]);
     if (recordings.some(r => r.name === want)) return load(want);
     document.getElementById('loading').style.display = 'none';
-    if (want === 'codebases') openIntake(); else openCase();  // the story first; #codebases skips straight to the list
+    if (want === 'case') openCase(); else openIntake();  // Home is the default; #codebases remains a landing-page alias
   })().catch(showError);
   requestAnimationFrame(frame);
   // for rehearsing a moment: galaxy.seek(seconds), galaxy.t
-  window.galaxy = { seek(s) { clock = Math.max(0, s); trail = []; lastFail = null; cam = (beatAt(clock).k === 'move' ? beatAt(clock).a : (beatAt(clock).at || 0)) * GAP;
+  window.galaxy = { seek(s) { travel = null; clock = Math.max(0, s); trail = []; lastFail = null; cam = (beatAt(clock).k === 'move' ? beatAt(clock).a : (beatAt(clock).at || 0)) * GAP;
                              for (let i = 0; i < 90; i++) { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.save(); draw(clock); x.restore(); } }, get t() { return clock; },
                     get beats() { return TL && TL.beats.map(b => [b.k, b.mi, b.at, +b.t0.toFixed(1), b.fail || false]); },
                     get hits() { return hits.map(h => ({ id: h.id, x: h.x * K, y: h.y * K })); } };  // css px, for rehearsal checks
