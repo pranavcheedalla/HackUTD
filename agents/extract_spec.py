@@ -20,7 +20,7 @@ from agents import _llm
 from agents._json import extract_json
 from agents.cobol_static import analyze, numbered, render_summary, strip_comments
 
-MODEL = "nano"
+MODEL = os.getenv("SPEC_MODEL", "nano")  # a quick live run uses "super": one pass, no review
 
 # ----------------------------------------------------------------------------- PROMPTS
 EXTRACT_SPEC_SYSTEM = """\

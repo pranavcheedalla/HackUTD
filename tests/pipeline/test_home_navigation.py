@@ -29,7 +29,7 @@ const context=vm.createContext({intake,document:{body:element(),getElementById:g
   history:{replaceState:(a,b,url)=>routes.push(url)},
   uploadVersion:0,travel:{},resumeAfter:true,playing:true,clock:6.95,playBtn:get('play'),
   cancelEntrance(){},closePanel(){},closeCaption(){},renderIntake(){},syncPlayback(){},
-  runLiveBtn:get('run-live-instead'),API:null,recordings:[],sel:get('replay'),esc:s=>s,
+  runLiveBtn:get('run-live-instead'),quickBtn:get('quick-live'),API:null,recordings:[],sel:get('replay'),esc:s=>s,
   fetch:async url=>({ok:true,json:async()=>url==='api/status'?{live:true}:[{name:'bank',title:'Retail bank'}]}),
   load:async name=>loads.push(name),attach:s=>attached.push(s),
   showError:error=>{throw error},setTimeout:fn=>timers.push(fn),console});

@@ -48,11 +48,19 @@ controls. PR #10 contains the latest frontend and navigation work. See
 ## Demo script (about 3 minutes)
 
 1. **Open NorthBase → Read the case file (30 s):** "Hard to change, and dangerous to change without proof." Click **Hand it the codebase →** to return to the landing page.
-2. Drop demo/retail-bank.zip; after the star entrance the codebase **runs through on its own like a live run**: each station shows Nemotron working (with the real run's elapsed time, `REAL RUN · mm:ss`), then the real result lands and the star moves on, including ALERTS failing and retrying. About 4 minutes at 1×, 2.5 at 1.6×. Say: 'this replays a real run from tonight, step by step; live takes about 25 minutes.' Pause, Next (skips a wait) and Back still work.
+2. Drop demo/retail-bank.zip; after the star entrance the codebase **runs through on its own like a live run**: each station shows Nemotron working (with the real run's elapsed time, `REAL RUN · mm:ss`), then the real result lands and the star moves on, including ALERTS failing and retrying. About 4 minutes at 1×, 2.5 at 1.6×. Say: 'this replays a real run from tonight, step by step; the full live run takes about 7 minutes.' Pause, Next (skips a wait) and Back still work.
 3. **Pause on the moments that matter** (or use Next/Back):
    - the ALERTS mismatch, caught and fixed;
    - then click the Verify ring → `DETAILS`.
-4. **Optional: Run live instead.** Starts a real run of the uploaded codebase; allow about 25 minutes.
+4. **The live proof: One program live (about 25 s).** After the walkthrough, click **One program live**.
+   LOANPAY runs for real with live Nemotron calls, in a fresh isolated session each time, so it can be
+   repeated for each judge. The screen keeps pace with the real run and ends on Verified; open the
+   Rewrite and Verify Details to show the COBOL, the new Python and every output matching.
+   - Tested 7 times in a row on Nov 8: all passed on the first attempt, 22–28 s each (20–28 cases).
+   - To keep it fast, a quick run writes the spec in one Super pass (no Nano draft + review), writes
+     the Python while the answer key is recorded, and skips the bonus unit-test layer (Details say so).
+     Verification against the real COBOL is unchanged.
+   - **Run live instead** still runs the whole bank (5 programs, about 7 minutes).
 
    If a program fails live, that's the point: "it won't ship code that's off by a cent, and it blocks everything that depends on it."
 
@@ -60,7 +68,7 @@ controls. PR #10 contains the latest frontend and navigation work. See
 
 1. **Untested:** one fresh live bank run, to check that the "why"-in-retries change helps.
    - An earlier live run failed ACCRUE three times on rounding vs truncation and blocked STATEMNT.
-   - Takes about 25 minutes.
+   - Takes about 7 minutes.
    - If it passes 5/5, consider re-exporting it as the bank recording:
      ```bash
      python tools/export_replay.py runs/sessions/<s> --name bank --title "Retail bank · 5 programs" --codebase samples/bank
