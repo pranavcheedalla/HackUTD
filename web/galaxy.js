@@ -238,11 +238,13 @@
     if ((e.key === 'Enter' || e.key === 'd' || e.key === 'D') && capFocus !== null) { e.preventDefault(); openStation(capFocus); }
     if (/^[1-7]$/.test(e.key) && R) { const n = +e.key - 1; if (capFocus === n && !panel.classList.contains('open')) openStation(n); else openCaption(n); }
     if (e.key === 'ArrowRight') { e.preventDefault(); if (!e.repeat) step(1); }
+    if ((e.key === 'h' || e.key === 'H') && !e.metaKey && !e.ctrlKey && SIM) { e.preventDefault(); skipToReview(); }  // rehearsal: to the human loop
     if (e.key === 'ArrowLeft') { e.preventDefault(); if (!e.repeat) step(-1); }
   });
 
   // ---------- module text for the scene ----------
   function subtitle(m, i, b, u) {
+    if (b.working && b.review) return 'WAITING FOR A PERSON';
     if (b.working) return 'WORKING' + '.'.repeat(1 + Math.floor(performance.now() / 500) % 3);
     const n = R.modules.length;
     const h = b.h !== undefined ? m.history[b.h] : null;
@@ -1046,7 +1048,11 @@
   skipBtn.onclick = () => skipToReview();
   // one standalone program (nothing it calls) migrated live: real Nemotron calls in about 40 seconds
   function offerQuickLive(codebase) {
-    const pick = R && (R.modules || []).find(m => m.kind !== 'subprogram' && !(m.depends_on || []).length);
+    // the live proof runs a program that stands alone and verified on its first try, never one that needed a person
+    // (a recording can name its tested choice: quick_live; the bank's is LOANPAY, live-tested 10 times on Nov 8)
+    const mods = (R && R.modules) || [], alone = m => m.kind !== 'subprogram' && !(m.depends_on || []).length;
+    const pick = mods.find(m => m.id === (R && R.quick_live) && alone(m))
+      || mods.find(m => alone(m) && m.status === 'done' && (m.history || []).length <= 1 && !(m.human_hints || []).length);
     quickBtn.hidden = !(API && API.live && codebase && pick);
     quickBtn.onclick = () => startLive(codebase, R && R.name, { only: pick.id, quick: true });
   }

@@ -68,3 +68,16 @@ def test_one_program_live_never_waits_for_a_person(monkeypatch):
     serve._start("samples/review", only="settle", quick=True)
     assert seen["samples/bank"]["REVIEW_WAIT"] == "0"
     assert seen["samples/review"]["REVIEW_WAIT"] != "0" and seen["samples/review"]["MAX_ATTEMPTS"] == "1"
+
+
+def test_the_demo_recordings_go_live_with_loanpay_never_settle():
+    """One program live must run the program tested live 10 times, never the one built to need a person."""
+    import json
+    for name in ("retail", "bank"):
+        rep = json.loads((ROOT / "web" / "replays" / f"{name}.json").read_text())
+        assert rep["quick_live"] == "loanpay"
+        m = next(m for m in rep["modules"] if m["id"] == "loanpay")
+        assert m["kind"] != "subprogram" and not m.get("depends_on") and m["status"] == "done"
+        assert len(m["history"]) == 1 and not m.get("human_hints")
+    galaxy = (ROOT / "web" / "galaxy.js").read_text()
+    assert "R.quick_live" in galaxy and "!(m.human_hints || []).length" in galaxy
