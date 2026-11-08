@@ -1,9 +1,14 @@
-"""Human hints: a reviewer's note reaches the next rewrite attempt, is recorded on the module,
-and never replaces the equivalence check. The server only accepts hints for a run in progress."""
+"""Human feedback: when the agent runs out of attempts, the module waits in needs_review for a
+person; their note reaches the next rewrite attempts, is recorded on the module, and never
+replaces the equivalence check. The server only accepts feedback for a module that is asking."""
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -25,7 +30,7 @@ def run(monkeypatch, tmp_path):
     monkeypatch.setattr(status, "STATE_PATH", tmp_path / "state.json")
     monkeypatch.setattr(graph, "FEEDBACK_DIR", tmp_path / "feedback")
     monkeypatch.setattr(graph, "MODERN_DIR", tmp_path / "modern")
-    monkeypatch.setattr(graph, "HINT_WAIT", 0)
+    monkeypatch.setattr(graph, "REVIEW_WAIT", 0)
     monkeypatch.setattr(graph.testing, "golden_to_pytest", lambda *a: None)
     seen = []
     monkeypatch.setattr(graph.agents, "rewrite",
@@ -114,14 +119,85 @@ def test_a_broken_hint_file_is_ignored(run):
     assert graph.read_hints("invoice") == []
 
 
-def test_the_retry_waits_for_a_hint_only_when_asked(run, monkeypatch):
-    tmp, seen = run
-    monkeypatch.setattr(graph, "HINT_WAIT", 1)
-    ticks = []
-    monkeypatch.setattr(graph.time, "sleep", lambda s: ticks.append(s) or _hint(tmp, "truncate"))
-    graph.rewrite(_state())
-    assert len(ticks) == 1 and seen[0]["business_rules"][-1].endswith("truncate")
-    assert any(e["node"] == "hint_window" for e in status._run["events"])
+def _stuck(**extra):
+    hist = [{"attempt": 3, "passed": 24, "total": 26, "failures": [FAIL], "explanation": None}]
+    return _state(**{"attempts": 3, "history": hist, "python_src": "def main(s):\n    return s\n", **extra})
+
+
+def test_without_a_review_window_a_stuck_module_fails_as_before(run, monkeypatch):
+    monkeypatch.setattr(graph.time, "sleep", lambda s: pytest.fail("must not wait"))
+    state = _stuck()
+    assert graph.route_after_verify(state) == "review"
+    out = graph.needs_review(state)
+    assert out == state and graph.route_after_review(out) == "explain"
+
+
+def test_feedback_in_the_review_window_buys_more_attempts(run, monkeypatch):
+    tmp, _ = run
+    monkeypatch.setattr(graph, "REVIEW_WAIT", 30)
+    monkeypatch.setattr(graph.agents, "explain_divergence", lambda *a: {"verdict": "legacy_quirk", "reason": "cuts off cents"})
+    seen = []
+    monkeypatch.setattr(graph.time, "sleep", lambda s: seen.append(status._run["modules"]["invoice"]["status"]) or _hint(tmp, "truncate"))
+    out = graph.needs_review(_stuck())
+    assert seen == ["needs_review"]  # the dashboard and galaxy saw it asking
+    assert out["status"] == "verifying" and out["reviews"] == 1 and out["attempt_limit"] == 3 + graph.EXTRA_ATTEMPTS
+    assert out["history"][-1]["explanation"]["reason"] == "cuts off cents"  # the person sees why
+    assert out["last_failures"][0]["why"] == "cuts off cents"
+    assert graph.route_after_review(out) == "retry"
+    assert graph.route_after_verify({**out, "attempts": 4}) == "retry"
+    assert graph.route_after_verify({**out, "attempts": 5}) == "review"
+
+
+def test_no_answer_in_the_review_window_goes_on_to_explain(run, monkeypatch):
+    monkeypatch.setattr(graph, "REVIEW_WAIT", 0.01)
+    monkeypatch.setattr(graph.agents, "explain_divergence", lambda *a: {"verdict": "new_code_bug", "reason": "r"})
+    nap = time.sleep
+    monkeypatch.setattr(graph.time, "sleep", lambda s: nap(0.01))
+    out = graph.needs_review(_stuck())
+    assert out["status"] == "verifying" and "attempt_limit" not in out
+    assert graph.route_after_review(out) == "explain"
+    assert status._run["events"][-1]["msg"] == "no feedback; explaining the differences"
+
+
+def test_a_module_asks_for_help_at_most_twice(run, monkeypatch):
+    monkeypatch.setattr(graph, "REVIEW_WAIT", 30)
+    monkeypatch.setattr(graph.time, "sleep", lambda s: pytest.fail("must not wait"))
+    state = _stuck(reviews=graph.MAX_REVIEWS, attempt_limit=7, attempts=7)
+    assert graph.route_after_review(graph.needs_review(state)) == "explain"
+
+
+def test_offline_run_waits_for_a_person_and_their_feedback_fixes_it(tmp_path):
+    project = tmp_path / "project"
+    shutil.copytree(ROOT, project, ignore=shutil.ignore_patterns(
+        ".git", ".env", "__pycache__", ".pytest_cache", ".cache", ".venv*", "bin", "runs", "modern",
+        "specs", "equivalence", "unit", "validation", "samples"))
+    env = dict(os.environ, LLM_MODE="fake", DEMO_SCENARIO="review", REVIEW_WAIT="30",
+               LANGCHAIN_TRACING_V2="false", LANGSMITH_TRACING="false")
+    env.pop("NVIDIA_API_KEY", None)
+    proc = subprocess.Popen([sys.executable, str(project / "run.py"), "--only", "invoice"], cwd=project,
+                            env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    state_path = project / "runs" / "state.json"
+    try:
+        for _ in range(200):
+            try:
+                if json.loads(state_path.read_text())["modules"]["invoice"]["status"] == "needs_review":
+                    break
+            except (OSError, ValueError, KeyError):
+                pass
+            time.sleep(0.1)
+        else:
+            pytest.fail("invoice never asked for help")
+        (project / "runs" / "feedback").mkdir(parents=True, exist_ok=True)
+        (project / "runs" / "feedback" / "invoice.json").write_text(json.dumps(
+            [{"note": "fractions of a cent are cut off, never rounded", "at": "t"}]))
+        out = proc.communicate(timeout=60)[0]
+    finally:
+        proc.kill()
+    assert proc.returncode == 0, out
+    inv = json.loads(state_path.read_text())["modules"]["invoice"]
+    assert inv["status"] == "done" and inv["attempts"] == 4 and inv["reviews"] == 1
+    assert inv["human_hints"][0]["attempt"] == 4
+    assert [h["passed"] < h["total"] for h in inv["history"]] == [True, True, True, False]
 
 
 def test_a_hint_never_passes_a_failing_rewrite(run, monkeypatch):
@@ -152,7 +228,8 @@ def sessions(tmp_path, monkeypatch):
     (folder / "runs").mkdir(parents=True)
     (folder / "session.json").write_text(json.dumps({"status": "running"}))
     (folder / "runs" / "state.json").write_text(json.dumps({"modules": {
-        "invoice": {"status": "verifying"}, "discount": {"status": "done"}}}))
+        "invoice": {"status": "needs_review"}, "discount": {"status": "done"},
+        "interest": {"status": "verifying"}}}))
     return folder
 
 
@@ -171,6 +248,7 @@ def test_server_saves_a_hint_where_the_pipeline_reads_it(sessions):
     (SESSION, {"module": "invoice", "note": 5}, 400),
     (SESSION, {"module": "missing", "note": "x"}, 404),
     (SESSION, {"module": "discount", "note": "x"}, 409),        # already verified
+    (SESSION, {"module": "interest", "note": "x"}, 409),        # still trying on its own
     ("20991231-000000-real-abcdef", {"module": "invoice", "note": "x"}, 404),
 ])
 def test_server_refuses_bad_hints(sessions, session, body, code):

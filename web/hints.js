@@ -1,29 +1,29 @@
-/* Human hints (live runs only). Owner: Hemant.
- * While a live run is in progress (#live=<session>, served by tools/serve.py), a reviewer can send
- * a program a hint. The pipeline adds it to the spec its next rewrite attempt sees
- * (pipeline/graph.py read_hints). A hint only guides the rewrite: acceptance still needs every
- * golden case to match the real COBOL. Recordings show nothing here. */
+/* Human feedback (live runs only). Owner: Hemant.
+ * When the agent cannot modernize a program (every attempt failed against the real COBOL), the
+ * pipeline pauses that program in needs_review and this readout asks a person what it is missing
+ * (pipeline/graph.py needs_review; POST /api/runs/<session>/feedback in tools/serve.py). The
+ * feedback is added to the spec for 2 more attempts. It only guides the rewrite: acceptance still
+ * needs every golden case to match the real COBOL. Recordings show nothing here. */
 (() => {
   const POLL_MS = 1500, MAX = 500;
   const style = document.createElement('style');
   style.textContent = `
-  .hint { position: fixed; right: 24px; bottom: 52px; z-index: 4; width: min(360px, calc(100vw - 48px)); box-sizing: border-box;
+  .hint { position: fixed; right: 24px; bottom: 52px; z-index: 4; width: min(380px, calc(100vw - 48px)); box-sizing: border-box;
     display: flex; flex-direction: column; gap: 12px; padding: 18px 20px 16px; font-family: var(--mono);
     background: rgba(6,5,13,.9); box-shadow: 0 0 22px 8px rgba(6,5,13,.75);
-    border-top: 1px solid rgba(232,234,242,.12); opacity: .55; transition: opacity .3s, border-color .4s; }
-  .hint:hover, .hint:focus-within, .hint.ask { opacity: 1; }
-  .hint.ask { border-top-color: rgba(212,196,255,.7); }
+    border-top: 1px solid rgba(232,234,242,.12); transition: border-color .4s; }
+  .hint.ask { border-top-color: rgba(255,184,203,.75); }
   .hint[hidden], .hint [hidden], body.intake-on .hint, .hint.under-panel { display: none; }
   .hint-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
   .hint-title { font-size: 9.5px; letter-spacing: 3.5px; text-transform: uppercase; color: rgba(242,241,248,.85); }
   .hint-state { font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: rgba(232,234,242,.4); text-align: right; }
-  .hint.ask .hint-state { color: #d4c4ff; text-shadow: 0 0 10px rgba(200,180,255,.45); }
-  .hint-why { font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; color: rgba(232,234,242,.68); }
+  .hint.ask .hint-state { color: #ffb8cb; text-shadow: 0 0 10px rgba(255,140,175,.45); }
+  .hint-why { font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; color: rgba(232,234,242,.72); }
   .hint-why:empty { display: none; }
-  .hint select { appearance: none; -webkit-appearance: none; align-self: flex-start; background: none; border: 0; border-bottom: 1px solid rgba(232,234,242,.12);
-    color: var(--ink); font: 10px var(--mono); letter-spacing: 3px; text-transform: uppercase; padding: 3px 4px 3px 0; cursor: pointer; }
-  .hint select option { background: #111018; }
-  .hint textarea { resize: none; box-sizing: border-box; width: 100%; min-height: 54px; background: rgba(232,234,242,.03); border: 0;
+  .hint-case { font-size: 11px; line-height: 1.7; color: rgba(232,234,242,.5); white-space: pre; overflow-x: auto; }
+  .hint-case b { font-weight: 400; color: #ffc7d5; }
+  .hint-case:empty { display: none; }
+  .hint textarea { resize: none; box-sizing: border-box; width: 100%; min-height: 62px; background: rgba(232,234,242,.03); border: 0;
     border-bottom: 1px solid rgba(232,234,242,.14); color: rgba(242,241,248,.92); padding: 8px 2px;
     font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; outline: none; }
   .hint textarea:focus { border-bottom-color: rgba(212,196,255,.7); }
@@ -39,89 +39,80 @@
   .hint-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 120px; overflow: auto; }
   .hint-log li { font: 400 12px/1.45 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; color: rgba(232,234,242,.62); }
   .hint-log b { font: 9px var(--mono); letter-spacing: 2.5px; text-transform: uppercase; font-weight: 400; margin-right: 8px; color: rgba(232,234,242,.4); }
-  .hint-log .used b { color: #b9f0dc; }
-  .hint-log .waiting b { color: #d4c4ff; }`;
+  .hint-log .ok b { color: #b9f0dc; }
+  .hint-log .bad b { color: #ffb8cb; }
+  .hint-log .working b { color: #d4c4ff; }`;
   document.head.appendChild(style);
 
   const box = document.createElement('section');
-  box.className = 'hint'; box.hidden = true; box.setAttribute('aria-label', 'Send a hint to the agents');
+  box.className = 'hint'; box.hidden = true; box.setAttribute('aria-label', 'Help the agent');
   box.innerHTML = `
-    <div class="hint-head"><span class="hint-title">Human hint</span><span class="hint-state" id="hint-state"></span></div>
+    <div class="hint-head"><span class="hint-title" id="hint-title">Needs a person</span><span class="hint-state" id="hint-state"></span></div>
     <div class="hint-why" id="hint-why"></div>
-    <select id="hint-mod" aria-label="Program"></select>
-    <textarea id="hint-note" maxlength="${MAX}" aria-label="Hint"
-      placeholder="What did the agent miss? e.g. amounts truncate to the cent, never round"></textarea>
-    <div class="hint-act"><button id="hint-send">Send hint</button><span class="hint-msg" id="hint-msg" role="status"></span></div>
+    <div class="hint-case" id="hint-case"></div>
+    <textarea id="hint-note" maxlength="${MAX}" aria-label="Your feedback"
+      placeholder="What is the agent missing? e.g. fees are cut off at the cent, never rounded"></textarea>
+    <div class="hint-act"><button id="hint-send">Send feedback</button><span class="hint-msg" id="hint-msg" role="status"></span></div>
     <ol class="hint-log" id="hint-log"></ol>`;
   document.body.appendChild(box);
   const $ = id => document.getElementById(id);
-  const stateEl = $('hint-state'), whyEl = $('hint-why'), modSel = $('hint-mod'), note = $('hint-note'),
-        sendBtn = $('hint-send'), msg = $('hint-msg'), log = $('hint-log'), panel = $('panel');
+  const titleEl = $('hint-title'), stateEl = $('hint-state'), whyEl = $('hint-why'), caseEl = $('hint-case'),
+        note = $('hint-note'), sendBtn = $('hint-send'), msg = $('hint-msg'), log = $('hint-log'), panel = $('panel');
 
-  let session = null, rep = null, picked = null, lastAsk = null, sending = false;
-  const sent = {};  // module -> notes sent from this page, until the pipeline records them
-  const norm = s => String(s || '').split(/\s+/).filter(Boolean).join(' ');
+  let session = null, rep = null, asking = null, sending = false;
   const upper = s => String(s || '').toUpperCase();
 
-  // galaxy.js handles keys on window (space pauses, R restarts, 1-7 open stations): typing must not reach it
   note.addEventListener('keydown', e => {
-    e.stopPropagation();
+    e.stopPropagation();  // typing must never drive the galaxy's keyboard shortcuts
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     if (e.key === 'Escape') note.blur();
   });
-  modSel.addEventListener('keydown', e => e.stopPropagation());
-  modSel.onchange = () => { picked = modSel.value; render(); };
   sendBtn.onclick = send;
 
-  // which program needs a person right now: one holding its retry for a hint, else one that just failed a verify
-  function ask(m) {
-    const evs = (rep.events || []).filter(e => e.module === m.id), last = evs[evs.length - 1];
-    if (!last) return null;
-    const hist = m.history || [], h = hist[hist.length - 1];
-    if (last.node === 'hint_window') {
-      const secs = +((/up to ([\d.]+)s/.exec(last.msg || '') || [])[1] || 0);
-      const left = Math.max(0, Math.round(secs - (Date.now() - new Date(last.t)) / 1000));
-      return { m, waiting: true, left, h };
-    }
-    if (last.node === 'verify' && h && h.passed < h.total) return { m, waiting: false, h };
-    return null;
+  // seconds left in the module's review window, from its latest needs_review event
+  function secondsLeft(m) {
+    const evs = (rep.events || []).filter(e => e.module === m.id && e.node === 'needs_review');
+    const last = evs[evs.length - 1], secs = last && +((/up to ([\d.]+)s/.exec(last.msg || '') || [])[1] || 0);
+    return secs ? Math.max(0, Math.round(secs - (Date.now() - new Date(last.t)) / 1000)) : null;
   }
 
   function render() {
-    const open = rep.modules.filter(m => m.status !== 'done' && m.status !== 'failed');
-    const used = rep.modules.flatMap(m => (m.human_hints || []).map(h => ({ ...h, id: m.id })));
-    const live = !rep.finished && open.length > 0;
-    box.hidden = !live && !used.length;
+    const mods = rep.modules || [];
+    const stuck = rep.finished ? null : mods.find(m => m.status === 'needs_review');
+    const helped = mods.filter(m => (m.human_hints || []).length);
+    box.hidden = !stuck && !helped.length;
     if (box.hidden) return;
+    if ((stuck && stuck.id) !== asking) { asking = stuck && stuck.id; note.value = ''; say(''); }
+    box.classList.toggle('ask', !!stuck);
+    for (const el of [note, sendBtn.parentElement]) el.hidden = !stuck;
 
-    const need = live ? open.map(ask).find(Boolean) : null;
-    if (need && need.m.id !== lastAsk) picked = need.m.id;  // a new request for help moves the picker to it
-    lastAsk = need ? need.m.id : null;
-    const current = open.find(m => (rep.events || []).some(e => e.module === m.id)) || open[0];
-    if (!open.some(m => m.id === picked)) picked = (need && need.m.id) || (current && current.id) || null;
-
-    box.classList.toggle('ask', !!need);
-    stateEl.textContent = !live ? 'run finished'
-      : need ? (need.waiting ? `waiting · ${need.left}s` : 'retrying soon') : 'optional';
-    whyEl.textContent = !live ? 'Hints this run used are listed below.'
-      : need ? `${upper(need.m.id)} matched ${need.h ? `${need.h.passed} of ${need.h.total}` : 'only some'} cases on attempt ${need.h ? need.h.attempt : need.m.attempts}. `
-             + (need.h && need.h.explanation && need.h.explanation.reason ? `Why: ${need.h.explanation.reason} ` : '')
-             + 'A hint goes into its next attempt.'
-      : 'Send any program a hint; its next rewrite attempt follows it.';
-
-    const opts = open.map(m => [m.id, upper(m.id) + (m.status === 'pending' ? ' · not started' : '')]);
-    if (modSel.dataset.opts !== JSON.stringify(opts)) {
-      modSel.replaceChildren(...opts.map(([v, label]) => new Option(label, v)));
-      modSel.dataset.opts = JSON.stringify(opts);
+    if (stuck) {
+      const hist = stuck.history || [], h = hist[hist.length - 1] || {}, ex = h.explanation || {};
+      const f = (h.failures || [])[0], left = secondsLeft(stuck);
+      titleEl.textContent = 'Needs a person';
+      stateEl.textContent = left === null ? 'waiting' : `waiting · ${left}s`;
+      whyEl.textContent = `The agent could not modernize ${upper(stuck.id)}: after ${stuck.attempts} attempts it matches `
+        + `${h.passed} of ${h.total} cases.` + (ex.reason ? ` Why: ${ex.reason}` : '') + ' What is it missing?';
+      caseEl.replaceChildren();
+      if (f) {
+        const row = (label, value, bad) => { const b = document.createElement(bad ? 'b' : 'span'); b.textContent = `${label.padEnd(8)}${value}\n`; return b; };
+        caseEl.append(row('input', f.input), row('cobol', f.expected), row('python', f.actual, true));
+      }
+    } else {
+      const working = helped.some(m => m.status !== 'done' && m.status !== 'failed');
+      titleEl.textContent = 'Human feedback';
+      stateEl.textContent = working ? 'agent retrying' : rep.finished ? 'run finished' : '';
+      whyEl.textContent = working ? 'The agent is rewriting with your feedback. It still has to match the real COBOL on every case.' : '';
+      caseEl.replaceChildren();
     }
-    if (picked) modSel.value = picked;
-    for (const el of [modSel, note]) el.hidden = !live;
-    sendBtn.parentElement.hidden = !live;
 
-    const usedNotes = new Set(used.map(h => `${h.id}|${norm(h.note)}`));
-    const waiting = Object.entries(sent).flatMap(([id, notes]) => notes.filter(n => !usedNotes.has(`${id}|${n}`)).map(n => ({ id, note: n })));
-    log.replaceChildren(...used.map(h => item('used', `${h.id} · attempt ${h.attempt}`, h.note)),
-                        ...(live ? waiting.map(h => item('waiting', `${h.id} · queued`, h.note)) : []));
+    log.replaceChildren(...helped.flatMap(m => m.human_hints.map((h, i, all) => {
+      const last = i === all.length - 1;
+      const kind = !last ? 'bad' : m.status === 'done' ? 'ok' : m.status === 'failed' ? 'bad' : 'working';
+      const label = kind === 'ok' ? `${m.id} · verified after attempt ${m.attempts}`
+        : kind === 'working' ? `${m.id} · attempt ${m.attempts}` : `${m.id} · not enough`;
+      return item(kind, label, h.note);
+    })));
   }
 
   function item(kind, label, text) {
@@ -131,19 +122,17 @@
   }
 
   async function send() {
-    const module = modSel.value, text = norm(note.value).slice(0, MAX);
-    if (sending || !session || !module) return;
-    if (!text) { say('Write a hint first.', true); return; }
+    const text = note.value.split(/\s+/).filter(Boolean).join(' ').slice(0, MAX);
+    if (sending || !session || !asking) return;
+    if (!text) { say('Write your feedback first.', true); return; }
     sending = true; sendBtn.disabled = true;
     try {
       const r = await fetch(`api/runs/${session}/feedback`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ module, note: text }) });
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ module: asking, note: text }) });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
-      (sent[module] = sent[module] || []).push(text);
       note.value = '';
-      say(`Sent to ${upper(module)}`);
-      if (rep) render();
+      say(`Sent. ${upper(asking)} gets 2 more attempts.`);
     } catch (err) {
       say(err.message, true);
     } finally {
@@ -155,8 +144,8 @@
 
   async function poll() {
     const m = /^#live=([0-9a-z-]+)$/.exec(location.hash);
-    if (!m) { box.hidden = true; session = rep = null; return setTimeout(poll, POLL_MS); }
-    if (m[1] !== session) { session = m[1]; rep = null; picked = lastAsk = null; for (const k in sent) delete sent[k]; say(''); }
+    if (!m) { box.hidden = true; session = rep = asking = null; return setTimeout(poll, POLL_MS); }
+    if (m[1] !== session) { session = m[1]; rep = asking = null; say(''); }
     try {
       const r = await fetch(`api/runs/${session}/replay`, { cache: 'no-store' });
       if (r.status === 200) { rep = await r.json(); render(); }

@@ -11,7 +11,8 @@ It serves web/ and a small JSON API:
     POST /api/runs        {"codebase"}    start a real run (tools/isolated_run.py); returns the session
     GET  /api/runs/<session>/replay       that session as a replay, built from what it has written so far
     POST /api/runs/<session>/feedback {"module", "note"}
-                                          a reviewer hint; that module's next rewrite attempt follows it
+                                          a person's feedback for a module stuck in needs_review
+                                          (out of attempts); it gets more attempts that follow it
 
 A run is the same pipeline as the command line, in its own session copy. Only one runs at a time
 (isolated_run.py holds the lock). The page falls back to the recorded replay whenever live isn't
@@ -49,6 +50,7 @@ SESSION_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-(real|fake)-[0-9a-f]{6}$")
 MODULE_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 MAX_HINT_CHARS = 500
 MAX_HINTS = 10  # per module
+REVIEW_WAIT = os.getenv("REVIEW_WAIT", "180")  # how long a stuck module in a live run waits for feedback
 
 # A quick live run (one program, about 30 s): the same verification, minus the slow extras.
 QUICK_ENV = {
@@ -148,7 +150,7 @@ def _start(codebase: str, only: str | None = None, quick: bool = False) -> tuple
         cmd = [sys.executable, str(ROOT / "tools" / "isolated_run.py"), "--mode", "real", "--legacy-dir", codebase]
         if only:
             cmd += ["--only", only]
-        env = dict(os.environ, **QUICK_ENV) if quick else None
+        env = dict(os.environ, REVIEW_WAIT=REVIEW_WAIT, **(QUICK_ENV if quick else {}))
         proc = subprocess.Popen(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=env)
         session = None
         for _ in range(60):  # isolated_run publishes its session name right after copying the repo
@@ -230,7 +232,7 @@ def _replay(session: str) -> tuple[int, dict]:
 
 
 def _feedback(session: str, body: dict) -> tuple[int, dict]:
-    """Save a reviewer hint where the run's rewrite node reads it (pipeline/graph.py read_hints)."""
+    """Save a person's feedback where the stuck module's next attempts read it (pipeline/graph.py read_hints)."""
     if not SESSION_RE.match(session):
         return 400, {"error": "Bad session."}
     module, note = body.get("module"), body.get("note")
@@ -238,7 +240,7 @@ def _feedback(session: str, body: dict) -> tuple[int, dict]:
         return 400, {"error": "Bad module."}
     note = " ".join(note.split())[:MAX_HINT_CHARS] if isinstance(note, str) else ""
     if not note:
-        return 400, {"error": "Write a hint first."}
+        return 400, {"error": "Write your feedback first."}
     folder = SESSIONS / session
     try:
         meta = json.loads((folder / "session.json").read_text())
@@ -246,12 +248,12 @@ def _feedback(session: str, body: dict) -> tuple[int, dict]:
     except (OSError, ValueError):
         return 404, {"error": "No such run."}
     if meta.get("status") != "running":
-        return 409, {"error": "That run has finished; hints only help a run in progress."}
+        return 409, {"error": "That run has finished."}
     current = (state.get("modules") or {}).get(module)
     if current is None:
         return 404, {"error": "That program is not in this run."}
-    if current.get("status") in ("done", "failed"):
-        return 409, {"error": f"{module} has already finished."}
+    if current.get("status") != "needs_review":
+        return 409, {"error": f"{module.upper()} is not asking for help right now."}
     path = folder / "runs" / "feedback" / f"{module}.json"
     with _lock:
         try:
@@ -259,7 +261,7 @@ def _feedback(session: str, body: dict) -> tuple[int, dict]:
         except (OSError, ValueError):
             hints = []
         if len(hints) >= MAX_HINTS:
-            return 409, {"error": "That program already has enough hints."}
+            return 409, {"error": "That program already has enough feedback."}
         hints.append({"note": note, "at": time.strftime("%Y-%m-%dT%H:%M:%S")})
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")

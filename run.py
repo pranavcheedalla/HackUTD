@@ -39,8 +39,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("legacy_dir", nargs="?", default=str(ROOT / "legacy"))
     ap.add_argument("--only", help="run a single module id")
-    ap.add_argument('--demo-scenario', choices=('repair', 'exhaust'),
-                    help='fake mode: invoice repairs on retry or exhausts three attempts')
+    ap.add_argument('--demo-scenario', choices=('repair', 'exhaust', 'review'),
+                    help='fake mode: invoice repairs on retry, exhausts three attempts, or needs a '
+                         "person's feedback (review; set REVIEW_WAIT). Env: DEMO_SCENARIO")
     args = ap.parse_args()
     try:
         from dotenv import load_dotenv
@@ -53,7 +54,7 @@ def main() -> int:
     stubs = stub_report()
     if mode == 'fake':
         from agents.demo import install
-        install(agents, args.demo_scenario or 'repair')
+        install(agents, args.demo_scenario or os.getenv('DEMO_SCENARIO') or 'repair')
         print('OFFLINE FIXTURE DEMO: real COBOL and LangGraph; no model calls.')
     else:
         if args.demo_scenario:

@@ -50,12 +50,14 @@ def generate_inputs(spec, source):
 
 def install(agents, scenario='repair'):
     """Select demo functions only in the dedicated CLI process's fake mode."""
-    if scenario not in ('repair', 'exhaust'):
+    if scenario not in ('repair', 'exhaust', 'review'):
         raise ValueError('Unknown demo scenario')
     def rewrite(spec, source, failures, **kwargs):  # kwargs: previous_src, deps (unused offline)
         mid = _id(source)
         fixture = (ROOT / f'tests/fixtures/{mid}_reference.py').read_text()
-        if mid == 'invoice' and (scenario == 'exhaust' or not failures):
+        # review: invoice keeps rounding until a person's feedback reaches the spec (graph.with_hints)
+        followed = any('Reviewer hint' in r for r in spec.get('business_rules', []))
+        if mid == 'invoice' and (scenario == 'exhaust' or (scenario == 'review' and not followed) or not failures):
             return fixture.replace('ROUND_DOWN', 'ROUND_HALF_UP')
         return fixture
     def explain(spec, source, python_source, failure):

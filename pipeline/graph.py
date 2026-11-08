@@ -5,7 +5,13 @@ P1 (Hemant) — the assembly line. One graph run = one COBOL module.
                                ^               |
                                +--- retry -----+   (failures fed back, max MAX_ATTEMPTS)
                                                |
-                                               +-> explain -> END  (after MAX_ATTEMPTS, module failed)
+                                               +-> needs_review -+-> explain -> END  (module failed)
+                                                   (after MAX_ATTEMPTS)  |
+                               ^                                         |
+                               +---- a person's feedback: 2 more tries --+
+
+needs_review only waits when REVIEW_WAIT > 0 (tools/serve.py sets it for live runs); otherwise
+a module that runs out of attempts goes straight to explain, as before.
 
 `understand` runs once in run.py before the graph (it orders the modules).
 """
@@ -34,7 +40,9 @@ FEEDBACK_DIR = ROOT / "runs" / "feedback"  # human hints, one <module>.json each
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "3"))
 MIN_TESTS = int(os.getenv("MIN_TESTS", "5"))  # never call a module verified on fewer distinct cases
 MAX_RECORDED_FAILURES = 5  # failed cases kept per attempt in runs/state.json
-HINT_WAIT = float(os.getenv("HINT_WAIT", "0"))  # seconds a retry waits for a human hint (0: never waits)
+REVIEW_WAIT = float(os.getenv("REVIEW_WAIT", "0"))  # seconds a stuck module waits for a person (0: never)
+EXTRA_ATTEMPTS = int(os.getenv("EXTRA_ATTEMPTS", "2"))  # attempts granted by each piece of feedback
+MAX_REVIEWS = 2  # times one module may ask for help
 MAX_HINT_CHARS = 500
 
 
@@ -65,7 +73,9 @@ class GraphState(TypedDict, total=False):
     dep_modules: list        # [{module_id, program_id, params, status}] per dependency
     history: list            # one attempt_record per verify: counts, failed cases, explanation
     attempt_sources: list    # [{attempt, python}] each rewrite's source, kept for the replay
-    human_hints: list        # [{attempt, note, at}] reviewer hints, and the attempt that first used each
+    human_hints: list        # [{attempt, note, at}] a person's feedback, and the attempt that first used each
+    reviews: int             # times this module asked a person for help and got an answer
+    attempt_limit: int       # MAX_ATTEMPTS, raised by EXTRA_ATTEMPTS for each answered review
 
 
 def _safe(node_name: str):
@@ -180,21 +190,6 @@ def read_hints(module_id: str) -> list[dict]:
             for h in raw if isinstance(h, dict) and str(h.get("note") or "").strip()] if isinstance(raw, list) else []
 
 
-def wait_for_hint(state: GraphState, seen: int) -> list[dict]:
-    """Before a retry, give a reviewer up to HINT_WAIT seconds to add a hint. Returns all hints."""
-    hints = read_hints(state["id"])
-    if HINT_WAIT <= 0 or len(hints) > seen:
-        return hints
-    status.update(state, "hint_window", f"waiting up to {HINT_WAIT:g}s for a reviewer hint")
-    deadline = time.monotonic() + HINT_WAIT
-    while time.monotonic() < deadline:
-        time.sleep(0.5)
-        hints = read_hints(state["id"])
-        if len(hints) > seen:
-            break
-    return hints
-
-
 def with_hints(spec: dict, hints: list[dict]) -> dict:
     """The spec the rewrite agent sees: reviewer hints added as business rules it must follow.
     Hints only guide the rewrite; acceptance still needs every golden case to match."""
@@ -221,7 +216,7 @@ def rewrite(state: GraphState) -> GraphState:
     attempts = state.get("attempts", 0) + 1
     failures = state.get("last_failures") or None
     used = list(state.get("human_hints") or [])
-    hints = wait_for_hint(state, len(used)) if failures else read_hints(state["id"])
+    hints = read_hints(state["id"])
     new = [{"attempt": attempts, **h} for h in hints[len(used):]]
     spec = with_hints(state["spec"], hints)
     if deps:
@@ -285,16 +280,55 @@ def attempt_record(state: GraphState, res: dict) -> dict:
     record = {"attempt": attempt, "passed": res["passed"], "total": res["total"],
               "failures": [dict(f) for f in res["failures"][:MAX_RECORDED_FAILURES]],
               "explanation": None}
-    if res["failures"] and attempt < MAX_ATTEMPTS:
-        try:
-            verdict = agents.explain_divergence(state["spec"], state["cobol_src"],
-                                                state.get("python_src") or "", res["failures"][0])
-            record["explanation"] = {"verdict": verdict.get("verdict"), "reason": verdict.get("reason"),
-                                     "input": res["failures"][0]["input"]}
-        except Exception as e:  # the explanation is a bonus; the retry goes ahead without it
-            record["explanation"] = {"verdict": None, "reason": f"explainer unavailable: {type(e).__name__}",
-                                     "input": res["failures"][0]["input"]}
+    if res["failures"] and attempt < attempt_limit(state):
+        record["explanation"] = explain_one(state, res["failures"][0])
     return record
+
+
+def attempt_limit(state: GraphState) -> int:
+    return state.get("attempt_limit") or MAX_ATTEMPTS
+
+
+def explain_one(state: GraphState, failure: dict) -> dict:
+    """One explanation of one failed case. An explainer error never fails the module."""
+    try:
+        verdict = agents.explain_divergence(state["spec"], state["cobol_src"],
+                                            state.get("python_src") or "", failure)
+        return {"verdict": verdict.get("verdict"), "reason": verdict.get("reason"), "input": failure["input"]}
+    except Exception as e:  # the explanation is a bonus; the retry goes ahead without it
+        return {"verdict": None, "reason": f"explainer unavailable: {type(e).__name__}", "input": failure["input"]}
+
+
+@_safe("needs_review")
+def needs_review(state: GraphState) -> GraphState:
+    """Out of attempts: ask a person what the agent is missing, for up to REVIEW_WAIT seconds.
+    Feedback (written by tools/serve.py) buys EXTRA_ATTEMPTS more rewrites that must follow it;
+    no answer means the module goes on to explain and fails, exactly as without a reviewer."""
+    if REVIEW_WAIT <= 0 or state.get("reviews", 0) >= MAX_REVIEWS:
+        return state
+    seen = len(read_hints(state["id"]))
+    failures = [dict(f) for f in state.get("last_failures") or []]
+    history = list(state.get("history") or [])
+    if failures and history and not history[-1].get("explanation"):
+        # the person deciding should see why, not only what, it got wrong
+        history[-1] = {**history[-1], "explanation": explain_one(state, failures[0])}
+    if failures and history and history[-1]["explanation"].get("verdict"):
+        failures[0]["why"] = history[-1]["explanation"]["reason"]
+    attempts = state.get("attempts", 0)
+    asking = {**state, "status": "needs_review", "history": history, "last_failures": failures}
+    status.update(asking, "needs_review",
+                  f"could not verify after {attempts} attempts; waiting up to {REVIEW_WAIT:g}s for a person's feedback")
+    deadline = time.monotonic() + REVIEW_WAIT
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        if len(read_hints(state["id"])) > seen:
+            out = {**asking, "status": "verifying", "reviews": state.get("reviews", 0) + 1,
+                   "attempt_limit": attempts + EXTRA_ATTEMPTS}
+            status.update(out, "needs_review", f"feedback received; {EXTRA_ATTEMPTS} more attempts follow it")
+            return out
+    out = {**asking, "status": "verifying"}
+    status.update(out, "needs_review", "no feedback; explaining the differences")
+    return out
 
 
 @_safe("accept")
@@ -347,9 +381,15 @@ def route_after_verify(state: GraphState) -> str:
         return "end"
     if not state.get("last_failures"):
         return "accept"
-    if state.get("attempts", 0) < MAX_ATTEMPTS:
+    if state.get("attempts", 0) < attempt_limit(state):
         return "retry"
-    return "explain"
+    return "review"
+
+
+def route_after_review(state: GraphState) -> str:
+    if state.get("status") == "failed":
+        return "end"
+    return "retry" if state.get("attempts", 0) < attempt_limit(state) else "explain"
 
 
 def stop_if_failed(next_node: str):
@@ -361,14 +401,16 @@ def stop_if_failed(next_node: str):
 def build_graph():
     g = StateGraph(GraphState)
     for name, fn in [("extract_spec", extract_spec), ("record", record), ("rewrite", rewrite),
-                     ("verify", verify), ("accept", accept), ("explain", explain)]:
+                     ("verify", verify), ("needs_review", needs_review), ("accept", accept), ("explain", explain)]:
         g.add_node(name, fn)
     g.set_entry_point("extract_spec")
     g.add_conditional_edges("extract_spec", stop_if_failed("record"), {"record": "record", "end": END})
     g.add_conditional_edges("record", stop_if_failed("rewrite"), {"rewrite": "rewrite", "end": END})
     g.add_conditional_edges("rewrite", stop_if_failed("verify"), {"verify": "verify", "end": END})
     g.add_conditional_edges("verify", route_after_verify,
-                            {"accept": "accept", "retry": "rewrite", "explain": "explain", "end": END})
+                            {"accept": "accept", "retry": "rewrite", "review": "needs_review", "end": END})
+    g.add_conditional_edges("needs_review", route_after_review,
+                            {"retry": "rewrite", "explain": "explain", "end": END})
     g.add_edge("accept", END)
     g.add_edge("explain", END)
     return g.compile()
