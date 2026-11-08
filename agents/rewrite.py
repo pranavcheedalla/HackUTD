@@ -374,6 +374,7 @@ def format_failures(failures: list) -> str:
         lines.append(
             f"Case {i}\n  input:    {f.get('input')!r}\n"
             f"  expected: {f.get('expected')!r}\n  actual:   {f.get('actual')!r}"
+            + (f"\n  why:      {f['why']}" if f.get("why") else "")  # the explanation agent's diagnosis
         )
     if len(failures) > MAX_FAILURES_IN_PROMPT:
         lines.append(f"... and {len(failures) - MAX_FAILURES_IN_PROMPT} more failing cases")

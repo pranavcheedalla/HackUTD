@@ -17,6 +17,14 @@
   const shown = s => (s === '' ? '(empty)' : /^\s+$/.test(s) ? '(spaces)' : s);
   const clip = (s, n) => ((s = String(s || '')).length > n ? s.slice(0, n - 1) + '…' : s);
 
+  // multi-line outputs: show the first line that differs; an empty rewrite says so
+  function firstDiff(expected, actual) {
+    const e = String(expected == null ? '' : expected).split('\n'), a = String(actual == null ? '' : actual).split('\n');
+    if (!String(actual || '').trim()) return { expected: e[0], actual: '(no output)' };
+    for (let i = 0; i < Math.max(e.length, a.length); i++) if ((e[i] || '') !== (a[i] || '')) return { expected: e[i] || '(no line)', actual: a[i] || '(no line)' };
+    return { expected: e[0], actual: a[0] };
+  }
+
   // three inputs that show the range: text or codes, a blank, a big number
   function sampleInputs(golden) {
     const ins = (golden || []).map(g => g.input), pick = [];
@@ -54,7 +62,7 @@
       const failed = new Set((module.history || []).flatMap(a => (a.failures || []).map(f => f.input)));
       const g = golden.find(c => failed.has(c.input)) || golden.find(c => c.input.trim()) || golden[0];
       return { sentence: 'We ran the real COBOL on every input and saved exactly what it printed.',
-               proof: g ? { kind: 'pair', left: clip(shown(g.input), 22), right: clip(g.output, 34) } : null };
+               proof: g ? { kind: 'pair', left: clip(shown(g.input), 22), right: clip(String(g.output).split('\n')[0] + (String(g.output).includes('\n') ? '  …' : ''), 34) } : null };
     },
     5({ module, attemptIndex }) {
       const deps = (module.depends_on || []).map(name);
@@ -69,7 +77,7 @@
         const f = (a.failures || [])[0], ex = a.explanation || {};
         return { sentence: mutation ? 'We planted a one-cent bug. The original COBOL caught it.' : 'The original COBOL judged the rewrite.',
                  sub: `${passed} of ${total} outputs matched, so it went back for a fix.`,
-                 proof: f ? { kind: 'diff', input: clip(shown(f.input), 30), expected: f.expected, actual: f.actual } : { kind: 'line', text: `${passed} / ${total} MATCH` },
+                 proof: f ? { kind: 'diff', input: clip(shown(f.input), 30), ...firstDiff(f.expected, f.actual) } : { kind: 'line', text: `${passed} / ${total} MATCH` },
                  note: ex.reason || null };
       }
       return { sentence: 'Every output matches the original COBOL.', sub: 'Checked character by character.',

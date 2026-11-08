@@ -2,11 +2,18 @@
  {
   "name": "codebase",
   "title": "Multi-file codebase \u00b7 discount \u2192 invoice",
-  "kind": "run"
+  "kind": "run",
+  "codebase": "samples/legacy"
  },
  {
   "name": "planted-bug",
   "title": "Planted one-cent bug \u00b7 invoice",
   "kind": "mutation"
+ },
+ {
+  "name": "bank",
+  "title": "Retail bank \u00b7 5 programs",
+  "kind": "run",
+  "codebase": "samples/bank"
  }
 ]

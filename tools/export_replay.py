@@ -122,6 +122,7 @@ def main() -> int:
     ap.add_argument("--name", required=True, help="replay file name, e.g. codebase")
     ap.add_argument("--title", default="", help="shown in the page's session menu")
     ap.add_argument("--mutation", action="store_true", help="export the planted-bug mutation check")
+    ap.add_argument("--codebase", default="", help="the COBOL folder it ran on, e.g. samples/bank (lets the page offer it)")
     ap.add_argument("--audit", type=Path, help="held-out audit JSON ({modules: {id: {passed, total}}}) to attach")
     args = ap.parse_args()
     if not re.fullmatch(r"[a-z0-9-]{1,40}", args.name):
@@ -129,7 +130,7 @@ def main() -> int:
     if not (args.session / "runs" / "state.json").is_file():
         ap.error(f"not a finished session folder: {args.session}")
     replay = export_mutation(args.session) if args.mutation else export_session(args.session)
-    replay.update(name=args.name, title=args.title or args.name)
+    replay.update(name=args.name, title=args.title or args.name, codebase=args.codebase or None)
     if args.audit:
         audit = json.loads(args.audit.read_text()).get("modules", {})
         for m in replay["modules"]:
@@ -139,8 +140,10 @@ def main() -> int:
     (OUT_DIR / f"{args.name}.json").write_text(json.dumps(replay, indent=1))
     index_path = OUT_DIR / "index.json"
     index = json.loads(index_path.read_text()) if index_path.is_file() else []
-    index = [r for r in index if r["name"] != args.name] + [{"name": args.name, "title": replay["title"],
-                                                             "kind": replay["kind"]}]
+    entry = {"name": args.name, "title": replay["title"], "kind": replay["kind"]}
+    if args.codebase:
+        entry["codebase"] = args.codebase
+    index = [r for r in index if r["name"] != args.name] + [entry]
     index_path.write_text(json.dumps(index, indent=1))
     done = sum(m["status"] == "done" for m in replay["modules"])
     print(f"web/replays/{args.name}.json: {len(replay['modules'])} modules, {done} verified")

@@ -186,9 +186,14 @@ def verify(state: GraphState) -> GraphState:
                "error": f"too few distinct test cases to verify ({res['total']} < {MIN_TESTS})"}
         status.update(out, "verify", out["error"])
         return out
+    record = attempt_record(state, res)
+    failures = [dict(f) for f in res["failures"]]
+    ex = record.get("explanation") or {}
+    if failures and ex.get("verdict"):  # the retry sees why, not only what, it got wrong
+        failures[0]["why"] = ex.get("reason")
     out = {**state, "tests_passed": res["passed"], "tests_total": res["total"],
-           "last_failures": res["failures"], "status": "verifying",
-           "history": [*(state.get("history") or []), attempt_record(state, res)]}
+           "last_failures": failures, "status": "verifying",
+           "history": [*(state.get("history") or []), record]}
     status.update(out, "verify", f"{res['passed']}/{res['total']} equivalence tests passed")
     return out
 

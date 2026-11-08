@@ -117,6 +117,7 @@
   function restart() { clock = 0; cam = 0; cs = 0; trail = []; }
   addEventListener('keydown', e => {
     if (e.target.tagName === 'SELECT') return;
+    if (intakeOpen()) { if (e.key === 'Escape' && R) closeIntake(); if (e.key === 'Enter' && caseFile.classList.contains('open')) document.getElementById('case-go').click(); return; }
     if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
     if (e.key === 'r' || e.key === 'R') restart();
     if (e.key === 'Escape') { if (panel.classList.contains('open')) closePanel(); else closeCaption(); }
@@ -141,6 +142,7 @@
   }
 
   function subtitle(m, i, b, u) {
+    if (b.working) return 'WORKING' + '.'.repeat(1 + Math.floor(performance.now() / 500) % 3);
     const n = R.modules.length;
     const h = b.h !== undefined ? m.history[b.h] : null;
     switch (i) {
@@ -278,6 +280,7 @@
       const ai = capFocus === 5 ? Math.max(0, hist.findIndex(a => a.passed < a.total)) : Math.max(0, hist.length - 1);
       return { n: capFocus, mi, a: 1, since: 0, ai, clicked: true };
     }
+    if (b.k === 'dwell' && b.working) return { n: b.at, mi: b.mi, a: clamp((t - b.t0 - .35) / .55), since: b.t0 + .35, ai: b.h || 0, working: true };
     let nb = b, tail = 1;
     if (b.k === 'move' && b.back && lastFail) { nb = lastFail; tail = clamp(1 - (t - b.t0) / 1.1); }  // the reason lingers as the star goes back
     if (nb.k !== 'dwell' || nb.blocked || !Captions.narrates(nb.mi, nb.at)) return null;
@@ -285,11 +288,27 @@
     const a = clamp((dt - .35) / .55) * (nb === b ? clamp((dur - dt) / .6) : tail) * (nb.fail && nb === b ? 1 : 1);
     return { n: nb.at, mi: nb.mi, a, since: nb.t0 + .35, ai: nb.h !== undefined ? nb.h : (R.modules[nb.mi].history || []).length - 1, dt };
   }
+  // what a live run is doing right now, with how long this step has taken so far
+  const workSince = new Map();
+  function workingCaption(ac, m) {
+    const key = `${R.name}|${ac.mi}|${ac.n}|${ac.ai}`;
+    if (!workSince.has(key)) workSince.set(key, performance.now());
+    const s = Math.floor((performance.now() - workSince.get(key)) / 1000), clock = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    const say = {
+      0: 'Mapping the codebase: which programs call which.',
+      1: 'Nemotron is reading the COBOL and writing down what it does.',
+      2: 'Nemotron is inventing test inputs. Then the real COBOL records the answers.',
+      4: ac.ai > 0 ? 'Nemotron is fixing the Python, using the cases it got wrong.' : 'Nemotron is writing the Python.',
+      5: 'Running every test against the original COBOL.',
+      6: 'Writing unit tests for the verified Python.',
+    }[ac.n] || 'Working.';
+    return { sentence: say, proof: { kind: 'line', text: `LIVE   ·   ${clock}` } };
+  }
   function narration(t, ox, lc, b, u) {
     const ac = activeCaption(t, b, u);
     capOn = ac ? ac.a : 0; if (!ac || ac.a < .01) return;
     const m = R.modules[ac.mi], hist = m.history || [], attempt = hist[ac.ai] || null;
-    const cp = Captions.get(ac.n + 1, { module: m, replay: R, attempt, attemptIndex: ac.ai, mutation: R.kind === 'mutation' });
+    const cp = ac.working ? workingCaption(ac, m) : Captions.get(ac.n + 1, { module: m, replay: R, attempt, attemptIndex: ac.ai, mutation: R.kind === 'mutation' });
     if (!cp) return;
     const key = `${ac.n}|${ac.mi}|${ac.ai}`;
     if (ac.clicked && narration.lastKey !== key) { narration.lastKey = key; narration.clickT = performance.now() / 1000; }
@@ -397,8 +416,69 @@
     requestAnimationFrame(frame);  // first, so one bad frame can never stop the show
     if (!W || !isFinite(W)) { if (!resize()) return; }
     if (cv.width !== Math.round(innerWidth * DPR) || cv.height !== Math.round(innerHeight * DPR)) resize();
-    if (R && playing) clock = Math.min(TL.end + 2, clock + dtReal * speed);
+    if (intakeOpen()) { try { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.globalAlpha = 1; drawSky(now / 1000); } catch (err) { console.error(err); } return; }
+    // a live run joined late catches up at double speed until it is close to what's happening now
+    const edge = R && R.live && TL && TL.beats.find(q => q.working), catchUp = edge && edge.t0 - clock > 15 ? Math.max(speed, 2) : speed;
+    if (R && playing) clock = Math.min(TL.end + 2, clock + dtReal * catchUp);
     if (R) { try { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.globalAlpha = 1; x.save(); draw(clock); } catch (err) { if (!frame.warned) { frame.warned = true; console.error(err); } } finally { x.restore(); } }
+  }
+
+  // ---------- the sky alone, behind the intake ----------
+  function drawSky(t) {
+    fr++; const ox = -t * 6;
+    x.fillStyle = '#07070a'; x.fillRect(0, 0, W, H);
+    const mo = ((ox * .12) % 2400 + 2400) % 2400; x.drawImage(milkyG, mo - 2400, 0); x.drawImage(milkyG, mo, 0);
+    for (const L of layers) for (const d of L.s) {
+      const px = ((d[0] + ox * L.par) % (W + 60) + W + 60) % (W + 60) - 30;
+      x.fillStyle = `rgba(232,236,250,${L.al * (.35 + .35 * Math.sin(t * (d[4] ? 3.5 : 1.2) + d[3]))})`; x.fillRect(px, d[1], d[2], d[2]);
+    }
+    const fo = ((ox * .55) % 1800 + 1800) % 1800; x.globalAlpha = .75; x.drawImage(fog, fo - 1800, H - 190); x.drawImage(fog, fo, H - 190); x.globalAlpha = 1;
+    if (fr % 3 === 0) grain(); x.globalAlpha = .06; x.fillStyle = x.createPattern(grainC, 'repeat'); x.fillRect(0, 0, W, H); x.globalAlpha = 1;
+    const vg = x.createRadialGradient(W / 2, H / 2, H * .2, W / 2, H / 2, W * .75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.8)');
+    x.fillStyle = vg; x.fillRect(0, 0, W, H);
+  }
+
+  // ---------- live: the timeline so far, ending in a "working" stop where the run is now ----------
+  // Same beats and durations as buildTimeline for every finished step, so when a step completes
+  // its working stop is replaced in place and the replay simply carries on.
+  function liveTimeline(rep) {
+    const beats = []; let t = 0;
+    const push = (b, d) => { b.t0 = t; b.t1 = t + d; t += d; beats.push(b); };
+    const work = b => { b.working = true; push(b, 1e5); };
+    push({ k: 'intro' }, 3.4);
+    for (let mi = 0; mi < rep.modules.length; mi++) {
+      const m = rep.modules[mi], evs = (rep.events || []).filter(e => e.module === m.id), has = n => evs.some(e => e.node === n);
+      const failed = m.status === 'failed', talk = (at, d) => (window.Captions && Captions.narrates(mi, at) ? Math.max(d, READ) : d);
+      if (mi > 0) push({ k: 'swoop', mi }, 1.7);
+      if ((m.error || '').startsWith('blocked')) { push({ k: 'dwell', mi, at: 0, blocked: true }, 3); continue; }
+      if (!evs.length) { work({ k: 'dwell', mi, at: 0 }); break; }
+      let pos = 0; const mv = (to, d = 1.7, back = false) => { push({ k: 'move', mi, a: pos, b: to, back }, d); pos = to; };
+      const end = at => (failed ? (push({ k: 'dwell', mi, at, failedEnd: true }, 3.6), false) : (work({ k: 'dwell', mi, at }), true));
+      push({ k: 'dwell', mi, at: 0 }, talk(0, 1.6));
+      mv(1); if (!has('extract_spec')) { if (end(1)) break; continue; }
+      push({ k: 'dwell', mi, at: 1 }, talk(1, 2.6));
+      mv(2); if (!has('record')) { if (end(2)) break; continue; }
+      push({ k: 'dwell', mi, at: 2 }, talk(2, 2.2)); mv(3); push({ k: 'dwell', mi, at: 3 }, talk(3, 2.2));
+      const rewrites = evs.filter(e => e.node === 'rewrite' && !/^blocked/.test(e.msg || '')).length;
+      const verifies = evs.filter(e => e.node === 'verify').length, hist = m.history || [];
+      let stop = false, over = false;  // stop: the run is busy here; over: this module ended without passing
+      for (let k = 0; k < 10; k++) {
+        if (pos === 5) mv(4, 2.8, true); else mv(4);
+        if (rewrites <= k) { stop = end(4); over = !stop; break; }
+        push({ k: 'dwell', mi, at: 4, h: k }, talk(4, k ? 2.4 : 2.2));
+        mv(5);
+        if (verifies <= k) { stop = end(5); over = !stop; break; }
+        const h = hist[k] || {}, fail = h.total ? h.passed < h.total : false;
+        push({ k: 'dwell', mi, at: 5, h: k, fail }, fail ? 6.4 : talk(5, 2.6));
+        if (!fail) break;
+      }
+      if (stop) break;
+      if (over) continue;
+      if (has('accept')) { mv(6); push({ k: 'dwell', mi, at: 6, done: true }, talk(6, 3)); continue; }
+      if (failed) { push({ k: 'dwell', mi, at: 5, failedEnd: true }, 3.6); continue; }
+      mv(6); work({ k: 'dwell', mi, at: 6 }); break;
+    }
+    return { beats, end: t };
   }
 
   function draw(t) {
@@ -514,7 +594,7 @@
       for (let k = 1; k < trail.length; k++) { const a = k / trail.length, tc = rgb(mix([225, 232, 255], [120, 235, 215], c * (1 - a))); x.strokeStyle = `rgba(${tc},${a * a * .55})`; x.lineWidth = a * 2.4; x.beginPath(); x.moveTo(trail[k - 1][0] + ox, trail[k - 1][1]); x.lineTo(trail[k][0] + ox, trail[k][1]); x.stroke(); }
       const glow = failing ? '255,190,200' : rgb(mix([215, 225, 255], [185, 140, 255], c)), spk = failing ? '255,225,230' : rgb(mix([240, 244, 255], [230, 215, 255], c));
       const ended = b.failedEnd;
-      star(px, sy, t, ended ? .55 : p > 5.98 ? 1.4 : moving ? 1.05 : 1, ended ? '190,185,195' : glow, ended ? '215,210,215' : spk, mi);
+      star(px, sy, t, ended ? .55 : b.working ? 1 + .14 * Math.sin(t * 4) : p > 5.98 ? 1.4 : moving ? 1.05 : 1, ended ? '190,185,195' : glow, ended ? '215,210,215' : spk, mi);
       if (ended) txt(`NOT VERIFIED AFTER ${m.attempts} ATTEMPTS`, px, sy - 40, 10, .55, 2.5);
     } else trail = [];
     const fo = ((ox * .55) % 1800 + 1800) % 1800;
@@ -553,7 +633,8 @@
       const fits = measure(left, 11, 3) + measure(right, 11, 3) + 80 < W;
       if (!panel.classList.contains('open')) txt(right, fits ? W - 24 : 24, fits ? 30 : 48, fits ? 11 : 10, fits ? .5 : .4, 3, fits ? 'right' : 'left');
     }
-    const label = R.kind === 'mutation' ? 'CONTROLLED MUTATION  ·  PLANTED BUG, NOT A MODEL OUTPUT'
+    const label = R.live ? `LIVE  ·  REAL NEMOTRON RUN  ·  ${String(R.codebase || '').toUpperCase()}${R.finished ? '  ·  FINISHED' : ''}`
+      : R.kind === 'mutation' ? 'CONTROLLED MUTATION  ·  PLANTED BUG, NOT A MODEL OUTPUT'
       : `REPLAY OF A REAL ${R.mode === 'real_model' ? 'NEMOTRON' : 'OFFLINE FIXTURE'} RUN  ·  ${(R.started_at || '').slice(0, 16).replace('T', ' ')}`;
     if (innerWidth > 1100 && !panel.classList.contains('open')) txt(label, W - 24, H - 22, 9, .32, 2.5, 'right');
     if (travelling && !panel.classList.contains('open') && t < 40) txt('CLICK A STAR OR A RING TO INSPECT', W / 2, H - 48, 9, .22 * clamp((t - 6) / 2) * clamp((40 - t) / 3), 3);
@@ -655,22 +736,149 @@
   });
   cv.addEventListener('mousemove', e => cv.classList.toggle('pointer', !!hitAt(e)));
 
-  // ---------- loading ----------
-  const sel = document.getElementById('replay');
+  // ---------- loading: recordings, the intake, live runs ----------
+  const sel = document.getElementById('replay'), intake = document.getElementById('intake');
+  const fallbackBtn = document.getElementById('fallback'), backBtn = document.getElementById('backlive');
+  let API = null, pollTimer = null, liveSession = null, recordings = [];
+  const caseFile = document.getElementById('case');
+  function intakeOpen() { return intake.classList.contains('open') || caseFile.classList.contains('open'); }
+  // the case file: the real-world problem, before the codebase goes in
+  function openCase() {
+    playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.remove('open');
+    caseFile.classList.add('open'); caseFile.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on');
+  }
+  function closeCase() { caseFile.classList.remove('open'); caseFile.setAttribute('aria-hidden', 'true'); }
+  document.getElementById('case-go').onclick = () => { closeCase(); openIntake(); };
+  document.getElementById('in-back').onclick = () => { openCase(); };
+  function normalize(rep) { (rep.modules || []).forEach(q => { q.depends_on = q.depends_on || []; q.history = q.history || []; }); return rep; }
+  function stopLive() { clearTimeout(pollTimer); pollTimer = null; liveSession = null; fallbackBtn.hidden = true; }
+  // a run still going on the server: offer the way back to it from a recording or the intake
+  async function runningSession() {
+    if (!API) return null;
+    try { return (await (await fetch('api/status', { cache: 'no-store' })).json()).running || null; } catch (err) { return null; }
+  }
+  async function offerBackToLive() {
+    const s = await runningSession();
+    backBtn.hidden = !s || liveSession === s;
+    backBtn.onclick = () => { if (s) attach(s); };
+  }
   async function load(name) {
+    stopLive(); const lv = sel.querySelector('option[value="__live"]'); if (lv) lv.remove();
     const res = await fetch(`replays/${name}.json`, { cache: 'no-store' }); if (!res.ok) throw new Error(`replay ${name}: ${res.status}`);
-    R = await res.json(); R.modules.forEach(q => { q.depends_on = q.depends_on || []; q.history = q.history || []; });
-    TL = buildTimeline(R); restart(); closePanel(); lastFail = null;
-    document.getElementById('loading').style.display = 'none';
+    R = normalize(await res.json());
+    TL = buildTimeline(R); restart(); closePanel(); closeCaption(); lastFail = null; playing = true; playBtn.textContent = 'Pause';
+    document.getElementById('loading').style.display = 'none'; closeIntake();
+    if ([...sel.options].some(o => o.value === name)) sel.value = name;
     history.replaceState(null, '', `#${name}`);
+    offerBackToLive();
   }
   sel.onchange = () => load(sel.value).catch(showError);
   function showError(err) { const l = document.getElementById('loading'); l.style.display = 'grid'; l.textContent = String(err.message || err); }
-  fetch('replays/index.json', { cache: 'no-store' }).then(r => r.json()).then(list => {
-    sel.innerHTML = list.map(r => `<option value="${esc(r.name)}">${esc(r.title)}</option>`).join('');
-    const want = location.hash.slice(1), pick = list.some(r => r.name === want) ? want : list[0].name;
-    sel.value = pick; return load(pick);
-  }).catch(showError);
+
+  // a live run: poll the server for what the session has written so far and keep the timeline growing
+  function applyLive(rep) {
+    rep = normalize(rep);
+    const prevWork = TL && TL.beats.find(b => b.working);
+    R = rep; TL = rep.finished ? buildTimeline(rep) : liveTimeline(rep);
+    if (prevWork && clock > prevWork.t0) {  // the step it was waiting on finished: play it from its arrival
+      const nb = beatAt(prevWork.t0 + .01);
+      if (!nb.working || nb.mi !== prevWork.mi || nb.at !== prevWork.at || nb.h !== prevWork.h) clock = prevWork.t0;
+    }
+    fallbackBtn.hidden = !rep.recording || rep.finished;
+    document.getElementById('loading').style.display = 'none';
+  }
+  async function poll() {
+    if (!liveSession) return;
+    try {
+      const r = await fetch(`api/runs/${liveSession}/replay`, { cache: 'no-store' });
+      if (r.status === 200) { const rep = await r.json(); applyLive(rep); if (rep.finished) { liveSession = null; return; } }
+      else if (r.status !== 202) throw new Error(`live run: ${r.status}`);
+    } catch (err) { note(`Lost the live run (${err.message}). You can switch to the recording.`, true); }
+    pollTimer = setTimeout(poll, 1500);
+  }
+  async function startLive(codebase, recording) {
+    note('Starting a real Nemotron run…');
+    let r;
+    try { r = await fetch('api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codebase }) }); }
+    catch (err) { return note('The local server is not reachable.', true); }
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      note(body.error || 'The run could not start.', true);
+      if (recording) setTimeout(() => load(recording).catch(showError), 1600);
+      return;
+    }
+    attach(body.session);
+  }
+  // follow a run (started here, or from the terminal: open the page at #live=<session>)
+  function attach(session) {
+    stopLive(); liveSession = session; backBtn.hidden = true;
+    R = null; TL = null; workSince.clear(); clock = 0; cam = 0; trail = []; closePanel(); closeCaption(); playing = true; playBtn.textContent = 'Pause';
+    closeIntake(); const l = document.getElementById('loading'); l.textContent = 'Copying the codebase…'; l.style.display = 'grid';
+    history.replaceState(null, '', `#live=${session}`);
+    if (![...sel.options].some(o => o.value === '__live')) sel.insertAdjacentHTML('afterbegin', '<option value="__live" disabled>Live run</option>');
+    sel.value = '__live';
+    fallbackBtn.onclick = () => { const rec = R && R.recording; if (rec) load(rec).catch(showError); };
+    poll();
+  }
+
+  // the intake: pick a codebase or drop a zip of one
+  function note(text, bad) { const n = document.getElementById('in-note'); n.textContent = text || ''; n.classList.toggle('bad', !!bad); }
+  function openIntake() { closeCase(); playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.add('open'); intake.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on'); renderIntake(); }
+  function closeIntake() { closeCase(); intake.classList.remove('open'); intake.setAttribute('aria-hidden', 'true'); document.body.classList.remove('intake-on'); note(''); }
+  document.getElementById('intake-btn').onclick = openIntake;
+  async function renderIntake() {
+    const list = document.getElementById('in-list'), live = !!(API && API.live);
+    let items = [];
+    if (API) {
+      try { items = (await (await fetch('api/codebases', { cache: 'no-store' })).json()).codebases || []; } catch (err) { items = []; }
+    }
+    const running = await runningSession();
+    if (running) items.unshift({ name: 'Live run in progress', about: 'A real Nemotron run is going right now. Watch where it is.', session: running });
+    const recorded = new Set(items.map(c => c.recording).filter(Boolean));
+    recordings.filter(r => !recorded.has(r.name)).forEach(r => items.push({ name: r.title, about: r.kind === 'mutation' ? 'A one-cent rounding bug planted in a verified rewrite, to show the check catches it.' : '', recording: r.name }));
+    list.innerHTML = items.map((c, i) => `<div class="cb${c.codebase === 'samples/bank' || c.same_as === 'samples/bank' ? ' featured' : ''}"><div class="cb-name">${esc(c.name)}</div>` +
+      (c.session ? '<div class="cb-meta">live now</div>' : c.programs ? `<div class="cb-meta">${c.programs} program${c.programs === 1 ? '' : 's'}${c.copybooks ? ` · ${c.copybooks} cop${c.copybooks === 1 ? 'ybook' : 'ybooks'}` : ''}${c.uploaded ? ' · uploaded' : ''}</div>` : '<div class="cb-meta">recording</div>') +
+      (c.about ? `<div class="cb-about">${esc(c.about)}</div>` : '') +
+      `<div class="cb-act">${c.session ? `<button class="live" data-i="${i}" data-a="watch">Watch live</button>` : ''}${c.codebase ? `<button class="live" data-i="${i}" data-a="live" ${live ? '' : 'disabled title="Live runs need the local server and an NVIDIA API key"'}>Run live</button>` : ''}` +
+      `${c.recording ? `<button data-i="${i}" data-a="rec">Watch recording</button>` : ''}</div></div>`).join('');
+    list.onclick = e => {
+      const bn = e.target.closest('button'); if (!bn || bn.disabled) return;
+      const c = items[+bn.dataset.i];
+      if (bn.dataset.a === 'watch') attach(c.session);
+      else if (bn.dataset.a === 'live') startLive(c.codebase, c.recording);
+      else load(c.recording).catch(showError);
+    };
+    document.getElementById('drop').style.display = API ? '' : 'none';
+    document.getElementById('in-foot').textContent = !API ? 'Recordings only. For live runs: python tools/serve.py'
+      : live ? 'Live runs use real NVIDIA Nemotron calls and take a few minutes' : 'Live runs need NVIDIA_API_KEY in .env';
+  }
+  const drop = document.getElementById('drop'), dropFile = document.getElementById('drop-file');
+  async function upload(file) {
+    if (!file) return;
+    if (!/\.zip$/i.test(file.name)) return note('Drop a .zip of COBOL files (.cbl, .cob, .cpy).', true);
+    if (!(API && API.live)) return note('Live runs need the local server and an NVIDIA API key.', true);
+    note(`Reading ${file.name}…`);
+    const r = await fetch('api/upload', { method: 'POST', headers: { 'Content-Type': 'application/zip', 'X-Filename': file.name }, body: file }).catch(() => null);
+    const body = r ? await r.json().catch(() => ({})) : {};
+    if (!r || !r.ok) return note(body.error || 'Upload failed.', true);
+    note(`${body.files} COBOL files found. Starting…`);
+    startLive(body.codebase, null);
+  }
+  dropFile.onchange = () => upload(dropFile.files[0]);
+  ['dragenter', 'dragover'].forEach(ev => intake.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => intake.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  intake.addEventListener('drop', e => upload(e.dataTransfer && e.dataTransfer.files[0]));
+
+  (async () => {
+    try { const r = await fetch('api/status', { cache: 'no-store' }); API = r.ok ? await r.json() : null; } catch (err) { API = null; }
+    try { recordings = await (await fetch('replays/index.json', { cache: 'no-store' })).json(); } catch (err) { recordings = []; }
+    sel.innerHTML = recordings.map(r => `<option value="${esc(r.name)}">${esc(r.title)}</option>`).join('');
+    const want = location.hash.slice(1), follow = /^live=([0-9a-z-]+)$/.exec(want);
+    if (follow && API) return attach(follow[1]);
+    if (recordings.some(r => r.name === want)) return load(want);
+    document.getElementById('loading').style.display = 'none';
+    if (want === 'codebases') openIntake(); else openCase();  // the story first; #codebases skips straight to the list
+  })().catch(showError);
   requestAnimationFrame(frame);
   // for rehearsing a moment: galaxy.seek(seconds), galaxy.t
   window.galaxy = { seek(s) { clock = Math.max(0, s); trail = []; lastFail = null; cam = (beatAt(clock).k === 'move' ? beatAt(clock).a : (beatAt(clock).at || 0)) * GAP;
