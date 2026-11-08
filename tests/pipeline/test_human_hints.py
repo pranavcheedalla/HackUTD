@@ -268,3 +268,15 @@ def test_server_caps_note_length_and_hint_count(sessions):
     for _ in range(serve.MAX_HINTS - 1):
         serve._feedback(SESSION, {"module": "invoice", "note": "y"})
     assert serve._feedback(SESSION, {"module": "invoice", "note": "z"})[0] == 409
+
+
+def test_feedback_also_sits_next_to_the_failing_cases(run):
+    tmp, _ = run
+    _hint(tmp, "amounts are whole dollars")
+    calls = []
+    graph.agents.rewrite = lambda spec, src, failures, **k: calls.append(failures) or "def main(s):\n    return s\n"
+    state = _state(last_failures=[dict(FAIL, why="rounds")])
+    graph.rewrite(state)
+    assert calls[0][0]["why"].startswith("A person reviewing this migration says (must follow): amounts are whole dollars")
+    assert calls[0][0]["why"].endswith("| Explainer: rounds")
+    assert state["last_failures"][0]["why"] == "rounds"  # the saved state is untouched

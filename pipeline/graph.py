@@ -219,6 +219,11 @@ def rewrite(state: GraphState) -> GraphState:
     hints = read_hints(state["id"])
     new = [{"attempt": attempts, **h} for h in hints[len(used):]]
     spec = with_hints(state["spec"], hints)
+    if hints and failures:
+        # also next to the failing cases, where the agent reads what it got wrong
+        failures = [dict(f) for f in failures]
+        note = f"A person reviewing this migration says (must follow): {hints[-1]['note']}"
+        failures[0]["why"] = note + (f" | Explainer: {failures[0]['why']}" if failures[0].get("why") else "")
     if deps:
         src = agents.rewrite(spec, state["cobol_src"], failures, deps=deps)
     elif not failures and attempts == 1 and not hints:

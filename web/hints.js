@@ -59,7 +59,7 @@
   const titleEl = $('hint-title'), stateEl = $('hint-state'), whyEl = $('hint-why'), caseEl = $('hint-case'),
         note = $('hint-note'), sendBtn = $('hint-send'), msg = $('hint-msg'), log = $('hint-log'), panel = $('panel');
 
-  let session = null, rep = null, asking = null, sending = false;
+  let session = null, rep = null, asking = null, sending = false, sentTo = null;  // sentTo: feedback sent, not yet used
   const upper = s => String(s || '').toUpperCase();
 
   note.addEventListener('keydown', e => {
@@ -80,7 +80,9 @@
     const mods = rep.modules || [];
     const stuck = rep.finished ? null : mods.find(m => m.status === 'needs_review');
     const helped = mods.filter(m => (m.human_hints || []).length);
-    box.hidden = !stuck && !helped.length;
+    const pending = !stuck && mods.find(m => m.id === sentTo && !(m.human_hints || []).length
+                                         && m.status !== 'done' && m.status !== 'failed');
+    box.hidden = !stuck && !helped.length && !pending;
     if (box.hidden) return;
     if ((stuck && stuck.id) !== asking) { asking = stuck && stuck.id; note.value = ''; say(''); }
     box.classList.toggle('ask', !!stuck);
@@ -95,11 +97,15 @@
         + `${h.passed} of ${h.total} cases.` + (ex.reason ? ` Why: ${ex.reason}` : '') + ' What is it missing?';
       caseEl.replaceChildren();
       if (f) {
-        const row = (label, value, bad) => { const b = document.createElement(bad ? 'b' : 'span'); b.textContent = `${label.padEnd(8)}${value}\n`; return b; };
+        const row = (label, value, bad) => {  // multi-line outputs stay aligned under the first line
+          const b = document.createElement(bad ? 'b' : 'span');
+          b.textContent = String(value).split('\n').map((l, i) => (i ? '' : label).padEnd(8) + l).join('\n') + '\n';
+          return b;
+        };
         caseEl.append(row('input', f.input), row('cobol', f.expected), row('python', f.actual, true));
       }
     } else {
-      const working = helped.some(m => m.status !== 'done' && m.status !== 'failed');
+      const working = !!pending || helped.some(m => m.status !== 'done' && m.status !== 'failed');
       titleEl.textContent = 'Human feedback';
       stateEl.textContent = working ? 'agent retrying' : rep.finished ? 'run finished' : '';
       whyEl.textContent = working ? 'The agent is rewriting with your feedback. It still has to match the real COBOL on every case.' : '';
@@ -108,7 +114,7 @@
 
     log.replaceChildren(...helped.flatMap(m => m.human_hints.map((h, i, all) => {
       const last = i === all.length - 1;
-      const kind = !last ? 'bad' : m.status === 'done' ? 'ok' : m.status === 'failed' ? 'bad' : 'working';
+      const kind = !last || m === stuck ? 'bad' : m.status === 'done' ? 'ok' : m.status === 'failed' ? 'bad' : 'working';
       const label = kind === 'ok' ? `${m.id} · verified after attempt ${m.attempts}`
         : kind === 'working' ? `${m.id} · attempt ${m.attempts}` : `${m.id} · not enough`;
       return item(kind, label, h.note);
@@ -131,7 +137,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ module: asking, note: text }) });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
-      note.value = '';
+      note.value = ''; sentTo = asking;
       say(`Sent. ${upper(asking)} gets 2 more attempts.`);
     } catch (err) {
       say(err.message, true);
@@ -145,7 +151,7 @@
   async function poll() {
     const m = /^#live=([0-9a-z-]+)$/.exec(location.hash);
     if (!m) { box.hidden = true; session = rep = asking = null; return setTimeout(poll, POLL_MS); }
-    if (m[1] !== session) { session = m[1]; rep = asking = null; say(''); }
+    if (m[1] !== session) { session = m[1]; rep = asking = sentTo = null; say(''); }
     try {
       const r = await fetch(`api/runs/${session}/replay`, { cache: 'no-store' });
       if (r.status === 200) { rep = await r.json(); render(); }
