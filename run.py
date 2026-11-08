@@ -74,8 +74,15 @@ def main() -> int:
         except ImportError:
             print('Real run blocked: install requirements.txt in your virtual environment.', file=sys.stderr)
             return 2
+    if not Path(args.legacy_dir).is_dir():
+        print(f"Legacy folder not found: {args.legacy_dir}", file=sys.stderr)
+        return 1
     modules = agents.understand(args.legacy_dir)
     by_id = {m["module_id"]: m for m in modules}
+    if args.only and args.only not in by_id:
+        print(f"Unknown module {args.only!r}. Modules in {args.legacy_dir}: "
+              f"{', '.join(by_id) or '(none)'}", file=sys.stderr)
+        return 1
     if args.only:
         # also run X's dependencies (transitively), else X is always blocked
         wanted, todo = set(), [args.only]

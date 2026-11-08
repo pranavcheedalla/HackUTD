@@ -97,8 +97,45 @@ def write_unit_tests(spec: dict, python_src: str) -> str:
                 code, problem, run = fixed, fixed_problem, fixed_run
 
     if problem:
-        raise RuntimeError(f"Generated unit tests need review: {problem}")
+        message = f"Generated unit tests need review: {problem}"
+        if run and run["failed"]:
+            # Keep the passing tests and mark the disputed ones visibly skipped (never deleted),
+            # so the file still runs green and a reviewer sees exactly what disagreed.
+            kept = quarantine_tests(code, run["failed"])
+            if _check(kept, module_id, python_src)[0] is None:
+                raise UnitTestsNeedReview(message, code=kept, quarantined=run["failed"])
+        raise UnitTestsNeedReview(message)
     return code
+
+
+class UnitTestsNeedReview(RuntimeError):
+    """Generated tests disagree with the COBOL-verified module. `code` (if set) is the test file
+    with the disputed tests marked skipped; `quarantined` names them."""
+
+    def __init__(self, message: str, code: str | None = None, quarantined=()):
+        super().__init__(message)
+        self.code = code
+        self.quarantined = list(quarantined)
+
+
+QUARANTINE_REASON = ("QUARANTINED for human review: disagrees with the module that matches the real "
+                     "COBOL on every recorded case")
+
+
+def quarantine_tests(code: str, names: list[str]) -> str:
+    """Mark top-level test functions as skipped (with the reason), keeping their source."""
+    tree = ast.parse(code)
+    lines = code.splitlines(keepends=True)
+    starts = []
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in names:
+            starts.append((min([d.lineno for d in node.decorator_list] + [node.lineno]), node.col_offset))
+    for start, col in sorted(starts, reverse=True):
+        lines.insert(start - 1, " " * col + f"@pytest.mark.skip(reason={QUARANTINE_REASON!r})\n")
+    out = "".join(lines)
+    if not re.search(r"^import pytest\b", out, flags=re.MULTILINE):
+        out = "import pytest\n" + out
+    return f"# {len(starts)} test(s) quarantined for review: {', '.join(sorted(names))}\n" + out
 
 
 def _check(code: str, module_id: str, python_src: str) -> tuple[str | None, dict | None]:

@@ -24,6 +24,69 @@ class EquivalenceError(RuntimeError):
     """The test infrastructure could not produce a trustworthy result."""
 
 
+# A verified rewrite must compute its answer, never look it up. Rewrites may import only
+# pure standard-library modules plus already-verified sibling modules (e.g. `discount`),
+# and may not reach files, the process, or the interpreter's internals.
+SAFE_IMPORTS = frozenset({
+    '__future__', 'decimal', 're', 'math', 'string', 'typing', 'dataclasses', 'functools',
+    'itertools', 'collections', 'enum', 'datetime', 'fractions', 'numbers', 'operator', 'sys',
+})
+FORBIDDEN_CALLS = frozenset({'open', 'exec', 'eval', 'compile', '__import__', 'breakpoint',
+                             'globals', 'vars', 'input', 'memoryview'})
+FORBIDDEN_ATTRS = frozenset({'modules', '_getframe', 'f_back', 'f_globals', 'f_locals',
+                             '__builtins__', '__globals__', '__subclasses__', '__code__',
+                             '__loader__', '__spec__', '__dict__', 'gi_frame', 'cr_frame',
+                             'stdin', 'argv', 'path', 'meta_path'})
+
+
+def rewrite_violations(source: str, local_modules=()) -> list[str]:
+    """Reasons a rewrite is not a self-contained computation (empty list = acceptable)."""
+    import ast
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return [f'SyntaxError: {exc.msg} (line {exc.lineno})']
+    allowed = SAFE_IMPORTS | {str(m) for m in local_modules}
+    problems = []
+
+    def script_block(node) -> bool:
+        # `if __name__ == "__main__":` only runs when the file is executed by hand (stdin/argv
+        # there is the convention); verification imports the module, so it never runs.
+        test = getattr(node, 'test', None)
+        return (isinstance(node, ast.If) and isinstance(test, ast.Compare)
+                and isinstance(test.left, ast.Name) and test.left.id == '__name__')
+
+    def walk(node):
+        yield node
+        for child in ast.iter_child_nodes(node):
+            if not script_block(child):
+                yield from walk(child)
+
+    for node in walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == '__import__'
+                and len(node.args) == 1 and isinstance(node.args[0], ast.Constant)
+                and str(node.args[0].value) in allowed):
+            continue  # __import__("re") inline is just an import of an allowed module
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names = ['.' if node.level else (node.module or '')]
+        else:
+            names = []
+        for name in names:
+            if name.split('.')[0] not in allowed:
+                problems.append(f'line {node.lineno}: import of {name!r} is not allowed '
+                                f'(allowed: {", ".join(sorted(allowed))})')
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in FORBIDDEN_CALLS:
+            problems.append(f'line {node.lineno}: {node.func.id}() is not allowed; '
+                            'compute the result from input_line only')
+        if isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_ATTRS:
+            problems.append(f'line {node.lineno}: access to .{node.attr} is not allowed')
+        if isinstance(node, ast.Name) and node.id in ('__builtins__', '__loader__', '__spec__'):
+            problems.append(f'line {node.lineno}: {node.id} is not allowed')
+    return list(dict.fromkeys(problems))
+
+
 def _unique_object(pairs):
     value = {}
     for key, item in pairs:

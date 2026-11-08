@@ -29,6 +29,7 @@ MODERN_DIR = ROOT / "modern"
 UNIT_DIR = ROOT / "tests" / "unit"
 DRIVERS_DIR = ROOT / "runs" / "drivers"  # generated test drivers for subprograms
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "3"))
+MIN_TESTS = int(os.getenv("MIN_TESTS", "5"))  # never call a module verified on fewer distinct cases
 
 
 class GraphState(TypedDict, total=False):
@@ -47,6 +48,7 @@ class GraphState(TypedDict, total=False):
     divergences: list
     error: Optional[str]
     unit_tests_status: str
+    unit_tests_quarantined: list
     # codebase support: LangGraph drops undeclared keys, so every key run.py passes must be here
     kind: str                # "program" | "subprogram"
     program_id: str
@@ -97,9 +99,25 @@ def _compile(path: str, link: list, copy_dirs: list) -> str:
         return legacy.compile_cobol(path)
 
 
+def clean_inputs(raw) -> tuple[list[str], int]:
+    """Keep each usable test input once: one line of text, in the agent's order.
+    Returns (inputs, how many were dropped). One bad line no longer sinks the module."""
+    if not isinstance(raw, (list, tuple)):
+        raise TypeError(f"generate_inputs must return a list of strings, got {type(raw).__name__}")
+    seen, out = set(), []
+    for item in raw:
+        if not isinstance(item, str) or "\n" in item or "\r" in item or item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out, len(raw) - len(out)
+
+
 @_safe("record")
 def record(state: GraphState) -> GraphState:
-    inputs = agents.generate_inputs(state["spec"], state["cobol_src"])
+    inputs, dropped = clean_inputs(agents.generate_inputs(state["spec"], state["cobol_src"]))
+    if dropped:
+        print(f"[record] {state['id']}: dropped {dropped} duplicate or unusable test input(s)")
     link, copy_dirs = list(state.get("link") or []), list(state.get("copy_dirs") or [])
     if state.get("kind") == "subprogram":
         # a subprogram has no input of its own; a generated driver CALLs it (inputs are driver-format)
@@ -148,7 +166,21 @@ def rewrite(state: GraphState) -> GraphState:
 
 @_safe("verify")
 def verify(state: GraphState) -> GraphState:
+    # a rewrite must compute its answer: one that reads files (e.g. the golden answer key)
+    # or imports anything but pure stdlib + verified dependencies is never accepted
+    local = [d["module_id"] for d in state.get("dep_modules") or []]
+    problems = testing.rewrite_violations(state.get("python_src") or "", local)
+    if problems:
+        out = {**state, "status": "failed", "tests_passed": 0,
+               "error": "rejected: rewrite is not self-contained: " + "; ".join(problems[:3])}
+        status.update(out, "verify", out["error"])
+        return out
     res = testing.run_equivalence(state["id"])
+    if res["total"] < MIN_TESTS:
+        out = {**state, "status": "failed", "tests_passed": res["passed"], "tests_total": res["total"],
+               "error": f"too few distinct test cases to verify ({res['total']} < {MIN_TESTS})"}
+        status.update(out, "verify", out["error"])
+        return out
     out = {**state, "tests_passed": res["passed"], "tests_total": res["total"],
            "last_failures": res["failures"], "status": "verifying"}
     status.update(out, "verify", f"{res['passed']}/{res['total']} equivalence tests passed")
@@ -165,8 +197,16 @@ def accept(state: GraphState) -> GraphState:
         note = "unit tests written"
         unit_status = 'fixture' if os.getenv('LLM_MODE') == 'fake' else 'passed'
     except Exception as e:
-        note = f"unit test writer failed: {e}"
+        quarantined = list(getattr(e, "quarantined", []) or [])
+        if getattr(e, "code", None):
+            # passing tests are kept; disputed ones stay in the file, visibly skipped
+            (UNIT_DIR / f"test_{state['id']}_unit.py").write_text(e.code)
+            note = (f"unit tests written; {len(quarantined)} quarantined for review: "
+                    f"{', '.join(quarantined)}")
+        else:
+            note = f"unit test writer failed: {e}"
         unit_status = 'needs_review'
+        state = {**state, "unit_tests_quarantined": quarantined}
     out = {**state, "status": "done", "last_failures": [], 'unit_tests_status': unit_status}
     status.update(out, "accept", f"verified identical. {note}")
     return out

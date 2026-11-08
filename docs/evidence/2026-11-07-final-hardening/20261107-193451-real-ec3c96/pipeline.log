@@ -1,0 +1,15 @@
+Migration order: interest -> invoice -> payroll
+
+=== interest ===
+[test_writer] interest: repairing tests (These tests fail: test_main_returns_overflow_when_compute_exceeds_target)
+  -> done  (29/29 tests, 1 attempts)
+
+=== invoice ===
+[test_writer] invoice: repairing tests (These tests fail: test_discount_hundred_boundary, test_leading_zeros_allowed, test_monotonic_quantity_price_discount, test_total_line_fixed_width)
+  -> done  (30/30 tests, 1 attempts)
+
+=== payroll ===
+[test_writer] payroll: repairing tests (These tests fail: test_monotonic_gross_tax_net)
+  -> done  (30/30 tests, 1 attempts)
+
+3/3 modules verified. Live state: runs/state.json

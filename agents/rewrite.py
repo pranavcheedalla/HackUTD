@@ -231,7 +231,7 @@ def self_check(code: str, failures: list | None, deps: list | None = None,
                subprogram: bool = False) -> tuple[str | None, tuple]:
     """Return (problem description or None, score). Lower score = better candidate.
     Dependencies are written next to the candidate in the sandbox so `import <dep>` works."""
-    err = validate(code, subprogram=subprogram)
+    err = validate(code, subprogram=subprogram, local_modules=[d["module_id"] for d in deps or []])
     if err:
         return f"The module is invalid: {err}", (3, 0)
     for d in deps or []:
@@ -412,8 +412,9 @@ def _hoist_future_imports(code: str) -> str:
     return "".join(dict.fromkeys(futures)) + code
 
 
-def validate(code: str, subprogram: bool = False) -> str | None:
-    """Return an error message, or None if the module looks usable."""
+def validate(code: str, subprogram: bool = False, local_modules=()) -> str | None:
+    """Return an error message, or None if the module looks usable.
+    `local_modules`: verified dependency module ids the code may import."""
     try:
         tree = ast.parse(code)
     except SyntaxError as e:
@@ -431,4 +432,9 @@ def validate(code: str, subprogram: bool = False) -> str | None:
         for node in ast.walk(fn):
             if isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("input", "print"):
                 return f"`{fn.name}` must not call input()/print(); main returns the output string"
+    from testing import rewrite_violations  # same rule the verify gate enforces
+    problems = rewrite_violations(code, local_modules)
+    if problems:
+        return ("the module must compute its output from input_line alone (no files, no OS, "
+                "no interpreter internals):\n" + "\n".join(problems[:5]))
     return None

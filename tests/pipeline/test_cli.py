@@ -66,7 +66,7 @@ def test_real_mode_refuses_stubs_before_calls_or_state_mutation(project):
 def test_unknown_module_selection_is_clear(project):
     result = invoke(project, '--only', 'missing')
     assert result.returncode == 1
-    assert 'No .cbl modules' in result.stdout
+    assert "Unknown module 'missing'" in result.stderr
 
 
 def test_invalid_mode_is_rejected(project):

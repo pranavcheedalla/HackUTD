@@ -104,7 +104,8 @@ def run_pytest(module_id: str, code: str, test_src: str, timeout: float = 90,
         except OutputLimitExceeded:
             return {'ok': False, 'collected_error': True, 'failed': [], 'output': 'pytest exceeded the output limit'}
         out = (r.stdout + r.stderr).decode(errors='replace')
-        failed = sorted(set(re.findall(r"^FAILED \S*::(\w+)", out, flags=re.MULTILINE)))
+        # test-level FAILED and setup ERROR lines name the test; a file-level ERROR has no "::"
+        failed = sorted(set(re.findall(r"^(?:FAILED|ERROR) \S*::(\w+)", out, flags=re.MULTILINE)))
         last = out.strip().splitlines()[-1] if out.strip() else ""
         # rc 2 = collection/import error, 5 = no tests; "N error(s)" in summary = setup errors
         collected_error = r.returncode not in (0, 1) or "error" in last.lower()

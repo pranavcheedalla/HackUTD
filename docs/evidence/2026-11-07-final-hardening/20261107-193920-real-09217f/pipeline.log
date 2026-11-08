@@ -1,0 +1,15 @@
+Migration order: discount -> interest -> invoice
+
+=== discount ===
+[test_writer] discount: repairing tests (These tests fail: test_main_exact_rate_values)
+  -> done  (30/30 tests, 2 attempts)
+
+=== interest ===
+[test_writer] interest: repairing tests (These tests fail: test_known_interest_exact, test_larger_known_interest_exact)
+  -> done  (24/24 tests, 1 attempts)
+
+=== invoice ===
+[test_writer] invoice: repairing tests (These tests fail: test_discount_truncation_not_rounding, test_worked_examples_exact)
+  -> done  (20/20 tests, 1 attempts)
+
+3/3 modules verified. Live state: runs/state.json
