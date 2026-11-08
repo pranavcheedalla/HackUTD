@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NorthBase</title>
+<title>NorthBound</title>
 <style>
   :root { --ink: #e8eaf2; --dim: rgba(232,234,242,.45); --line: rgba(232,234,242,.12); --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
   html, body { margin: 0; height: 100%; background: #07070a; color: var(--ink); font-family: var(--mono); overflow: hidden; }
@@ -95,23 +95,65 @@
   .st-dot { width: 3px; height: 3px; border-radius: 50%; background: rgba(232,234,242,.2); }
   .st-dot.st-ok { background: #c9f5e6; box-shadow: 0 0 5px 1px rgba(150,240,210,.55); }
   .st-dot.st-bad { background: #ffb3c6; box-shadow: 0 0 6px 1px rgba(255,140,175,.75); }
-  /* NorthBase intake: one drop target, in the same sky. No cards or boxes. */
+  /* NorthBound intake: one drop target, in the same sky. No cards or boxes. */
   .intake { position: fixed; inset: 0; z-index: 8; display: flex; align-items: flex-start; justify-content: center; padding: 6vh 6vw; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain;
     background: radial-gradient(ellipse at 50% 45%, rgba(6,5,13,.35), rgba(6,5,13,.82) 75%); opacity: 0; pointer-events: none; transition: opacity .6s ease; }
   .intake.open { opacity: 1; pointer-events: auto; }
   body.intake-on .controls { opacity: 0; pointer-events: none; }
   .in-wrap { width: min(760px, 100%); display: flex; flex-direction: column; gap: 30px; margin-block: auto; }
-  .northbase-wrap { --brand-x: 43%; --brand-size: clamp(64px, 11.5vw, 176px); --brand-below: calc(var(--brand-size) * .6 + 8px); position: relative; display: block; text-align: center; height: 88vh; margin: 0; }
-  .northbase-title { position: absolute; left: var(--brand-x); top: 50%; transform: translate(-50%, -50%); margin: 0; white-space: nowrap; font: 600 var(--brand-size)/1.05 var(--mono); letter-spacing: -.065em; color: rgba(242,241,248,.98); outline: none; }
-  .northbase-tagline { position: absolute; left: var(--brand-x); top: calc(50% + var(--brand-below)); transform: translateX(-50%); width: max-content; max-width: 100%; margin: 0; font-size: 9.5px; letter-spacing: 5px; text-transform: uppercase; color: rgba(232,234,242,.45); }
-  .northbase-wrap .in-back { position: absolute; top: 14px; left: var(--brand-x); transform: translateX(-50%); margin: 0; white-space: nowrap; }
-  .northbase-wrap .drop { position: absolute; top: calc(50% + var(--brand-below) + 41px); left: var(--brand-x); transform: translateX(-50%); flex-direction: column; gap: 18px; }
-  .northbase-wrap .drop-ring { border-color: rgba(232,234,242,.45); }
-  .northbase-wrap .drop-ring::after { background: var(--ink); box-shadow: 0 0 14px 2px rgba(232,234,242,.5); }
-  .northbase-wrap .drop-s { margin-top: 12px; text-transform: none; letter-spacing: 1.5px; }
-  .northbase-wrap .in-note, .northbase-wrap .in-foot { position: absolute; left: var(--brand-x); transform: translateX(-50%); width: 100%; }
-  .northbase-wrap .in-note { top: calc(50% + var(--brand-below) + 172px); }
-  .northbase-wrap .in-foot { top: calc(50% + var(--brand-below) + 218px); }
+  .northbound-wrap { --brand-x: 37%; --brand-y: 33%; --brand-size: clamp(64px, 11.5vw, 176px); --brand-below: calc(var(--brand-size) * .6 + 8px); position: relative; display: block; text-align: center; height: 88vh; margin: 0; }
+  .northbound-title { position: absolute; left: var(--brand-x); top: var(--brand-y); transform: translate(-50%, -50%); margin: 0; white-space: nowrap; font: 600 var(--brand-size)/1.05 var(--mono); letter-spacing: -.065em; color: rgba(242,241,248,.98); outline: none; }
+  .northbound-tagline { position: absolute; left: var(--brand-x); top: calc(var(--brand-y) + var(--brand-below)); transform: translateX(-50%); width: max-content; max-width: 100%; margin: 0; font-size: 9.5px; letter-spacing: 5px; text-transform: uppercase; color: rgba(232,234,242,.45); }
+  .northbound-wrap .in-back { position: absolute; top: 14px; left: var(--brand-x); transform: translateX(-50%); margin: 0; white-space: nowrap; }
+  .northbound-wrap .drop { position: absolute; top: calc(var(--brand-y) + var(--brand-below) + 44px); left: var(--brand-x); transform: translateX(-50%); flex-direction: column; gap: 18px; }
+  .northbound-wrap .drop { gap: 22px; padding: 14px 40px; }
+  .northbound-wrap .drop::before { content: ''; position: absolute; left: 50%; top: 58px; width: 200px; height: 200px; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, rgba(232,234,242,.07), rgba(232,234,242,0) 65%); opacity: .6; transition: opacity .4s, transform .5s cubic-bezier(.2,.7,.2,1); }
+  .northbound-wrap .drop:hover::before, .northbound-wrap .drop.over::before { opacity: 1; transform: translate(-50%, -50%) scale(1.18); }
+  .northbound-wrap .drop-ring { width: 88px; height: 88px; border-color: rgba(232,234,242,.45); }
+  .northbound-wrap .drop-ring::before { content: ''; position: absolute; inset: -14px; border-radius: 50%; border: 1px solid rgba(232,234,242,.1); border-top-color: rgba(232,234,242,.5); animation: nb-orbit 7s linear infinite; }
+  .northbound-wrap .drop-ring::after { inset: 39px; }
+  .northbound-wrap .drop-t { font-size: 13px; letter-spacing: 5px; }
+  @keyframes nb-orbit { to { transform: rotate(360deg); } }
+  .northbound-wrap .drop-ring::after { background: var(--ink); box-shadow: 0 0 14px 2px rgba(232,234,242,.5); }
+  .northbound-wrap .drop-s { margin-top: 12px; font-size: 11px; text-transform: none; letter-spacing: 1.5px; }
+  .northbound-wrap .in-note, .northbound-wrap .in-foot { position: absolute; left: var(--brand-x); transform: translateX(-50%); width: 100%; }
+  .northbound-wrap .in-note { top: calc(var(--brand-y) + var(--brand-below) + 262px); }
+  .northbound-wrap .in-foot { top: calc(var(--brand-y) + var(--brand-below) + 306px); }
+  /* legacy: the old screen breaks up a little, in black and white, every few seconds */
+  .northbound-title::before, .northbound-title::after { content: attr(data-text); position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+  .northbound-title::before { color: rgba(250,250,252,.97); background: #08080b; }
+  .northbound-title::after { color: rgba(150,150,158,.9); background: #08080b; }
+  .intake.open .northbound-title { animation: nb-shake 6.5s steps(1) infinite; }
+  .intake.open .northbound-title::before { animation: nb-slice-a 6.5s steps(1) infinite; }
+  .intake.open .northbound-title::after { animation: nb-slice-b 6.5s steps(1) infinite; }
+  @keyframes nb-shake { 0%, 91%, 100% { transform: translate(-50%, -50%); filter: none; }
+    92% { transform: translate(calc(-50% + 2px), calc(-50% - 1px)); filter: contrast(1.4) brightness(1.15); }
+    93% { transform: translate(calc(-50% - 3px), -50%); }
+    94% { transform: translate(calc(-50% + 1px), calc(-50% + 1px)); filter: contrast(1.6); }
+    95% { transform: translate(-50%, -50%); filter: none; } }
+  @keyframes nb-slice-a { 0%, 91%, 96%, 100% { opacity: 0; } 92% { opacity: 1; clip-path: inset(18% 0 62% 0); transform: translateX(-6px); }
+    93% { opacity: 1; clip-path: inset(64% 0 14% 0); transform: translateX(5px); } 94.5% { opacity: 1; clip-path: inset(40% 0 44% 0); transform: translateX(-3px); } }
+  @keyframes nb-slice-b { 0%, 91%, 96%, 100% { opacity: 0; } 92.5% { opacity: .8; clip-path: inset(52% 0 30% 0); transform: translateX(7px); }
+    94% { opacity: .8; clip-path: inset(8% 0 78% 0); transform: translateX(-5px); } }
+  .scan { position: fixed; inset: 0; z-index: 9; pointer-events: none; opacity: 0; transition: opacity .6s;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 1px, transparent 1px 3px); }
+  body.intake-on .scan { opacity: 1; animation: nb-flicker 6.5s steps(1) infinite; }
+  .scan::after { content: ''; position: absolute; left: 0; right: 0; height: 9px; top: 0; opacity: 0; background: rgba(255,255,255,.05); }
+  body.intake-on .scan::after { animation: nb-tear 6.5s steps(1) infinite; }
+  @keyframes nb-flicker { 0%, 91%, 96%, 100% { opacity: 1; } 92% { opacity: .55; } 93.5% { opacity: 1.0; } 94.5% { opacity: .7; } }
+  @keyframes nb-tear { 0%, 91%, 96%, 100% { opacity: 0; } 92% { opacity: 1; top: 34%; } 93% { opacity: 1; top: 41%; height: 3px; } 94.5% { opacity: 1; top: 57%; height: 6px; } }
+  /* a legacy terminal at the edge of the sky: real lines of the bank's COBOL, typing out */
+  .crt { position: fixed; right: 5vw; top: 55vh; width: 300px; margin: 0; text-align: left; font-size: 10.5px; line-height: 1.75; letter-spacing: .5px; white-space: pre; color: rgba(232,234,242,.2); pointer-events: none; user-select: none; }
+  .crt-h { display: block; margin-bottom: 10px; font-size: 9px; letter-spacing: 4px; color: rgba(232,234,242,.32); }
+  .crt-cur { display: inline-block; width: .6em; height: 1.05em; vertical-align: -2px; background: rgba(232,234,242,.42); animation: nb-blink 1s steps(1) infinite; }
+  .crt.glitch { animation: nb-crt 0.35s steps(1) 1; }
+  @keyframes nb-blink { 50% { opacity: 0; } }
+  @keyframes nb-crt { 0% { transform: translateX(3px); filter: contrast(1.8); } 30% { transform: translateX(-4px) skewX(-4deg); } 60% { transform: translateX(2px); opacity: .5; } 100% { transform: none; } }
+  @media (max-width: 1180px) { .crt { display: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .intake.open .northbound-title, .intake.open .northbound-title::before, .intake.open .northbound-title::after,
+    body.intake-on .scan, body.intake-on .scan::after, .northbound-wrap .drop-ring::before, .crt-cur, .crt.glitch { animation: none; } }
   .intake.entering { opacity: 0; pointer-events: none; transition: opacity .3s ease; }
   @media (prefers-reduced-motion: reduce) { .intake { transition: none; } }
   .drop:focus-visible { outline: 1px dotted var(--dim); outline-offset: 14px; }
@@ -129,8 +171,8 @@
   @media (max-width: 640px) {
     .panel, .panel.station { width: 100vw; padding: 36px 24px 24px; -webkit-mask-image: none; mask-image: none; }
     .tabs { flex-wrap: wrap; gap: 14px; }
-    .northbase-wrap { --brand-x: 50%; }
-    .northbase-tagline { letter-spacing: 3px; }
+    .northbound-wrap { --brand-x: 50%; }
+    .northbound-tagline { letter-spacing: 3px; }
   }
   /* case file: the real-world problem, before the codebase goes in */
   .case .in-wrap { gap: 26px; }
@@ -153,7 +195,7 @@
 <canvas id="sky" aria-label="Replay of a COBOL to Python migration shown as stars traveling through pipeline stations"></canvas>
 <div class="loading" id="loading">Loading replay…</div>
 <div class="controls" role="toolbar" aria-label="Replay controls">
-  <button id="intake-btn" title="Return to the NorthBase landing page">Home</button>
+  <button id="intake-btn" title="Return to the NorthBound landing page">Home</button>
   <span class="sep"></span>
   <button id="previous-step" aria-label="Previous station" title="Previous station (left arrow)">← Back</button>
   <button id="next-step" aria-label="Next station" title="Next station (right arrow)">Next →</button>
@@ -172,7 +214,7 @@
 <section class="intake case" id="case" aria-hidden="true">
   <div class="in-wrap">
     <button class="in-back" id="case-home">← Home</button>
-    <div class="in-title">NorthBase  ·  Case file</div>
+    <div class="in-title">NorthBound  ·  Case file</div>
     <p class="in-lede">The systems that run money and public benefits are often written in COBOL: hard to change, and dangerous to change without proof.</p>
     <div class="ev">
       <div class="ev-when">April 2018  ·  TSB Bank, United Kingdom</div>
@@ -188,11 +230,11 @@
     <button class="case-go" id="case-go">Hand it the codebase  →</button>
   </div>
 </section>
-<section class="intake" id="intake" aria-hidden="true" aria-labelledby="northbase-title">
-  <div class="in-wrap northbase-wrap">
+<section class="intake" id="intake" aria-hidden="true" aria-labelledby="northbound-title">
+  <div class="in-wrap northbound-wrap">
     <button class="in-back" id="in-back">Read the case file →</button>
-    <h1 class="northbase-title" id="northbase-title" tabindex="-1">NorthBase</h1>
-    <p class="northbase-tagline">Legacy → Verified</p>
+    <h1 class="northbound-title" id="northbound-title" tabindex="-1" data-text="NorthBound">NorthBound</h1>
+    <p class="northbound-tagline">Legacy → Verified</p>
     <label class="drop" id="drop" role="button" tabindex="0" aria-label="Drop your .zip of COBOL" title="Drop a .zip of COBOL files">
       <input type="file" id="drop-file" accept=".zip,application/zip" hidden>
       <span class="drop-ring" aria-hidden="true"></span>
@@ -200,13 +242,15 @@
     </label>
     <div class="in-note" id="in-note" role="status"></div>
     <div class="in-foot" id="in-foot"></div>
+    <pre class="crt" id="crt" aria-hidden="true"></pre>
   </div>
 </section>
+<div class="scan" aria-hidden="true"></div>
 <aside class="panel" id="panel" aria-hidden="true">
   <header>
     <div><h2 id="p-title"></h2><div class="meta" id="p-meta"></div></div>
     <div class="panel-actions">
-      <button class="home" id="panel-home" title="Return to the NorthBase landing page">Home</button>
+      <button class="home" id="panel-home" title="Return to the NorthBound landing page">Home</button>
       <button class="close" id="p-close" aria-label="Close"></button>
     </div>
   </header>
@@ -224,6 +268,7 @@
 <script src="stations/07-verified.js"></script>
 <script src="captions.js"></script>
 <script src="galaxy.js"></script>
-<script src="hints.js"></script>  <!-- live runs: a reviewer's hint for the next rewrite attempt -->
+<script src="hints.js"></script>
+<script src="landing.js"></script>  <!-- the legacy terminal on the landing page -->  <!-- live runs: a reviewer's hint for the next rewrite attempt -->
 </body>
 </html>

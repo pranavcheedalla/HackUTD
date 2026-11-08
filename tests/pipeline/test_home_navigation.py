@@ -47,7 +47,7 @@ function atHome(){
   assert.equal(read('playing'),false);assert.equal(read('travel'),null);
   assert.equal(read('clock'),6.95);
   assert.equal(get('loading').style.display,'none');
-  assert.equal(get('northbase-title').focused,true);
+  assert.equal(get('northbound-title').focused,true);
 }
 (async()=>{
   await read(boot);atHome(); // A fresh root opens the landing, even without a loaded replay.

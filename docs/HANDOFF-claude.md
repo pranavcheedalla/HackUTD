@@ -1,4 +1,4 @@
-# NorthBase: Claude continuation handoff
+# NorthBound: Claude continuation handoff
 
 > **Update (PR after #10):** a dropped known zip no longer arrives paused. After the entrance it
 > replays the recorded run **as a run**: `startSim()` in `web/galaxy.js` feeds the recording's real
@@ -9,7 +9,7 @@
 
 Repository: https://github.com/pranavcheedalla/HackUTD
 
-Continue from `main`. PR #9 added demo-on-drop; PR #10 contains the NorthBase design,
+Continue from `main`. PR #9 added demo-on-drop; PR #10 contains the NorthBound design,
 presenter controls, star entrance, caption cleanup, and Home navigation described below.
 The user authorized merging PR #10 into main. Preserve teammates' local work and `.env`;
 inspect `git status` before switching branches or pulling. Do not reset their checkout.
@@ -24,7 +24,7 @@ inspect `git status` before switching branches or pulling. Do not reset their ch
 
 ## What changed in the recent session
 
-1. **NorthBase landing:** `/` opens the landing page, ready for a zip. The large, heavy
+1. **NorthBound landing:** `/` opens the landing page, ready for a zip. The large, heavy
    monospace wordmark sits slightly left of center on desktop, with responsive phone
    sizing. No visible codebase inventory or new cards. The existing black/silver galaxy
    includes a left-to-right shooting star. `#codebases` remains a landing alias.
@@ -72,7 +72,7 @@ Open http://127.0.0.1:8765/ . A rehearsal server may already be running on this 
 http://127.0.0.1:8766/ from the `work/demo-drop` worktree; do not assume another computer
 can reach that localhost URL. A fresh Claude checkout should start its own server.
 
-Stage flow: NorthBase landing → Read the case file → Hand it the codebase → drop
+Stage flow: NorthBound landing → Read the case file → Hand it the codebase → drop
 `demo/retail-bank.zip` → recognition → star entrance → paused Discover → Next/Back.
 Keep the replay disclosure honest. Explain that this replays a real run and that a live
 run takes about 7 minutes (One program live: about 25 s). Home is available to return to the beginning.

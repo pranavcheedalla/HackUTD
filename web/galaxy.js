@@ -809,7 +809,7 @@
     // intro and outro type
     if (b.k === 'intro') {
       const a = clamp((t - .3) / .9) * clamp((b.t1 - t) / .8);
-      txt('NorthBase', W / 2, 70, 26, .9 * a, 8, 'center', '240,240,246', '300');
+      txt('NorthBound', W / 2, 70, 26, .9 * a, 8, 'center', '240,240,246', '300');
       txt(`${n} COBOL PROGRAM${n > 1 ? 'S' : ''}  ·  ${R.title.toUpperCase()}`, W / 2, 98, 10, .5 * a, 4);
     }
     if (b.k === 'outro' && !panel.classList.contains('open')) {
@@ -1067,7 +1067,7 @@
     history.replaceState(null, '', location.pathname + location.search);
     document.getElementById('loading').style.display = 'none';
     note(''); renderIntake(); syncPlayback();
-    document.getElementById('northbase-title').focus({ preventScroll: true });
+    document.getElementById('northbound-title').focus({ preventScroll: true });
   }
   function closeIntake() { closeCase(); intake.classList.remove('open'); intake.setAttribute('aria-hidden', 'true'); document.body.classList.remove('intake-on'); note(''); }
   document.getElementById('intake-btn').onclick = openIntake;
