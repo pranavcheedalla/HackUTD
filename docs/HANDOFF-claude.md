@@ -1,5 +1,12 @@
 # NorthBase: Claude continuation handoff
 
+> **Update (PR after #10):** a dropped known zip no longer arrives paused. After the entrance it
+> replays the recorded run **as a run**: `startSim()` in `web/galaxy.js` feeds the recording's real
+> events one at a time into `liveTimeline()`, each step "working" for its real duration compressed
+> 12× (1.4–3.6 s, `REAL RUN · mm:ss` in the caption), then the result lands. Next skips a wait;
+> Restart replays it; Pause/Back work. Direct recording links (`#bank` etc.) keep the paused
+> presenter mode. Tests: `tests/pipeline/test_sim_replay.py`.
+
 Repository: https://github.com/pranavcheedalla/HackUTD
 
 Continue from `main`. PR #9 added demo-on-drop; PR #10 contains the NorthBase design,

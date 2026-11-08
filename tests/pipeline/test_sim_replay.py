@@ -1,0 +1,63 @@
+"""A dropped codebase replays its recorded real run the way it happened: step by step."""
+from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def run_js(script):
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node is required for the frontend replay check')
+    result = subprocess.run([node, '-'], input=script, cwd=ROOT, text=True,
+                            capture_output=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_recording_runs_through_every_real_event_like_a_live_run():
+    run_js(r'''
+const fs=require('fs'), vm=require('vm'), assert=require('node:assert/strict');
+const source=fs.readFileSync('web/galaxy.js','utf8'), elements=new Map();
+const context=vm.createContext({W:1000,H:520,CY:252,innerWidth:1000,innerHeight:520,
+  intake:{classList:{add(){},remove(){},contains:()=>false},setAttribute(){}},reducedMotion:{matches:true},
+  document:{getElementById(id){if(!elements.has(id))elements.set(id,{textContent:'',dataset:{},setAttribute(){}});return elements.get(id)}},
+  performance:{now:()=>0},window:{},addEventListener(){},closePanel(){},closeCaption(){},intakeOpen:()=>false,
+  workSince:new Map(),STATIONS:['Discover','Read','Probe','Record','Rewrite','Verify','Verified'].map((s,i)=>[i,s])});
+const block=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b));
+vm.runInContext(block('  // ---------- helpers ----------','  // ---------- static layers ----------'),context);
+vm.runInContext(block('  // ---------- replay → timeline ----------','  // ---------- module text for the scene ----------'),context);
+vm.runInContext(block('  // ---------- live: the timeline so far','  function draw(t) {'),context);
+const read=s=>vm.runInContext(s,context);
+const full=JSON.parse(fs.readFileSync('web/replays/bank.json','utf8'));
+read(`FULL=${JSON.stringify(full)}; normalize=r=>r; startSim(FULL)`);
+
+// It starts working at Read (Discover needs no model), already playing, past the title.
+let w=read('TL.beats.find(b=>b.working)');
+assert.equal(read('SIM.n'),0); assert.equal(w.at,1); assert.equal(read('playing'),true); assert.equal(read('clock'),3.4);
+
+// Play it: every working step waits a compressed real duration, then its real event lands.
+const waits=[]; let guard=0, failSeen=false;
+while(read('SIM.n')<full.events.length && guard++<200000){
+  w=read('TL.beats.find(b=>b.working)'); if(w) waits.push(w.workDur);
+  read('clock+=.05; simTick()');
+  if(read('TL.beats.some(b=>b.fail)')) failSeen=true;
+}
+assert.equal(read('SIM.n'),full.events.length);
+assert.ok(waits.every(d=>d>=1.4 && d<=3.6), 'each step works 1.4-3.6s');
+assert.ok(failSeen, 'ALERTS failure is replayed');
+assert.equal(read('R.finished'),true);
+// The finished run has exactly the recording's stops (38 for the bank), retry included.
+read('FULLTL=buildTimeline(FULL)');
+assert.equal(read('stops().length'), read("FULLTL.beats.filter(b=>['dwell','outro'].includes(b.k)).length"));
+
+// Next lands the real result of a working step at once.
+read('startSim(FULL)'); assert.equal(read('SIM.n'),0);
+read('clock=TL.beats.find(b=>b.working).t0+.1; step(1)');
+assert.equal(read('SIM.n'),1);
+// Restart replays it from the beginning; a normal recording link is never a simulation.
+read('restart()'); assert.equal(read('SIM.n'),0); assert.equal(read('playing'),true);
+read('SIM=null; R=FULL; TL=buildTimeline(R); restart()'); assert.equal(read('playing'),false);
+''')

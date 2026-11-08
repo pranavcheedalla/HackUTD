@@ -11,7 +11,7 @@ pipeline run from the local server and requires NVIDIA configuration.
 
 ## Run it
 
-Dropping a zip of a known codebase plays its recorded real run (demo mode). Run live instead starts a real run.
+Dropping a zip of a known codebase replays its recorded real run step by step, like a live run (each step works for its real duration, compressed, then its result lands). Run live instead starts a real run.
 
 Recordings open paused at Discover. Use **Next → / ← Back** or the keyboard arrows: the star travels along the path to the adjacent station, then pauses automatically, including at failed checks and retries. Stars and readouts remain interactive. **Pause** can stop a flight; **Auto-play** is optional and uses the speed selector. Restart returns to paused Discover.
 
