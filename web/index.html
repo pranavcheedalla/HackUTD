@@ -41,6 +41,7 @@
   .body::-webkit-scrollbar { width: 3px; } .body::-webkit-scrollbar-thumb { background: rgba(232,234,242,.1); border-radius: 2px; }
   .body > * { opacity: 0; transform: translateY(6px); animation: drift .7s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: calc(var(--i, 0) * 70ms + 140ms); }
   @keyframes drift { to { opacity: 1; transform: none; } }
+  .body.still > * { animation: none; opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) { .body > * { animation: none; opacity: 1; transform: none; } .panel { transition: opacity .2s; } }
   /* building blocks (web/stations/registry.js): every view is made only of these */
   .st-sec { margin: 0 0 30px; }

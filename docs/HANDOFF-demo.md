@@ -48,8 +48,8 @@ controls. PR #10 contains the latest frontend and navigation work. See
 ## Demo script (about 3 minutes)
 
 1. **Open NorthBase → Read the case file (30 s):** "Hard to change, and dangerous to change without proof." Click **Hand it the codebase →** to return to the landing page.
-2. Drop demo/retail-bank.zip; the star entrance arrives paused at Discover in the recorded real run. Say: 'this replays a real run from tonight; live takes about 25 minutes.'
-3. **Use Next → to fly between stations and pause at each one, starting at Discover:**
+2. Drop demo/retail-bank.zip; after the star entrance the codebase **runs through on its own like a live run**: each station shows Nemotron working (with the real run's elapsed time, `REAL RUN · mm:ss`), then the real result lands and the star moves on, including ALERTS failing and retrying. About 4 minutes at 1×, 2.5 at 1.6×. Say: 'this replays a real run from tonight, step by step; live takes about 25 minutes.' Pause, Next (skips a wait) and Back still work.
+3. **Pause on the moments that matter** (or use Next/Back):
    - the ALERTS mismatch, caught and fixed;
    - then click the Verify ring → `DETAILS`.
 4. **Optional: Run live instead.** Starts a real run of the uploaded codebase; allow about 25 minutes.

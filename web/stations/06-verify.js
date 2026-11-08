@@ -29,7 +29,8 @@ Stations.register(6, {
       html += H.section(`Attempt ${a.attempt || i + 1}`, body);
     });
 
-    if (module.status !== 'done') html += H.section('Result', H.empty(`Not verified after ${module.attempts || history.length} attempts.`));
+    if (module.status === 'failed') html += H.section('Result', H.empty(`Not verified after ${module.attempts || history.length} attempts.`));
+    else if (module.status !== 'done') html += H.section('Result', H.empty('The run is still working on this program.'));
     return html;
   },
 

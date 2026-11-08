@@ -113,6 +113,7 @@
   let cam = 0, cs = 0, trail = [], fr = 0, shoot = null, hits = [];
   let travel = null;  // one presenter click: fly to the next stop, then wait there
   let entrance = null;  // the upload star becomes the first program at Discover
+  let SIM = null;  // a dropped codebase replaying its recorded run step by step: { full, n events revealed }
   const playBtn = document.getElementById('play');
   playBtn.onclick = () => {
     if (!R || entrance) return;
@@ -141,7 +142,8 @@
     const list = stops(), i = travel ? travel.index : stopIndex(list), b = list[i];
     playBtn.disabled = !R || !!entrance;
     previousBtn.disabled = !R || !!entrance || !!travel || (i === 0 && !betweenStops(list, i));
-    nextBtn.disabled = !R || !!entrance || !!travel || i >= list.length - 1;
+    const canFinishStep = !!SIM && !!TL && TL.beats.some(q => q.working);  // a replayed run: Next lands the working step's result
+    nextBtn.disabled = !R || !!entrance || !!travel || (i >= list.length - 1 && !canFinishStep);
     const label2 = b ? `${entrance ? 'Arriving → ' : travel ? 'Travelling → ' : ''}${b.k === 'outro' ? 'Summary' : STATIONS[b.at][1]} · ${i + 1}/${list.length}` : '';
     if (stepStatus.textContent !== label2) stepStatus.textContent = label2;
     stepStatus.dataset.time = clock.toFixed(3);
@@ -151,6 +153,10 @@
   }
   function step(direction) {
     if (!R || !TL || intakeOpen() || travel || entrance) return;
+    if (SIM && direction > 0) {  // replay: Next skips the wait and lands this step's real result
+      const b = beatAt(Math.min(clock, TL.end - 1e-3));
+      if (b.working) { SIM.n++; simApply(); clock = Math.max(clock, b.t0); syncPlayback(); return; }
+    }
     const list = stops(), current = stopIndex(list), between = betweenStops(list, current);
     const i = Math.max(0, Math.min(list.length - 1, current + (direction < 0 && between ? 0 : direction))), b = list[i];
     if (i === current && !between) return;
@@ -176,6 +182,7 @@
   }
   function restart() {
     cancelEntrance();
+    if (SIM) { travel = null; resumeAfter = false; closePanel(); closeCaption(); return startSim(SIM.full); }
     travel = null; resumeAfter = false; closePanel(); closeCaption();
     clock = R && !R.live && stops().length ? stopTime(stops()[0]) : 0; cam = 0; cs = 0; trail = []; lastFail = null;
     playing = !!(R && R.live); syncPlayback();
@@ -370,7 +377,7 @@
       const ai = capFocus === 5 ? Math.max(0, hist.findIndex(a => a.passed < a.total)) : Math.max(0, hist.length - 1);
       return { n: capFocus, mi, a: 1, since: 0, ai, clicked: true };
     }
-    if (b.k === 'dwell' && b.working) return { n: b.at, mi: b.mi, a: clamp((t - b.t0 - .35) / .55), since: b.t0 + .35, ai: b.h || 0, working: true };
+    if (b.k === 'dwell' && b.working) return { n: b.at, mi: b.mi, a: clamp((t - b.t0 - .35) / .55), since: b.t0 + .35, ai: b.h || 0, working: true, beat: b, t };
     let nb = b, tail = 1;
     if (b.k === 'move' && b.back && lastFail) { nb = lastFail; tail = clamp(1 - (t - b.t0) / 1.1); }  // the reason lingers as the star goes back
     if (nb.k !== 'dwell' || nb.blocked || !Captions.narrates(nb.mi, nb.at)) return null;
@@ -383,7 +390,9 @@
   function workingCaption(ac, m) {
     const key = `${R.name}|${ac.mi}|${ac.n}|${ac.ai}`;
     if (!workSince.has(key)) workSince.set(key, performance.now());
-    const s = Math.floor((performance.now() - workSince.get(key)) / 1000), clock = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    const real = R.sim && ac.beat && ac.beat.workDur  // replay: real seconds this step had taken by now
+      ? Math.min(ac.beat.realGap, (ac.t - ac.beat.t0) * ac.beat.realGap / ac.beat.workDur) : (performance.now() - workSince.get(key)) / 1000;
+    const s = Math.floor(real), clock = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
     const say = {
       0: 'Mapping the codebase: which programs call which.',
       1: 'Nemotron is reading the COBOL and writing down what it does.',
@@ -392,7 +401,7 @@
       5: 'Running every test against the original COBOL.',
       6: 'Writing unit tests for the verified Python.',
     }[ac.n] || 'Working.';
-    return { sentence: say, proof: { kind: 'line', text: `LIVE   ·   ${clock}` } };
+    return { sentence: say, proof: { kind: 'line', text: `${R.sim ? 'REAL RUN' : 'LIVE'}   ·   ${clock}` } };
   }
   function narration(t, ox, lc, b, u) {
     const ac = activeCaption(t, b, u);
@@ -521,7 +530,7 @@
     // a live run joined late catches up at double speed until it is close to what's happening now
     const edge = R && R.live && TL && TL.beats.find(q => q.working), catchUp = edge && edge.t0 - clock > 15 ? Math.max(speed, 2) : speed;
     if (travel) advanceTravel(dtReal);
-    else if (R && playing) clock = Math.min(TL.end + 2, clock + dtReal * catchUp);
+    else if (R && playing) { clock = Math.min(TL.end + 2, clock + dtReal * catchUp); if (SIM) simTick(); }
     syncPlayback();
     if (R) { try { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.globalAlpha = 1; x.save(); draw(clock); } catch (err) { if (!frame.warned) { frame.warned = true; console.error(err); } } finally { x.restore(); } }
   }
@@ -586,7 +595,9 @@
       const failed = m.status === 'failed', talk = (at, d) => (window.Captions && Captions.narrates(mi, at) ? Math.max(d, READ) : d);
       if (mi > 0) push({ k: 'swoop', mi }, 1.7);
       if ((m.error || '').startsWith('blocked')) { push({ k: 'dwell', mi, at: 0, blocked: true }, 3); continue; }
-      if (!evs.length) { work({ k: 'dwell', mi, at: 0 }); break; }
+      if (!evs.length) {  // Discover needs no model: the program is mapped, and Nemotron starts reading it
+        push({ k: 'dwell', mi, at: 0 }, talk(0, 1.6)); push({ k: 'move', mi, a: 0, b: 1 }, 1.7); work({ k: 'dwell', mi, at: 1 }); break;
+      }
       let pos = 0; const mv = (to, d = 1.7, back = false) => { push({ k: 'move', mi, a: pos, b: to, back }, d); pos = to; };
       const end = at => (failed ? (push({ k: 'dwell', mi, at, failedEnd: true }, 3.6), false) : (work({ k: 'dwell', mi, at }), true));
       push({ k: 'dwell', mi, at: 0 }, talk(0, 1.6));
@@ -614,6 +625,57 @@
       mv(6); work({ k: 'dwell', mi, at: 6 }); break;
     }
     return { beats, end: t };
+  }
+
+  // ---------- a recorded real run, replayed the way it happened ----------
+  // The recording's events are revealed one at a time into the live engine, so the star waits
+  // at a station while that step "works", then the real result lands and it moves on. Each
+  // wait is the real step's duration, compressed; the caption shows the real elapsed time.
+  const SIM_SPEED = 12;  // real seconds per replayed second while a step works
+  const evTime = e => Date.parse(e && e.t) / 1000;
+  function simPartial() {
+    const full = SIM.full, evs = full.events.slice(0, SIM.n), seen = new Map(), total = new Map();
+    evs.forEach(e => seen.set(e.module, (seen.get(e.module) || 0) + 1));
+    full.events.forEach(e => total.set(e.module, (total.get(e.module) || 0) + 1));
+    const modules = full.modules.map(m => {
+      const n = seen.get(m.id) || 0;
+      if (n && n >= (total.get(m.id) || 0)) return m;  // finished: the whole record
+      // still running: only what the run had produced by now, so Details never shows the future
+      const mine = evs.filter(e => e.module === m.id), has = node => mine.some(e => e.node === node);
+      const rewrites = mine.filter(e => e.node === 'rewrite' && !/^blocked/.test(e.msg || '')).length;
+      const hist = (m.history || []).slice(0, mine.filter(e => e.node === 'verify').length), last = hist[hist.length - 1];
+      const src = (m.attempt_sources || []).slice(0, rewrites), golden = has('record') ? m.golden || [] : [];
+      return { ...m, status: n ? 'running' : 'pending', error: null, spec: has('extract_spec') ? m.spec : null, golden,
+               python: rewrites ? (src.length ? src[src.length - 1].python : m.python) : '', attempt_sources: src,
+               history: hist, attempts: rewrites, tests_passed: last ? last.passed : 0, tests_total: last ? last.total : golden.length,
+               heldout: null, divergences: [], unit_tests_status: null, unit_tests_quarantined: [] };
+    });
+    return { ...full, events: evs, modules, live: false, sim: true, finished: SIM.n >= full.events.length };
+  }
+  function simApply() {
+    const rep = simPartial(), prevWork = TL && TL.beats.find(b => b.working);
+    R = rep; TL = rep.finished ? buildTimeline(rep) : liveTimeline(rep);
+    if (prevWork && clock > prevWork.t0) {  // the step finished: show its result from the star's arrival
+      const nb = beatAt(prevWork.t0 + .01);
+      if (!nb.working || nb.mi !== prevWork.mi || nb.at !== prevWork.at || nb.h !== prevWork.h) clock = prevWork.t0;
+    }
+    if (panel.classList.contains('open')) refreshPanel();
+    const w = TL.beats.find(b => b.working);
+    if (w) {
+      const ev = SIM.full.events, gap = SIM.n ? evTime(ev[SIM.n]) - evTime(ev[SIM.n - 1]) : 10;
+      w.realGap = Math.max(1, isFinite(gap) ? gap : 6);
+      w.workDur = clamp(w.realGap / SIM_SPEED, 1.4, 3.6);
+    }
+  }
+  function simTick() {  // each frame while playing: finish the working step once its time is up
+    if (!SIM || !TL) return;
+    const w = TL.beats.find(b => b.working);
+    if (w && clock >= w.t0 + w.workDur) { SIM.n++; simApply(); }
+  }
+  function startSim(full) {
+    SIM = { full, n: 0 }; workSince.clear(); TL = null; simApply();
+    clock = 3.4; cam = 0; cs = 0; trail = []; lastFail = null;  // past the title: the entrance already set the scene
+    playing = true; syncPlayback();
   }
 
   function draw(t) {
@@ -779,7 +841,7 @@
     playing = false; playBtn.textContent = 'Play'; focusX = worldX;
   }
   function openPanel(i, worldX) {
-    focus = null; if (worldX !== undefined) hold(worldX);
+    focus = null; pBody.classList.remove('still'); if (worldX !== undefined) hold(worldX);
     pMod = R.modules[i]; pStar = i; document.getElementById('p-title').textContent = pMod.file || pMod.id;
     const st = pMod.status === 'done' ? `verified · ${pMod.tests_passed}/${pMod.tests_total}` : (pMod.error || pMod.status);
     document.getElementById('p-meta').textContent = `${pMod.kind} · ${st} · ${pMod.attempts} attempt${pMod.attempts === 1 ? '' : 's'}`;
@@ -792,11 +854,20 @@
     if (focusX !== null) { focus = null; focusX = null; if (resumeAfter) { playing = true; playBtn.textContent = 'Pause'; } }
   }
   // a station panel: that step's real output for the program on screen (web/stations/*.js)
-  function openStation(i) {
+  let stationTab = 0;
+  // re-render the open readout with the latest data, keeping its tab and scroll (a replay that is playing)
+  function refreshPanel() {
+    const top = pBody.scrollTop; pBody.classList.add('still');  // update in place: no drift-in replay
+    if (panel.classList.contains('station') && focus !== null) openStation(focus, true);
+    else if (pStar !== null && R.modules[pStar]) { pMod = R.modules[pStar]; renderTab(); }
+    pBody.scrollTop = top;
+  }
+  function openStation(i, refresh = false) {
     const S = window.Stations && window.Stations.get(i + 1);
     const b = beatAt(Math.min(clock, TL.end - 1e-3)), mi = b.mi !== undefined ? b.mi : (b.k === 'outro' ? R.modules.length - 1 : 0);
     const m = R.modules[mi];
-    hold(i * GAP); focus = i; pStar = null; capFocus = null;
+    if (!refresh) { hold(i * GAP); stationTab = 0; pBody.classList.remove('still'); }
+    focus = i; pStar = null; capFocus = null;
     document.getElementById('p-title').textContent = `${STATIONS[i][0]} — ${STATIONS[i][1]}`;
     document.getElementById('p-meta').textContent = `${m.file || m.id} · ${m.kind}${S && S.agent ? ' · ' + S.agent : ''}`;
     let out;
@@ -804,11 +875,11 @@
     catch (err) { console.error(`station ${i + 1} render:`, err); out = window.Stations.H.empty('This view hit an error. See the console.'); }
     const tabs = out && typeof out === 'object' && Array.isArray(out.tabs) ? out.tabs : null;
     pTabs.style.display = tabs && tabs.length > 1 ? '' : 'none';
-    const show = k => { setBody(tabs ? tabs[k].html : String(out || ''));
+    const show = k => { stationTab = k; setBody(tabs ? tabs[k].html : String(out || ''));
       [...pTabs.children].forEach((bn, j) => bn.classList.toggle('on', j === k)); };
     pTabs.innerHTML = tabs ? tabs.map((tb, j) => `<button data-st="${j}">${esc(tb.label)}</button>`).join('') : '';
     pTabs.onclick = e => { const k = e.target.dataset && e.target.dataset.st; if (k !== undefined) show(+k); };
-    show(0); panel.classList.add('open', 'station'); panel.setAttribute('aria-hidden', 'false');
+    show(tabs ? Math.min(stationTab, tabs.length - 1) : 0); panel.classList.add('open', 'station'); panel.setAttribute('aria-hidden', 'false');
   }
   const programTabs = e => { const k = e.target.dataset && e.target.dataset.k; if (!k) return; pTab = k; [...pTabs.children].forEach(bn => bn.classList.toggle('on', bn.dataset.k === k)); renderTab(); };
   document.getElementById('p-close').onclick = closePanel;
@@ -888,7 +959,7 @@
   document.getElementById('case-go').onclick = () => { closeCase(); openIntake(); };
   document.getElementById('in-back').onclick = () => { openCase(); };
   function normalize(rep) { (rep.modules || []).forEach(q => { q.depends_on = q.depends_on || []; q.history = q.history || []; }); return rep; }
-  function stopLive() { cancelEntrance(); travel = null; clearTimeout(pollTimer); pollTimer = null; liveSession = null; fallbackBtn.hidden = true; }
+  function stopLive() { cancelEntrance(); SIM = null; travel = null; clearTimeout(pollTimer); pollTimer = null; liveSession = null; fallbackBtn.hidden = true; }
   // a run still going on the server: offer the way back to it from a recording or the intake
   async function runningSession() {
     if (!API) return null;
@@ -906,6 +977,7 @@
     const res = await fetch(`replays/${name}.json`, { cache: 'no-store' }); if (!res.ok) throw new Error(`replay ${name}: ${res.status}`);
     const rep = await res.json();
     if (version !== uploadVersion) return;
+    SIM = null;
     R = normalize(rep);
     TL = buildTimeline(R); restart();
     if (demo && intake.classList.contains('open')) {
@@ -915,7 +987,8 @@
     if ([...sel.options].some(o => o.value === name)) sel.value = name;
     history.replaceState(null, '', `#${name}`);
     if (demo) {
-      runLiveBtn.hidden = false;
+      startSim(R);  // the dropped codebase runs through, step by step, from the recording
+      runLiveBtn.hidden = !demo.codebase;
       runLiveBtn.onclick = () => { openIntake(); startLive(demo.codebase, name); };
     }
     offerBackToLive();
@@ -1039,5 +1112,7 @@
   window.galaxy = { seek(s) { travel = null; clock = Math.max(0, s); trail = []; lastFail = null; cam = (beatAt(clock).k === 'move' ? beatAt(clock).a : (beatAt(clock).at || 0)) * GAP;
                              for (let i = 0; i < 90; i++) { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.save(); draw(clock); x.restore(); } }, get t() { return clock; },
                     get beats() { return TL && TL.beats.map(b => [b.k, b.mi, b.at, +b.t0.toFixed(1), b.fail || false]); },
+                    runRecording(name) { return load(name, { codebase: null }); },  // the drop path, without a file
+                    get sim() { return SIM && { revealed: SIM.n, events: SIM.full.events.length }; },
                     get hits() { return hits.map(h => ({ id: h.id, x: h.x * K, y: h.y * K })); } };  // css px, for rehearsal checks
 })();

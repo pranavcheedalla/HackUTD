@@ -4,6 +4,7 @@ Stations.register(7, {
   agent: 'accepted',
 
   render({ module, H }) {
+    if (module.status === 'running' || module.status === 'pending') return H.empty('Not accepted yet. The run is still working on this program.');
     if (module.status !== 'done') {
       return H.empty('This program was not verified.') + (module.error ? H.text(module.error) : '');
     }
