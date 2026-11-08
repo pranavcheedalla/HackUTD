@@ -1233,6 +1233,8 @@
                     view() { return R && TL && !R.live ? { R, TL, full: SIM ? SIM.full : R, beat: beatAt(Math.min(clock, TL.end - 1e-3)), clock,
                       sim: !!SIM, hintSent: !!(SIM && SIM.hintSent), typedHint: SIM && SIM.typedHint } : null; },
                     sendHint(text) { sendHint(text); },
+                    // a live run right now (web/reveal.js shows its COBOL and new Python once it is verified)
+                    liveView() { return R && TL && R.live ? { R, beat: beatAt(Math.min(clock, TL.end - 1e-3)), clock } : null; },
                     // rehearsal: jump a running replay to just before its n-th real event (e.g. SETTLE's first)
                     skipToReview() { skipToReview(); },
                     simTo(n) { if (!SIM) return; SIM.n = Math.max(0, Math.min(n, SIM.end)); SIM.hintSent = false; simApply();

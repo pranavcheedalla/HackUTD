@@ -232,6 +232,14 @@ def _replay(session: str) -> tuple[int, dict]:
         meta = json.loads((folder / "session.json").read_text())
     except (OSError, ValueError):
         pass
+    calls = []  # this run's own Nemotron calls (llm.py writes them): the proof the page shows at the end
+    try:
+        for line in (folder / "runs" / "llm_calls.jsonl").read_text().splitlines():
+            c = json.loads(line)
+            calls.append({k: c.get(k) for k in ("ts", "model_id", "source", "seconds", "ok")})
+    except (OSError, ValueError):
+        pass
+    rep["llm_calls"] = calls[-50:]
     rep.update(name=session, title=Path(meta.get("legacy_dir") or session).name, live=True,
                finished=meta.get("status") in ("done", "failed"), codebase=meta.get("legacy_dir"),
                recording=_recording_for(meta.get("legacy_dir") or ""))

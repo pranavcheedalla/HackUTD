@@ -81,3 +81,14 @@ def test_the_demo_recordings_go_live_with_loanpay_never_settle():
         assert len(m["history"]) == 1 and not m.get("human_hints")
     galaxy = (ROOT / "web" / "galaxy.js").read_text()
     assert "R.quick_live" in galaxy and "!(m.human_hints || []).length" in galaxy
+
+
+def test_a_live_run_ends_by_showing_its_own_cobol_python_and_nemotron_calls():
+    """The reveal reads only the finished run: its source, its verified Python, its own call log."""
+    page = (ROOT / "web" / "index.html").read_text()
+    reveal = (ROOT / "web" / "reveal.js").read_text()
+    server = (ROOT / "tools" / "serve.py").read_text()
+    assert '<script src="reveal.js"></script>' in page
+    assert "llm_calls.jsonl" in server and 'rep["llm_calls"]' in server
+    for field in ("m.cobol", "m.python", "rep.llm_calls", "m.tests_passed", "rep.finished"):
+        assert field in reveal

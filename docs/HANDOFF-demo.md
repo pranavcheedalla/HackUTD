@@ -76,6 +76,9 @@ controls. PR #10 contains the latest frontend and navigation work. See
    - To keep it fast, a quick run writes the spec in one Super pass (no Nano draft + review), writes
      the Python while the answer key is recorded, and skips the bonus unit-test layer (Details say so).
      Verification against the real COBOL is unchanged.
+   - **When it lands on Verified, the page shows COBOL in, Python out:** the COBOL that went in, the Python
+     Nemotron wrote in this run (scrolled to `def main` beside `PROCEDURE DIVISION`), the run's own Nemotron
+     calls with seconds (from its `runs/llm_calls.jsonl`), the session id and the match count. Esc closes it.
    - **Run live instead** still runs the whole bank (5 programs, about 7 minutes).
 
    If a program fails live, that's the point: "it won't ship code that's off by a cent, and it blocks everything that depends on it."
