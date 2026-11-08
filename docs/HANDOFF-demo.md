@@ -49,6 +49,7 @@ controls. PR #10 contains the latest frontend and navigation work. See
 
 ## Demo script (about 3 minutes)
 
+**One double-click:** `tools/start-demo.command` (Finder: right-click → Open the first time) starts the server if needed and opens the slides; keep its window open while presenting.
 **Slides:** open `http://127.0.0.1:8765/deck.html`. Slide 1 (who we are) → slide 2 (how it's built) →
 **Into NorthBound** opens the landing page (case file, then the drop). After the live run, press **C**
 anywhere in NorthBound for slide 3 (what we proved). Arrows, space or click move between slides.
