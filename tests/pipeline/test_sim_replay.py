@@ -90,8 +90,8 @@ vm.runInContext(block('  // ---------- replay → timeline ----------','  // ---
 vm.runInContext(block('  // ---------- live: the timeline so far','  function draw(t) {'),context);
 const read=s=>vm.runInContext(s,context);
 const full=JSON.parse(fs.readFileSync('web/replays/retail.json','utf8'));
-assert.deepEqual(full.modules.map(m=>m.id),['accrue','feerate','alerts','loanpay','statemnt','settle']);
-const settle=full.modules[5];
+assert.deepEqual(full.modules.map(m=>m.id),['settle','accrue','feerate','alerts','loanpay','statemnt']);
+const settle=full.modules[0];
 assert.equal(settle.human_hints.length,1); assert.ok(settle.run_note.includes('human hint'));
 read(`FULL=${JSON.stringify(full)}; normalize=r=>r; startSim(FULL)`);
 
@@ -103,7 +103,7 @@ while(read('SIM.n')<full.events.length && guard++<400000){
     // the replay waits for the presenter: nothing moves on until a hint is sent
     if(!read('SIM.hintSent')){ const n=read('SIM.n'); read('clock+=30; simTick()'); assert.equal(read('SIM.n'),n,'waits for the hint');
       read('sendHint("The amount has no implied decimal")'); assert.equal(read('SIM.typedHint'),'The amount has no implied decimal'); } }
-  if(sawReview && read("TL.beats.some(b=>b.k==='move'&&b.back&&b.mi===5)")) backAfterReview=true;
+  if(sawReview && read("TL.beats.some(b=>b.k==='move'&&b.back&&b.mi===0)")) backAfterReview=true;
   read('clock+=.05; simTick()');
 }
 assert.ok(sawReview,'the replay stops at Verify while SETTLE asks a person');
@@ -113,11 +113,11 @@ assert.equal(reviewWait,8.5,'long enough to read the case and type the hint');
 assert.ok(backAfterReview,'after the hint the star goes back to Rewrite');
 assert.equal(read('R.finished'),true);
 // the finished recording keeps the same stop, so Back returns to the ask
-assert.ok(read('buildTimeline(FULL).beats.some(b=>b.review && b.mi===5)'));
+assert.ok(read('buildTimeline(FULL).beats.some(b=>b.review && b.mi===0)'));
 assert.equal(read("R.modules.find(m=>m.id==='settle').status"),'done');
 // Skip to human loop: straight to SETTLE's first check, with its ask next
 read('startSim(FULL); skipToReview()');
 const firstCheck=full.events.findIndex(e=>e.module==='settle'&&e.node==='verify');
 assert.equal(read('SIM.n'),firstCheck); assert.equal(read('playing'),true);
-assert.equal(read("TL.beats.find(b=>b.working).mi"),5);
+assert.equal(read("TL.beats.find(b=>b.working).mi"),0);
 ''')
