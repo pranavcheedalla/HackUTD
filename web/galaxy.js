@@ -739,11 +739,14 @@
   // ---------- loading: recordings, the intake, live runs ----------
   const sel = document.getElementById('replay'), intake = document.getElementById('intake');
   const fallbackBtn = document.getElementById('fallback'), backBtn = document.getElementById('backlive');
+  const runLiveBtn = document.getElementById('run-live-instead');
+  let uploadVersion = 0;
   let API = null, pollTimer = null, liveSession = null, recordings = [];
   const caseFile = document.getElementById('case');
   function intakeOpen() { return intake.classList.contains('open') || caseFile.classList.contains('open'); }
   // the case file: the real-world problem, before the codebase goes in
   function openCase() {
+    uploadVersion++;
     playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.remove('open');
     caseFile.classList.add('open'); caseFile.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on');
   }
@@ -762,14 +765,22 @@
     backBtn.hidden = !s || liveSession === s;
     backBtn.onclick = () => { if (s) attach(s); };
   }
-  async function load(name) {
+  async function load(name, demo = null) {
+    const version = ++uploadVersion;
+    runLiveBtn.hidden = true; runLiveBtn.onclick = null;
     stopLive(); const lv = sel.querySelector('option[value="__live"]'); if (lv) lv.remove();
     const res = await fetch(`replays/${name}.json`, { cache: 'no-store' }); if (!res.ok) throw new Error(`replay ${name}: ${res.status}`);
-    R = normalize(await res.json());
+    const rep = await res.json();
+    if (version !== uploadVersion) return;
+    R = normalize(rep);
     TL = buildTimeline(R); restart(); closePanel(); closeCaption(); lastFail = null; playing = true; playBtn.textContent = 'Pause';
     document.getElementById('loading').style.display = 'none'; closeIntake();
     if ([...sel.options].some(o => o.value === name)) sel.value = name;
     history.replaceState(null, '', `#${name}`);
+    if (demo) {
+      runLiveBtn.hidden = false;
+      runLiveBtn.onclick = () => { openIntake(); startLive(demo.codebase, name); };
+    }
     offerBackToLive();
   }
   sel.onchange = () => load(sel.value).catch(showError);
@@ -797,6 +808,7 @@
     pollTimer = setTimeout(poll, 1500);
   }
   async function startLive(codebase, recording) {
+    uploadVersion++; runLiveBtn.hidden = true; runLiveBtn.onclick = null;
     note('Starting a real Nemotron run…');
     let r;
     try { r = await fetch('api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codebase }) }); }
@@ -811,6 +823,7 @@
   }
   // follow a run (started here, or from the terminal: open the page at #live=<session>)
   function attach(session) {
+    uploadVersion++; runLiveBtn.hidden = true; runLiveBtn.onclick = null;
     stopLive(); liveSession = session; backBtn.hidden = true;
     R = null; TL = null; workSince.clear(); clock = 0; cam = 0; trail = []; closePanel(); closeCaption(); playing = true; playBtn.textContent = 'Pause';
     closeIntake(); const l = document.getElementById('loading'); l.textContent = 'Copying the codebase…'; l.style.display = 'grid';
@@ -823,7 +836,7 @@
 
   // the intake: pick a codebase or drop a zip of one
   function note(text, bad) { const n = document.getElementById('in-note'); n.textContent = text || ''; n.classList.toggle('bad', !!bad); }
-  function openIntake() { closeCase(); playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.add('open'); intake.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on'); renderIntake(); }
+  function openIntake() { uploadVersion++; closeCase(); playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.add('open'); intake.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on'); renderIntake(); }
   function closeIntake() { closeCase(); intake.classList.remove('open'); intake.setAttribute('aria-hidden', 'true'); document.body.classList.remove('intake-on'); note(''); }
   document.getElementById('intake-btn').onclick = openIntake;
   async function renderIntake() {
@@ -856,11 +869,21 @@
   async function upload(file) {
     if (!file) return;
     if (!/\.zip$/i.test(file.name)) return note('Drop a .zip of COBOL files (.cbl, .cob, .cpy).', true);
-    if (!(API && API.live)) return note('Live runs need the local server and an NVIDIA API key.', true);
+    if (!API) return note('Uploads need the local server: python tools/serve.py.', true);
+    const version = ++uploadVersion;
+    runLiveBtn.hidden = true; runLiveBtn.onclick = null;
     note(`Reading ${file.name}…`);
     const r = await fetch('api/upload', { method: 'POST', headers: { 'Content-Type': 'application/zip', 'X-Filename': file.name }, body: file }).catch(() => null);
     const body = r ? await r.json().catch(() => ({})) : {};
+    if (version !== uploadVersion) return;
     if (!r || !r.ok) return note(body.error || 'Upload failed.', true);
+    if (body.recording) {
+      note(`${body.title} recognised. Playing a recorded real run.`);
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      if (version !== uploadVersion) return;
+      speed = 1; document.getElementById('speed').value = '1';
+      return load(body.recording, { codebase: body.codebase }).catch(showError);
+    }
     note(`${body.files} COBOL files found. Starting…`);
     startLive(body.codebase, null);
   }

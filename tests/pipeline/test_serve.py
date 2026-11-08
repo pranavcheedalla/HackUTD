@@ -65,6 +65,7 @@ def test_replay_refuses_bad_session_names():
 def test_dropping_the_demo_zip_is_recognised_as_the_bank(uploads):
     code, body = serve._safe_upload((ROOT / "demo" / "retail-bank.zip").read_bytes(), "retail-bank.zip")
     assert code == 200 and body["files"] == 6
+    assert body['recording'] == 'bank' and body['title'] == 'Retail bank'
     about = serve._about(uploads / body["codebase"])
     assert about["same_as"] == "samples/bank" and about["title"] == "Retail bank"
     assert serve._recording_for(body["codebase"]) == "bank"  # so "Switch to recording" works after a live drop
@@ -73,3 +74,4 @@ def test_dropping_the_demo_zip_is_recognised_as_the_bank(uploads):
 def test_a_different_zip_is_its_own_codebase(uploads):
     code, body = serve._safe_upload(_zip({"x/a.cbl": b"       PROGRAM-ID. A.\n"}), "x.zip")
     assert code == 200 and "same_as" not in serve._about(uploads / body["codebase"])
+    assert body['recording'] is None and body['title'] == 'x'

@@ -11,6 +11,8 @@ needs no network, so it plays the same way every time.
 
 ## Run it
 
+Dropping a zip of a known codebase plays its recorded real run (demo mode). Run live instead starts a real run.
+
 **With live runs (recommended):**
 
 ```bash
@@ -21,7 +23,7 @@ The page opens on the intake screen.
 
 - **Run live** starts a real Nemotron run on that codebase, and the galaxy follows it as it happens.
 - **Watch recording** plays a saved real run.
-- **Dropping a .zip of COBOL** adds it as a new codebase and runs it.
+- **Dropping a .zip of COBOL** replays a known codebase, or starts a live run for a new codebase.
 
 If live isn't possible (no `NVIDIA_API_KEY` in `.env`, or a run already in progress), the page
 says so. During a live run, **Switch to recording** jumps to the saved run of the same codebase.
