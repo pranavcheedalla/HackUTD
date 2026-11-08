@@ -738,11 +738,21 @@
 
   // ---------- loading: recordings, the intake, live runs ----------
   const sel = document.getElementById('replay'), intake = document.getElementById('intake');
-  const fallbackBtn = document.getElementById('fallback');
+  const fallbackBtn = document.getElementById('fallback'), backBtn = document.getElementById('backlive');
   let API = null, pollTimer = null, liveSession = null, recordings = [];
   function intakeOpen() { return intake.classList.contains('open'); }
   function normalize(rep) { (rep.modules || []).forEach(q => { q.depends_on = q.depends_on || []; q.history = q.history || []; }); return rep; }
   function stopLive() { clearTimeout(pollTimer); pollTimer = null; liveSession = null; fallbackBtn.hidden = true; }
+  // a run still going on the server: offer the way back to it from a recording or the intake
+  async function runningSession() {
+    if (!API) return null;
+    try { return (await (await fetch('api/status', { cache: 'no-store' })).json()).running || null; } catch (err) { return null; }
+  }
+  async function offerBackToLive() {
+    const s = await runningSession();
+    backBtn.hidden = !s || liveSession === s;
+    backBtn.onclick = () => { if (s) attach(s); };
+  }
   async function load(name) {
     stopLive(); const lv = sel.querySelector('option[value="__live"]'); if (lv) lv.remove();
     const res = await fetch(`replays/${name}.json`, { cache: 'no-store' }); if (!res.ok) throw new Error(`replay ${name}: ${res.status}`);
@@ -751,6 +761,7 @@
     document.getElementById('loading').style.display = 'none'; closeIntake();
     if ([...sel.options].some(o => o.value === name)) sel.value = name;
     history.replaceState(null, '', `#${name}`);
+    offerBackToLive();
   }
   sel.onchange = () => load(sel.value).catch(showError);
   function showError(err) { const l = document.getElementById('loading'); l.style.display = 'grid'; l.textContent = String(err.message || err); }
@@ -791,7 +802,7 @@
   }
   // follow a run (started here, or from the terminal: open the page at #live=<session>)
   function attach(session) {
-    stopLive(); liveSession = session;
+    stopLive(); liveSession = session; backBtn.hidden = true;
     R = null; TL = null; workSince.clear(); clock = 0; cam = 0; trail = []; closePanel(); closeCaption(); playing = true; playBtn.textContent = 'Pause';
     closeIntake(); const l = document.getElementById('loading'); l.textContent = 'Copying the codebase…'; l.style.display = 'grid';
     history.replaceState(null, '', `#live=${session}`);
@@ -812,17 +823,20 @@
     if (API) {
       try { items = (await (await fetch('api/codebases', { cache: 'no-store' })).json()).codebases || []; } catch (err) { items = []; }
     }
+    const running = await runningSession();
+    if (running) items.unshift({ name: 'Live run in progress', about: 'A real Nemotron run is going right now. Watch where it is.', session: running });
     const recorded = new Set(items.map(c => c.recording).filter(Boolean));
     recordings.filter(r => !recorded.has(r.name)).forEach(r => items.push({ name: r.title, about: r.kind === 'mutation' ? 'A one-cent rounding bug planted in a verified rewrite, to show the check catches it.' : '', recording: r.name }));
     list.innerHTML = items.map((c, i) => `<div class="cb"><div class="cb-name">${esc(c.name)}</div>` +
-      (c.programs ? `<div class="cb-meta">${c.programs} program${c.programs === 1 ? '' : 's'}${c.copybooks ? ` · ${c.copybooks} cop${c.copybooks === 1 ? 'ybook' : 'ybooks'}` : ''}${c.uploaded ? ' · uploaded' : ''}</div>` : '<div class="cb-meta">recording</div>') +
+      (c.session ? '<div class="cb-meta">live now</div>' : c.programs ? `<div class="cb-meta">${c.programs} program${c.programs === 1 ? '' : 's'}${c.copybooks ? ` · ${c.copybooks} cop${c.copybooks === 1 ? 'ybook' : 'ybooks'}` : ''}${c.uploaded ? ' · uploaded' : ''}</div>` : '<div class="cb-meta">recording</div>') +
       (c.about ? `<div class="cb-about">${esc(c.about)}</div>` : '') +
-      `<div class="cb-act">${c.codebase ? `<button class="live" data-i="${i}" data-a="live" ${live ? '' : 'disabled title="Live runs need the local server and an NVIDIA API key"'}>Run live</button>` : ''}` +
+      `<div class="cb-act">${c.session ? `<button class="live" data-i="${i}" data-a="watch">Watch live</button>` : ''}${c.codebase ? `<button class="live" data-i="${i}" data-a="live" ${live ? '' : 'disabled title="Live runs need the local server and an NVIDIA API key"'}>Run live</button>` : ''}` +
       `${c.recording ? `<button data-i="${i}" data-a="rec">Watch recording</button>` : ''}</div></div>`).join('');
     list.onclick = e => {
       const bn = e.target.closest('button'); if (!bn || bn.disabled) return;
       const c = items[+bn.dataset.i];
-      if (bn.dataset.a === 'live') startLive(c.codebase, c.recording);
+      if (bn.dataset.a === 'watch') attach(c.session);
+      else if (bn.dataset.a === 'live') startLive(c.codebase, c.recording);
       else load(c.recording).catch(showError);
     };
     document.getElementById('drop').style.display = API ? '' : 'none';
