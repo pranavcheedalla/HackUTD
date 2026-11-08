@@ -6,6 +6,7 @@
   const cv = document.getElementById('sky'), x = cv.getContext('2d');
   const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
   const BASE_H = 520, GAP = 560, CY = 252;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let W = 0, H = BASE_H, K = 1, DPR = 1;
 
   function resize() {
@@ -494,10 +495,24 @@
       const px = ((d[0] + ox * L.par) % (W + 60) + W + 60) % (W + 60) - 30;
       x.fillStyle = `rgba(232,236,250,${L.al * (.35 + .35 * Math.sin(t * (d[4] ? 3.5 : 1.2) + d[3]))})`; x.fillRect(px, d[1], d[2], d[2]);
     }
+    if (intake.classList.contains('open')) drawIntakeComet(t);
     const fo = ((ox * .55) % 1800 + 1800) % 1800; x.globalAlpha = .75; x.drawImage(fog, fo - 1800, H - 190); x.drawImage(fog, fo, H - 190); x.globalAlpha = 1;
     if (fr % 3 === 0) grain(); x.globalAlpha = .06; x.fillStyle = x.createPattern(grainC, 'repeat'); x.fillRect(0, 0, W, H); x.globalAlpha = 1;
     const vg = x.createRadialGradient(W / 2, H / 2, H * .2, W / 2, H / 2, W * .75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.8)');
     x.fillStyle = vg; x.fillRect(0, 0, W, H);
+  }
+
+  function drawIntakeComet(t) {
+    if (reducedMotion.matches) return;
+    const u = (t % 6) / 2.2;
+    if (u >= 1) return;
+    const px = -180 + u * (W + 360), py = H * .25 + u * 32;
+    const gradient = x.createLinearGradient(px - 150, py - 8, px, py);
+    gradient.addColorStop(0, 'rgba(232,236,250,0)');
+    gradient.addColorStop(1, 'rgba(232,236,250,.65)');
+    x.strokeStyle = gradient; x.lineWidth = .8;
+    x.beginPath(); x.moveTo(px - 150, py - 8); x.lineTo(px, py); x.stroke();
+    star(px, py, t, .28, '215,222,240', '235,238,248');
   }
 
   // ---------- live: the timeline so far, ending in a "working" stop where the run is now ----------
@@ -670,7 +685,7 @@
     // intro and outro type
     if (b.k === 'intro') {
       const a = clamp((t - .3) / .9) * clamp((b.t1 - t) / .8);
-      txt('LEGACY  →  VERIFIED', W / 2, 70, 20, .9 * a, 10, 'center', '240,240,246', '300');
+      txt('NorthBase', W / 2, 70, 26, .9 * a, 8, 'center', '240,240,246', '300');
       txt(`${n} COBOL PROGRAM${n > 1 ? 'S' : ''}  ·  ${R.title.toUpperCase()}`, W / 2, 98, 10, .5 * a, 4);
     }
     if (b.k === 'outro' && !panel.classList.contains('open')) {
@@ -700,9 +715,10 @@
       : `REPLAY OF A REAL ${R.mode === 'real_model' ? 'NEMOTRON' : 'OFFLINE FIXTURE'} RUN  ·  ${(R.started_at || '').slice(0, 16).replace('T', ' ')}`;
     // Keep the honest replay disclosure above the toolbar, even when its buttons wrap.
     const footerY = Math.min(H - 22, H - (playBtn.parentElement.offsetHeight + 34) / K);
-    if (innerWidth > 1100 && !panel.classList.contains('open')) txt(label, W - 24, footerY, 9, .32, 2.5, 'right');
-    if (!R.live && !playing && !panel.classList.contains('open')) txt('← BACK · NEXT →  |  CLICK A STAR OR RING TO INSPECT', W / 2, footerY - 26, 9, .4, 2);
-    else if (travelling && !panel.classList.contains('open') && t < 40) txt('CLICK A STAR OR A RING TO INSPECT', W / 2, footerY - 26, 9, .22 * clamp((t - 6) / 2) * clamp((40 - t) / 3), 3);
+    const footerLines = wrap(label, W - 48, 9, 2.5);
+    if (!panel.classList.contains('open')) footerLines.forEach((line, i) => txt(line, W - 24, footerY - (footerLines.length - 1 - i) * 13, 9, .32, 2.5, 'right'));
+    if (W > 600 && !R.live && !playing && !panel.classList.contains('open')) txt('← BACK · NEXT →  |  CLICK A STAR OR RING TO INSPECT', W / 2, footerY - 26, 9, .4, 2);
+    else if (W > 600 && travelling && !panel.classList.contains('open') && t < 40) txt('CLICK A STAR OR A RING TO INSPECT', W / 2, footerY - 26, 9, .22 * clamp((t - 6) / 2) * clamp((40 - t) / 3), 3);
   }
 
   // ---------- side panel ----------
@@ -816,6 +832,7 @@
     travel = null; resumeAfter = false;
     playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.remove('open');
     caseFile.classList.add('open'); caseFile.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on');
+    history.replaceState(null, '', location.pathname + location.search);
   }
   function closeCase() { caseFile.classList.remove('open'); caseFile.setAttribute('aria-hidden', 'true'); }
   document.getElementById('case-go').onclick = () => { closeCase(); openIntake(); };
@@ -903,34 +920,13 @@
 
   // the intake: pick a codebase or drop a zip of one
   function note(text, bad) { const n = document.getElementById('in-note'); n.textContent = text || ''; n.classList.toggle('bad', !!bad); }
-  function openIntake() { uploadVersion++; travel = null; resumeAfter = false; closeCase(); playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.add('open'); intake.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on'); renderIntake(); }
+  function openIntake() { uploadVersion++; travel = null; resumeAfter = false; closeCase(); playing = false; playBtn.textContent = 'Play'; closePanel(); closeCaption(); intake.classList.add('open'); intake.setAttribute('aria-hidden', 'false'); document.body.classList.add('intake-on'); history.replaceState(null, '', '#codebases'); renderIntake(); }
   function closeIntake() { closeCase(); intake.classList.remove('open'); intake.setAttribute('aria-hidden', 'true'); document.body.classList.remove('intake-on'); note(''); }
   document.getElementById('intake-btn').onclick = openIntake;
-  async function renderIntake() {
-    const list = document.getElementById('in-list'), live = !!(API && API.live);
-    let items = [];
-    if (API) {
-      try { items = (await (await fetch('api/codebases', { cache: 'no-store' })).json()).codebases || []; } catch (err) { items = []; }
-    }
-    const running = await runningSession();
-    if (running) items.unshift({ name: 'Live run in progress', about: 'A real Nemotron run is going right now. Watch where it is.', session: running });
-    const recorded = new Set(items.map(c => c.recording).filter(Boolean));
-    recordings.filter(r => !recorded.has(r.name)).forEach(r => items.push({ name: r.title, about: r.kind === 'mutation' ? 'A one-cent rounding bug planted in a verified rewrite, to show the check catches it.' : '', recording: r.name }));
-    list.innerHTML = items.map((c, i) => `<div class="cb${c.codebase === 'samples/bank' || c.same_as === 'samples/bank' ? ' featured' : ''}"><div class="cb-name">${esc(c.name)}</div>` +
-      (c.session ? '<div class="cb-meta">live now</div>' : c.programs ? `<div class="cb-meta">${c.programs} program${c.programs === 1 ? '' : 's'}${c.copybooks ? ` · ${c.copybooks} cop${c.copybooks === 1 ? 'ybook' : 'ybooks'}` : ''}${c.uploaded ? ' · uploaded' : ''}</div>` : '<div class="cb-meta">recording</div>') +
-      (c.about ? `<div class="cb-about">${esc(c.about)}</div>` : '') +
-      `<div class="cb-act">${c.session ? `<button class="live" data-i="${i}" data-a="watch">Watch live</button>` : ''}${c.codebase ? `<button class="live" data-i="${i}" data-a="live" ${live ? '' : 'disabled title="Live runs need the local server and an NVIDIA API key"'}>Run live</button>` : ''}` +
-      `${c.recording ? `<button data-i="${i}" data-a="rec">Watch recording</button>` : ''}</div></div>`).join('');
-    list.onclick = e => {
-      const bn = e.target.closest('button'); if (!bn || bn.disabled) return;
-      const c = items[+bn.dataset.i];
-      if (bn.dataset.a === 'watch') attach(c.session);
-      else if (bn.dataset.a === 'live') startLive(c.codebase, c.recording);
-      else load(c.recording).catch(showError);
-    };
-    document.getElementById('drop').style.display = API ? '' : 'none';
-    document.getElementById('in-foot').textContent = !API ? 'Recordings only. For live runs: python tools/serve.py'
-      : live ? 'Live runs use real NVIDIA Nemotron calls and take a few minutes' : 'Live runs need NVIDIA_API_KEY in .env';
+  function renderIntake() {
+    document.getElementById('in-foot').textContent = API
+      ? 'COBOL → Python · every recorded output must match'
+      : 'Uploads need the local demo server';
   }
   const drop = document.getElementById('drop'), dropFile = document.getElementById('drop-file');
   async function upload(file) {
@@ -954,7 +950,10 @@
     note(`${body.files} COBOL files found. Starting…`);
     startLive(body.codebase, null);
   }
-  dropFile.onchange = () => upload(dropFile.files[0]);
+  dropFile.onchange = () => { const file = dropFile.files[0]; dropFile.value = ''; upload(file); };
+  drop.onkeydown = e => {
+    if (e.key === 'Enter' || e.code === 'Space') { e.preventDefault(); dropFile.click(); }
+  };
   ['dragenter', 'dragover'].forEach(ev => intake.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(ev => intake.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
   intake.addEventListener('drop', e => upload(e.dataTransfer && e.dataTransfer.files[0]));

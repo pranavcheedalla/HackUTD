@@ -1,4 +1,4 @@
-# Galaxy view
+# NorthBase
 
 The demo frontend. Each COBOL program is a star that travels left to right through the
 pipeline: Discover → Read → Probe → Record → Rewrite → Verify → Verified. The scene is black
@@ -21,11 +21,13 @@ Recordings open paused at Discover. Use **Next → / ← Back** or the keyboard 
 python tools/serve.py          # then open http://127.0.0.1:8765
 ```
 
-The page opens on the intake screen.
+The page opens on the case file. **Hand it the codebase** opens the centered NorthBase
+zip drop screen. A shooting star crosses the same sky from left to right; the codebase
+inventory is not displayed. You can also open that screen directly with `#codebases`.
 
-- **Run live** starts a real Nemotron run on that codebase, and the galaxy follows it as it happens.
-- **Watch recording** plays a saved real run.
 - **Dropping a .zip of COBOL** replays a known codebase, or starts a live run for a new codebase.
+- **Run live instead** starts a real Nemotron run on the uploaded codebase.
+- **Upload .zip** returns to the NorthBase drop screen.
 
 If live isn't possible (no `NVIDIA_API_KEY` in `.env`, or a run already in progress), the page
 says so. During a live run, **Switch to recording** jumps to the saved run of the same codebase.

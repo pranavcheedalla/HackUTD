@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Legacy → Verified</title>
+<title>NorthBase</title>
 <style>
   :root { --ink: #e8eaf2; --dim: rgba(232,234,242,.45); --line: rgba(232,234,242,.12); --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
   html, body { margin: 0; height: 100%; background: #07070a; color: var(--ink); font-family: var(--mono); overflow: hidden; }
@@ -35,7 +35,7 @@
   .tabs button:hover { color: rgba(232,234,242,.7); }
   .tabs button.on { color: rgba(242,241,248,.95); }
   .tabs button.on::after { content: ''; position: absolute; left: 50%; bottom: 0; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: #d4c4ff; box-shadow: 0 0 6px 1px rgba(200,180,255,.7); }
-  .body { flex: 1; overflow: auto; font-size: 12px; line-height: 1.75; color: rgba(232,234,242,.7); padding-right: 6px;
+  .body { flex: 1; min-height: 0; overflow: auto; font-size: 12px; line-height: 1.75; color: rgba(232,234,242,.7); padding-right: 6px;
     -webkit-mask-image: linear-gradient(#000 calc(100% - 46px), transparent); mask-image: linear-gradient(#000 calc(100% - 46px), transparent); padding-bottom: 46px; }
   .body::-webkit-scrollbar { width: 3px; } .body::-webkit-scrollbar-thumb { background: rgba(232,234,242,.1); border-radius: 2px; }
   .body > * { opacity: 0; transform: translateY(6px); animation: drift .7s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: calc(var(--i, 0) * 70ms + 140ms); }
@@ -93,12 +93,19 @@
   .st-dot { width: 3px; height: 3px; border-radius: 50%; background: rgba(232,234,242,.2); }
   .st-dot.st-ok { background: #c9f5e6; box-shadow: 0 0 5px 1px rgba(150,240,210,.55); }
   .st-dot.st-bad { background: #ffb3c6; box-shadow: 0 0 6px 1px rgba(255,140,175,.75); }
-  /* intake: pick or drop a codebase. Same sky, same type: no cards, no boxes */
-  .intake { position: fixed; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; padding: 6vh 6vw; box-sizing: border-box;
+  /* NorthBase intake: one drop target, in the same sky. No cards or boxes. */
+  .intake { position: fixed; inset: 0; z-index: 8; display: flex; align-items: flex-start; justify-content: center; padding: 6vh 6vw; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain;
     background: radial-gradient(ellipse at 50% 45%, rgba(6,5,13,.35), rgba(6,5,13,.82) 75%); opacity: 0; pointer-events: none; transition: opacity .6s ease; }
   .intake.open { opacity: 1; pointer-events: auto; }
   body.intake-on .controls { opacity: 0; pointer-events: none; }
-  .in-wrap { width: min(760px, 100%); display: flex; flex-direction: column; gap: 30px; }
+  .in-wrap { width: min(760px, 100%); display: flex; flex-direction: column; gap: 30px; margin-block: auto; }
+  .northbase-wrap { align-items: center; text-align: center; gap: 24px; }
+  .northbase-title { margin: 0; font: 200 clamp(48px, 8vw, 96px)/1.1 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; letter-spacing: .1em; text-indent: .1em; color: rgba(242,241,248,.94); }
+  .northbase-tagline { margin: -6px 0 18px; font-size: 9.5px; letter-spacing: 5px; text-transform: uppercase; color: rgba(232,234,242,.45); }
+  .northbase-wrap .in-back { align-self: center; margin: 0 0 22px; }
+  .northbase-wrap .drop { flex-direction: column; gap: 18px; }
+  .northbase-wrap .drop-s { margin-top: 12px; text-transform: none; letter-spacing: 1.5px; }
+  .drop:focus-visible { outline: 1px dotted var(--dim); outline-offset: 14px; }
   .in-title { font-size: 13px; letter-spacing: 8px; text-transform: uppercase; color: rgba(242,241,248,.92); }
   .in-lede { margin: -14px 0 0; font: 400 19px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; color: rgba(242,241,248,.86); max-width: 600px; }
   .drop { position: relative; display: flex; align-items: center; gap: 22px; padding: 6px 0; cursor: pointer; width: max-content; max-width: 100%; }
@@ -107,23 +114,14 @@
   .drop:hover .drop-ring, .drop.over .drop-ring { transform: scale(1.12); border-color: rgba(230,220,255,.95); }
   .drop-t { font-size: 10.5px; letter-spacing: 3.5px; text-transform: uppercase; color: rgba(242,241,248,.9); }
   .drop-s { display: block; margin-top: 6px; font-size: 9.5px; letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.4); }
-  .in-label { display: flex; align-items: center; gap: 12px; font-size: 9.5px; letter-spacing: 3.5px; text-transform: uppercase; color: rgba(232,234,242,.4); }
-  .in-label::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(232,234,242,.14), rgba(232,234,242,0)); }
-  .in-list { display: flex; flex-direction: column; gap: 0; margin-top: -14px; }
-  .cb { display: grid; grid-template-columns: 1fr auto; gap: 4px 24px; align-items: baseline; padding: 16px 0; border-top: 1px dotted rgba(232,234,242,.08); }
-  .cb-name { font: 400 17px/1.3 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; color: rgba(242,241,248,.94); }
-  .cb-meta { font-size: 9.5px; letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.42); grid-column: 1; }
-  .cb-about { font: 400 13.5px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; color: rgba(232,234,242,.6); grid-column: 1; }
-  .cb-act { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: 22px; align-self: center; }
-  .cb-act button { background: none; border: 0; padding: 4px 0; cursor: pointer; font: 9.5px var(--mono); letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.5); display: inline-flex; align-items: center; gap: 8px; transition: color .25s; }
-  .cb-act button::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
-  .cb-act button:hover { color: rgba(242,241,248,.95); }
-  .cb-act button.live { color: #c9f5e6; } .cb-act button.live:hover { color: #e6fff6; }
-  .cb-act button[disabled] { opacity: .35; cursor: default; }
   .in-note { min-height: 18px; font: 400 13px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Arial, sans-serif; color: rgba(232,234,242,.62); }
   .in-note.bad { color: #ffc4d4; }
   .in-foot { font-size: 9px; letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.3); }
-  @media (max-width: 640px) { .cb { grid-template-columns: 1fr; } .cb-act { grid-column: 1; grid-row: auto; margin-top: 6px; } }
+  @media (max-width: 640px) {
+    .panel, .panel.station { width: 100vw; padding: 36px 24px 24px; -webkit-mask-image: none; mask-image: none; }
+    .tabs { flex-wrap: wrap; gap: 14px; }
+    .northbase-tagline { letter-spacing: 3px; }
+  }
   /* case file: the real-world problem, before the codebase goes in */
   .case .in-wrap { gap: 26px; }
   .ev { display: flex; flex-direction: column; gap: 8px; padding: 18px 0 2px; border-top: 1px dotted rgba(232,234,242,.08); }
@@ -138,7 +136,6 @@
   .case-go:hover { color: #e6fff6; }
   .in-back { align-self: flex-start; background: none; border: 0; padding: 0; cursor: pointer; font: 9px var(--mono); letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.38); margin-bottom: -14px; }
   .in-back:hover { color: rgba(242,241,248,.85); }
-  .cb.featured .cb-name::after { content: '  ·  the case'; font: 9px var(--mono); letter-spacing: 3px; text-transform: uppercase; color: rgba(212,196,255,.75); vertical-align: middle; }
   .loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 11px; letter-spacing: 4px; color: var(--dim); text-transform: uppercase; pointer-events: none; }
 </style>
 </head>
@@ -154,16 +151,15 @@
   <span class="sep"></span>
   <select id="speed" aria-label="Speed"><option value="0.6">0.6×</option><option value="1" selected>1×</option><option value="1.6">1.6×</option><option value="2.5">2.5×</option></select>
   <span class="sep"></span>
-  <select id="replay" aria-label="Replay"></select>
-  <span class="sep"></span>
-  <button id="intake-btn">Codebases</button>
+  <select id="replay" aria-label="Replay" hidden></select>
+  <button id="intake-btn">Upload .zip</button>
   <button id="fallback" hidden>Switch to recording</button>
   <button id="run-live-instead" hidden>Run live instead</button>
   <button id="backlive" hidden>Back to live</button>
 </div>
 <section class="intake case" id="case" aria-hidden="true">
   <div class="in-wrap">
-    <div class="in-title">Case file  ·  two real events</div>
+    <div class="in-title">NorthBase  ·  Case file</div>
     <p class="in-lede">The systems that run money and public benefits are often written in COBOL: hard to change, and dangerous to change without proof.</p>
     <div class="ev">
       <div class="ev-when">April 2018  ·  TSB Bank, United Kingdom</div>
@@ -179,18 +175,16 @@
     <button class="case-go" id="case-go">Hand it the codebase  →</button>
   </div>
 </section>
-<section class="intake" id="intake" aria-hidden="true">
-  <div class="in-wrap">
+<section class="intake" id="intake" aria-hidden="true" aria-labelledby="northbase-title">
+  <div class="in-wrap northbase-wrap">
     <button class="in-back" id="in-back">←  Case file</button>
-    <div class="in-title">Legacy  →  Verified</div>
-    <p class="in-lede">Drop a COBOL codebase. NVIDIA Nemotron agents move it to Python, and the original program checks every answer.</p>
-    <label class="drop" id="drop" title="Drop a .zip of COBOL files">
+    <h1 class="northbase-title" id="northbase-title">NorthBase</h1>
+    <p class="northbase-tagline">Legacy → Verified</p>
+    <label class="drop" id="drop" role="button" tabindex="0" aria-label="Drop your .zip of COBOL" title="Drop a .zip of COBOL files">
       <input type="file" id="drop-file" accept=".zip,application/zip" hidden>
       <span class="drop-ring" aria-hidden="true"></span>
-      <span><span class="drop-t">Drop a .zip of COBOL</span><span class="drop-s" id="drop-s">or pick a codebase below</span></span>
+      <span><span class="drop-t">Drop your .zip of COBOL</span><span class="drop-s" id="drop-s">or click to choose a file</span></span>
     </label>
-    <div class="in-label">Codebases</div>
-    <div class="in-list" id="in-list"></div>
     <div class="in-note" id="in-note" role="status"></div>
     <div class="in-foot" id="in-foot"></div>
   </div>
