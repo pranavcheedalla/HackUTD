@@ -109,7 +109,7 @@
   }
 
   // ---------- playback ----------
-  let clock = 0, last = performance.now(), speed = 1, playing = false, focus = null, resumeAfter = false, focusX = null;  // focusX: world x the open readout is about
+  let clock = 0, last = performance.now(), speed = 1, playing = false, chase = false, focus = null, resumeAfter = false, focusX = null;  // focusX: world x the open readout is about
   let cam = 0, cs = 0, trail = [], fr = 0, shoot = null, hits = [];
   let travel = null;  // one presenter click: fly to the next stop, then wait there
   let entrance = null;  // the upload star becomes the first program at Discover
@@ -153,6 +153,7 @@
   }
   function step(direction) {
     if (!R || !TL || intakeOpen() || travel || entrance) return;
+    chase = false;  // the presenter has taken over
     if (SIM && direction > 0) {  // replay: Next skips the wait and lands this step's real result
       const b = beatAt(Math.min(clock, TL.end - 1e-3));
       if (b.working) { SIM.n++; simApply(); clock = Math.max(clock, b.t0); syncPlayback(); return; }
@@ -181,7 +182,7 @@
     if (travel.elapsed >= travel.duration) { clock = travel.target; travel = null; }
   }
   function restart() {
-    cancelEntrance();
+    cancelEntrance(); chase = false;
     if (SIM) { travel = null; resumeAfter = false; closePanel(); closeCaption(); return startSim(SIM.full); }
     travel = null; resumeAfter = false; closePanel(); closeCaption();
     clock = R && !R.live && stops().length ? stopTime(stops()[0]) : 0; cam = 0; cs = 0; trail = []; lastFail = null;
@@ -527,8 +528,12 @@
       syncPlayback(); return;
     }
     if (intakeOpen()) { syncPlayback(); try { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.globalAlpha = 1; drawSky(now / 1000); } catch (err) { console.error(err); } return; }
-    // a live run joined late catches up at double speed until it is close to what's happening now
-    const edge = R && R.live && TL && TL.beats.find(q => q.working), catchUp = edge && edge.t0 - clock > 15 ? Math.max(speed, 2) : speed;
+    // a live run keeps pace with the real one: when the screen is behind what Nemotron has already
+    // done, it plays faster until it is caught up (also to the end, once the run has finished)
+    const edge = R && R.live && TL && TL.beats.find(q => q.working);
+    if (chase && R && R.finished && clock >= TL.end - .5) chase = false;
+    const behind = R && R.live && TL && (chase || edge) ? (edge ? edge.t0 : TL.end) - clock : 0;
+    const catchUp = behind > 6 ? Math.max(speed, 2.4) : behind > 2.5 ? Math.max(speed, 1.6) : speed;
     if (travel) advanceTravel(dtReal);
     else if (R && playing) { clock = Math.min(TL.end + 2, clock + dtReal * catchUp); if (SIM) simTick(); }
     syncPlayback();
@@ -940,7 +945,13 @@
   // ---------- loading: recordings, the intake, live runs ----------
   const sel = document.getElementById('replay'), intake = document.getElementById('intake');
   const fallbackBtn = document.getElementById('fallback'), backBtn = document.getElementById('backlive');
-  const runLiveBtn = document.getElementById('run-live-instead');
+  const runLiveBtn = document.getElementById('run-live-instead'), quickBtn = document.getElementById('quick-live');
+  // one standalone program (nothing it calls) migrated live: real Nemotron calls in about 40 seconds
+  function offerQuickLive(codebase) {
+    const pick = R && (R.modules || []).find(m => m.kind !== 'subprogram' && !(m.depends_on || []).length);
+    quickBtn.hidden = !(API && API.live && codebase && pick);
+    quickBtn.onclick = () => startLive(codebase, R && R.name, { only: pick.id, quick: true });
+  }
   let uploadVersion = 0;
   let API = null, pollTimer = null, liveSession = null, recordings = [];
   const caseFile = document.getElementById('case');
@@ -972,7 +983,7 @@
   }
   async function load(name, demo = null) {
     const version = ++uploadVersion;
-    runLiveBtn.hidden = true; runLiveBtn.onclick = null;
+    runLiveBtn.hidden = true; runLiveBtn.onclick = null; quickBtn.hidden = true;
     stopLive(); const lv = sel.querySelector('option[value="__live"]'); if (lv) lv.remove();
     const res = await fetch(`replays/${name}.json`, { cache: 'no-store' }); if (!res.ok) throw new Error(`replay ${name}: ${res.status}`);
     const rep = await res.json();
@@ -986,6 +997,7 @@
     document.getElementById('loading').style.display = 'none'; closeIntake();
     if ([...sel.options].some(o => o.value === name)) sel.value = name;
     history.replaceState(null, '', `#${name}`);
+    offerQuickLive((demo && demo.codebase) || R.codebase);
     if (demo) {
       startSim(R);  // the dropped codebase runs through, step by step, from the recording
       runLiveBtn.hidden = !demo.codebase;
@@ -1015,13 +1027,13 @@
       if (r.status === 200) { const rep = await r.json(); applyLive(rep); if (rep.finished) { liveSession = null; return; } }
       else if (r.status !== 202) throw new Error(`live run: ${r.status}`);
     } catch (err) { note(`Lost the live run (${err.message}). You can switch to the recording.`, true); }
-    pollTimer = setTimeout(poll, 1500);
+    pollTimer = setTimeout(poll, 700);
   }
-  async function startLive(codebase, recording) {
-    const version = ++uploadVersion; runLiveBtn.hidden = true; runLiveBtn.onclick = null;
-    note('Starting a real Nemotron run…');
+  async function startLive(codebase, recording, opts = {}) {
+    const version = ++uploadVersion; runLiveBtn.hidden = true; runLiveBtn.onclick = null; quickBtn.hidden = true;
+    note(opts.only ? `Starting a live run of ${opts.only.toUpperCase()}…` : 'Starting a real Nemotron run…');
     let r;
-    try { r = await fetch('api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codebase }) }); }
+    try { r = await fetch('api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codebase, ...opts }) }); }
     catch (err) { if (version === uploadVersion) note('The local server is not reachable.', true); return; }
     const body = await r.json().catch(() => ({}));
     if (version !== uploadVersion) return;
@@ -1034,8 +1046,8 @@
   }
   // follow a run (started here, or from the terminal: open the page at #live=<session>)
   function attach(session) {
-    uploadVersion++; runLiveBtn.hidden = true; runLiveBtn.onclick = null;
-    stopLive(); liveSession = session; backBtn.hidden = true;
+    uploadVersion++; runLiveBtn.hidden = true; runLiveBtn.onclick = null; quickBtn.hidden = true;
+    stopLive(); liveSession = session; backBtn.hidden = true; chase = true;
     R = null; TL = null; workSince.clear(); clock = 0; cam = 0; trail = []; closePanel(); closeCaption(); playing = true; playBtn.textContent = 'Pause';
     closeIntake(); const l = document.getElementById('loading'); l.textContent = 'Copying the codebase…'; l.style.display = 'grid';
     history.replaceState(null, '', `#live=${session}`);
@@ -1073,7 +1085,7 @@
     if (!API) return note('Uploads need the local server: python tools/serve.py.', true);
     cancelEntrance();
     const version = ++uploadVersion;
-    runLiveBtn.hidden = true; runLiveBtn.onclick = null;
+    runLiveBtn.hidden = true; runLiveBtn.onclick = null; quickBtn.hidden = true;
     note(`Reading ${file.name}…`);
     const r = await fetch('api/upload', { method: 'POST', headers: { 'Content-Type': 'application/zip', 'X-Filename': file.name }, body: file }).catch(() => null);
     const body = r ? await r.json().catch(() => ({})) : {};

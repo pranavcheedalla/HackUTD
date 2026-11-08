@@ -45,6 +45,14 @@ MAX_UPLOAD = 5 * 1024 * 1024
 MAX_FILES = 200
 SESSION_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-(real|fake)-[0-9a-f]{6}$")
 
+# A quick live run (one program, about 30 s): the same verification, minus the slow extras.
+QUICK_ENV = {
+    "SKIP_UNIT_TESTS": "1",   # the bonus unit-test layer (two Nemotron calls, ~30 s)
+    "PREFETCH_REWRITE": "1",  # write the Python while the answer key is recorded
+    "LLM_SPEC_REVIEW": "0",   # one spec pass instead of a draft plus a review...
+    "SPEC_MODEL": "super",    # ...written by Super, which is faster here than Nano + Super review
+}
+
 _lock = threading.Lock()
 _current: dict = {}  # {"session", "codebase", "process", "started"}
 
@@ -116,10 +124,14 @@ def _running() -> str | None:
     return _current.get("session") if p and p.poll() is None else None
 
 
-def _start(codebase: str) -> tuple[int, dict]:
+def _start(codebase: str, only: str | None = None, quick: bool = False) -> tuple[int, dict]:
     known = {c["codebase"] for c in _codebases()}
     if codebase not in known:
         return 400, {"error": "Unknown codebase."}
+    if only is not None:  # one program of the codebase (and anything it calls), e.g. a 40-second live demo
+        stems = {f.stem.lower() for f in (ROOT / codebase).rglob("*") if f.suffix.lower() in {".cbl", ".cob", ".cobol"}}
+        if not re.fullmatch(r"[a-z0-9_]{1,40}", only or "") or only not in stems:
+            return 400, {"error": "Unknown program."}
     if not _api_key():
         return 409, {"error": "Live runs need NVIDIA_API_KEY in .env. Watching the recording instead."}
     with _lock:
@@ -128,8 +140,11 @@ def _start(codebase: str) -> tuple[int, dict]:
         latest = ROOT / "runs" / "latest_session.json"
         before = latest.read_text() if latest.exists() else ""
         log = (ROOT / "runs" / "live-runs.log").open("a")
-        proc = subprocess.Popen([sys.executable, str(ROOT / "tools" / "isolated_run.py"), "--mode", "real",
-                                 "--legacy-dir", codebase], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+        cmd = [sys.executable, str(ROOT / "tools" / "isolated_run.py"), "--mode", "real", "--legacy-dir", codebase]
+        if only:
+            cmd += ["--only", only]
+        env = dict(os.environ, **QUICK_ENV) if quick else None
+        proc = subprocess.Popen(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=env)
         session = None
         for _ in range(60):  # isolated_run publishes its session name right after copying the repo
             time.sleep(.25)
@@ -247,10 +262,11 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(*_safe_upload(body, self.headers.get("X-Filename", "upload.zip")))
         if self.path == "/api/runs":
             try:
-                codebase = json.loads(body or b"{}").get("codebase", "")
+                req = json.loads(body or b"{}")
             except ValueError:
                 return self._json(400, {"error": "Bad request."})
-            return self._json(*_start(codebase))
+            only = req.get("only")
+            return self._json(*_start(str(req.get("codebase", "")), str(only).lower() if only else None, bool(req.get("quick"))))
         return self._json(404, {"error": "Not found."})
 
 

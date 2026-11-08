@@ -75,7 +75,7 @@ can reach that localhost URL. A fresh Claude checkout should start its own serve
 Stage flow: NorthBase landing → Read the case file → Hand it the codebase → drop
 `demo/retail-bank.zip` → recognition → star entrance → paused Discover → Next/Back.
 Keep the replay disclosure honest. Explain that this replays a real run and that a live
-run takes about 25 minutes. Home is available to return to the beginning.
+run takes about 7 minutes (One program live: about 25 s). Home is available to return to the beginning.
 
 No NVIDIA key is needed for the recorded demo. Use `tools/serve.py` for zip uploads;
 `python -m http.server` supports direct recording playback but has no upload API.
