@@ -29,10 +29,11 @@ The established backend and recordings are on main.
 - **Codebases:** `samples/legacy` ("Invoicing", 3 programs) and `samples/bank` ("Retail bank", 5 programs, 2 shared subprograms).
   `demo/retail-bank.zip` is the bank, ready to drop on stage.
 - **Frontend (`web/`):**
-  - case file (TSB 2018 and New Jersey 2020, with sources) → centered NorthBase zip drop, with a shooting star in the same sky;
+  - case file (TSB 2018 and New Jersey 2020, with sources) → NorthBase zip drop, with a large wordmark slightly left of center and a shooting star in the same sky;
   - a recognised zip zooms through the drop star into paused Discover; reduced motion skips the zoom;
   - black/silver legacy sky → violet rewrite → mint aurora after acceptance;
   - the galaxy replay narrates itself (one sentence and one proof per station);
+  - captions have no background source text, program-name clutter, or duplicate corner metadata; the honest replay disclosure stays visible without a date;
   - click a ring for the caption, `DETAILS →` for the station readout (all 7 stations built by the team);
   - live mode follows a real run, with Switch to recording and Back to live;
   - `#live=<session>` follows a run started from the terminal.

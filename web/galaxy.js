@@ -230,19 +230,6 @@
   });
 
   // ---------- module text for the scene ----------
-  function sceneText(m) {
-    const cob = (m.cobol || '').split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim() && !/^\s{6}\*/.test(l));
-    const p = cob.findIndex(l => /PROCEDURE\s+DIVISION/i.test(l));
-    const py = (m.python || '').split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
-    let q = py.findIndex(l => /^def (main|call)\b/.test(l)); if (q < 0) q = 0;
-    const rules = ((m.spec && m.spec.business_rules) || []).slice(0, 5);
-    return {
-      cobol: cob.slice(Math.max(0, p), Math.max(0, p) + 8).map(l => clip(l.trim() ? l.slice(Math.min(7, l.search(/\S/))) : l, 46)),
-      python: py.slice(q, q + 8).map(l => clip(l, 46)),
-      rules: rules.map(r => clip(r, 58)),
-    };
-  }
-
   function subtitle(m, i, b, u) {
     if (b.working) return 'WORKING' + '.'.repeat(1 + Math.floor(performance.now() / 500) % 3);
     const n = R.modules.length;
@@ -350,7 +337,7 @@
 
   // ---------- narration: one sentence and one proof next to the ring ----------
   const SANS = '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", "Helvetica Neue", Arial, sans-serif';
-  let capFocus = null, capOn = 0;
+  let capFocus = null;
   function sans(s, px, py, sz, a, col = '242,241,248', wt = '400') {
     x.font = `${wt} ${sz}px ${SANS}`; x.fillStyle = `rgba(${col},${a})`; x.textAlign = 'left'; setLS(0); x.fillText(s, px, py);
   }
@@ -409,7 +396,7 @@
   }
   function narration(t, ox, lc, b, u) {
     const ac = activeCaption(t, b, u);
-    capOn = ac ? ac.a : 0; if (!ac || ac.a < .01) return;
+    if (!ac || ac.a < .01) return;
     const m = R.modules[ac.mi], hist = m.history || [], attempt = hist[ac.ai] || null;
     const cp = ac.working ? workingCaption(ac, m) : Captions.get(ac.n + 1, { module: m, replay: R, attempt, attemptIndex: ac.ai, mutation: R.kind === 'mutation' });
     if (!cp) return;
@@ -421,7 +408,7 @@
     const sx = ac.n * GAP + ox, A = ac.a;
     const right = W - (sx + 96) >= 300, compact = !right;  // narrow screens: a smaller caption above the ring
     const x0 = right ? sx + 96 : 28, maxW = right ? Math.min(440, W - x0 - 32) : W - 56;
-    const y0 = right ? CY - 152 : 76;  // compact: below the corner labels, above the ring
+    const y0 = right ? CY - 152 : 76;
     const S1 = compact ? 15.5 : 17, S2 = compact ? 13.5 : 14.5, DZ = compact ? 17 : 20;
 
     // a soft darkening behind the words, no box: legible over the aurora
@@ -653,6 +640,9 @@
     const wx = p * GAP, camT = focusX !== null ? focusX + W / 2 - freeMid : wx + W / 2 - starAt;
     cam += (camT - cam) * (focusX !== null ? .08 : b.k === 'swoop' ? .12 : .055);
     const ox = W / 2 - cam, lc = rgb(mix([225, 230, 245], [195, 170, 255], c));
+    const caption = !panel.classList.contains('open') && activeCaption(t, b, u);
+    // Above-ring captions get clear space instead of a second cluster behind their words.
+    const quietCaption = caption && caption.a > .01 && W - (caption.n * GAP + ox + 96) < 300;
 
     x.save(); x.translate(jit, 0);
     x.fillStyle = `rgb(${rgb(mix([7, 7, 10], [10, 6, 22], c))})`; x.fillRect(-10, 0, W + 20, H);
@@ -673,13 +663,10 @@
       x.strokeStyle = g; x.lineWidth = 1; x.beginPath(); x.moveTo(sx2 - 90, sy2 - 32); x.lineTo(sx2, sy2); x.stroke(); if (shoot.l > 40) shoot = null;
     }
 
-    // faint real content behind the active stations
-    const st = m._text || (m._text = sceneText(m));
-    const annoOn = capOn > .02 || (lastFail && t >= lastFail.t0 && t <= lastFail.t1 + 2.3);
+    // Probe particles belong to the station; source and rules live in Details.
     for (let i = 1; i < 7; i++) {
       const sx = i * GAP + ox; if (sx < -GAP || sx > W + GAP || b.k === 'intro') continue;
-      const near = Math.max(0, 1 - Math.abs(p - i) * 1.6), lines = b.k === 'outro' ? null : i === 1 ? st.rules : i === 3 ? st.cobol : i === 4 || i === 5 ? st.python : null;
-      if (lines && lines.length) { x.globalAlpha = near * (i === 1 ? .12 : .1) * (annoOn ? 0 : 1); lines.forEach((l, k) => txt(l, sx - 250, 96 + k * 24, 14, 1, 0, 'left', i === 3 || i === 1 ? '232,234,242' : '200,185,255')); x.globalAlpha = 1; }
+      const near = Math.max(0, 1 - Math.abs(p - i) * 1.6);
       if (i === 2 && near > 0) for (let k = 0; k < 30; k++) { const an = k / 30 * 6.283 + t * .3, r = 52 + 16 * Math.sin(k * 1.7 + t); x.fillStyle = `rgba(230,235,250,${.6 * near})`; x.beginPath(); x.arc(sx + Math.cos(an) * r, CY + Math.sin(an) * r * .45, 1, 0, 7); x.fill(); }
     }
 
@@ -718,23 +705,22 @@
 
     // codebase cluster at Discover: programs still waiting their turn
     const dx = ox;
-    const waiting = mods.map((q, i) => i).filter(i => i > mi || (i === mi && (b.k === 'swoop' || b.k === 'intro')));
+    const waiting = quietCaption ? [] : mods.map((q, i) => i).filter(i => i > mi || (i === mi && (b.k === 'swoop' || b.k === 'intro')));
     const cpos = i => [dx + CLUSTER[i % CLUSTER.length][0], CY + CLUSTER[i % CLUSTER.length][1]];
     x.setLineDash([2, 5]); x.strokeStyle = `rgba(${lc},.18)`;
     mods.forEach((q, i) => q.depends_on.forEach(d => { const j = mods.findIndex(z => z.id === d); if (j >= 0 && waiting.includes(i) && waiting.includes(j)) { const [a1, a2] = cpos(i), [b1, b2] = cpos(j); x.beginPath(); x.moveTo(a1, a2); x.lineTo(b1, b2); x.stroke(); } }));
     x.setLineDash([]);
     waiting.forEach(i => { const [qx, qy] = cpos(i); const blockedQ = (mods[i].error || '').startsWith('blocked') && i === mi;
-      star(qx, qy, t + i, blockedQ ? .3 : .38, '215,222,240', '235,238,248', i);
-      if (b.k !== 'intro') txt(mods[i].id.toUpperCase(), qx, qy - 18, 9, .45, 2); });  // names wait until the intro title has faded
+      star(qx, qy, t + i, blockedQ ? .3 : .38, '215,222,240', '235,238,248', i); });
 
     // constellation at Verified: programs already accepted
     const vx = 6 * GAP + ox, vpos = i => [vx + CONST[i % CONST.length][0], CY + CONST[i % CONST.length][1]];
-    const verified = mods.map((q, i) => i).filter(i => done(i) && !(i === mi && travelling));
+    const verified = quietCaption ? [] : mods.map((q, i) => i).filter(i => done(i) && !(i === mi && travelling));
     x.setLineDash([2, 5]); x.strokeStyle = `rgba(${lc},.28)`;
     mods.forEach((q, i) => q.depends_on.forEach(d => { const j = mods.findIndex(z => z.id === d); if (j >= 0 && verified.includes(i) && verified.includes(j)) { const [a1, a2] = vpos(i), [b1, b2] = vpos(j); x.beginPath(); x.moveTo(a1, a2); x.lineTo(b1, b2); x.stroke(); } }));
     x.setLineDash([]);
-    verified.forEach(i => { const [qx, qy] = vpos(i); star(qx, qy, t + i, b.k === 'outro' ? .55 : .4, i % 2 ? '120,230,210' : rgb(mix([215, 225, 255], [185, 140, 255], c)), '235,228,255', i); txt(mods[i].id.toUpperCase(), qx, qy - 20, 9, .55, 2); });
-    mods.forEach((q, i) => { if (i < mi && q.status !== 'done' && !(q.error || '').startsWith('blocked')) { const fx = 5 * GAP + ox + 40 * (i - mi), fy = CY + 34; star(fx, fy, t, .22, '200,190,200', '220,215,220', i); txt(q.id.toUpperCase() + ' · FAILED', fx, fy + 22, 9, .4, 2); } });
+    verified.forEach(i => { const [qx, qy] = vpos(i); star(qx, qy, t + i, b.k === 'outro' ? .55 : .4, i % 2 ? '120,230,210' : rgb(mix([215, 225, 255], [185, 140, 255], c)), '235,228,255', i); });
+    if (!quietCaption) mods.forEach((q, i) => { if (i < mi && q.status !== 'done' && !(q.error || '').startsWith('blocked')) { const fx = 5 * GAP + ox + 40 * (i - mi), fy = CY + 34; star(fx, fy, t, .22, '200,190,200', '220,215,220', i); txt(q.id.toUpperCase() + ' · FAILED', fx, fy + 22, 9, .4, 2); } });
 
     // the travelling star and its tail
     if (travelling) {
@@ -772,24 +758,14 @@
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(${rgb(mix([0, 0, 0], [8, 2, 20], c))},.8)`);
     x.fillStyle = vg; x.fillRect(0, 0, W, H);
 
-    // corners
-    if (b.k !== 'intro') {
-      const left = `${(m.file || m.id).toUpperCase()}  ·  ${String(mi + 1).padStart(2, '0')} / ${String(n).padStart(2, '0')}${m.kind === 'subprogram' ? '  ·  SUBPROGRAM' : ''}`;
-      txt(left, 24, 30, 11, .5, 3, 'left');
-      const right = b.k === 'outro' ? 'MIGRATION COMPLETE' : b.blocked ? 'BLOCKED' : failing ? 'MISMATCH' : p > 5.98 ? `VERIFIED  ·  ${m.tests_passed} / ${m.tests_total}` : c > .1 ? 'BECOMING PYTHON' : 'LEGACY COBOL';
-      // narrow screens: drop the status under the file name instead of letting the two collide
-      const fits = measure(left, 11, 3) + measure(right, 11, 3) + 80 < W;
-      if (!panel.classList.contains('open')) txt(right, fits ? W - 24 : 24, fits ? 30 : 48, fits ? 11 : 10, fits ? .5 : .4, 3, fits ? 'right' : 'left');
-    }
-    const label = R.live ? `LIVE  ·  REAL NEMOTRON RUN  ·  ${String(R.codebase || '').toUpperCase()}${R.finished ? '  ·  FINISHED' : ''}`
+    if (b.blocked && !panel.classList.contains('open')) txt('BLOCKED', 24, 30, 11, .5, 3, 'left');
+    const label = R.live ? `LIVE  ·  REAL NEMOTRON RUN${R.finished ? '  ·  FINISHED' : ''}`
       : R.kind === 'mutation' ? 'CONTROLLED MUTATION  ·  PLANTED BUG, NOT A MODEL OUTPUT'
-      : `REPLAY OF A REAL ${R.mode === 'real_model' ? 'NEMOTRON' : 'OFFLINE FIXTURE'} RUN  ·  ${(R.started_at || '').slice(0, 16).replace('T', ' ')}`;
+      : R.mode === 'real_model' ? 'REPLAY OF A REAL NEMOTRON RUN' : 'OFFLINE FIXTURE REPLAY';
     // Keep the honest replay disclosure above the toolbar, even when its buttons wrap.
     const footerY = Math.min(H - 22, H - (playBtn.parentElement.offsetHeight + 34) / K);
     const footerLines = wrap(label, W - 48, 9, 2.5);
     if (!panel.classList.contains('open')) footerLines.forEach((line, i) => txt(line, W - 24, footerY - (footerLines.length - 1 - i) * 13, 9, .32, 2.5, 'right'));
-    if (W > 600 && !R.live && !playing && !panel.classList.contains('open')) txt('← BACK · NEXT →  |  CLICK A STAR OR RING TO INSPECT', W / 2, footerY - 26, 9, .4, 2);
-    else if (W > 600 && travelling && !panel.classList.contains('open') && t < 40) txt('CLICK A STAR OR A RING TO INSPECT', W / 2, footerY - 26, 9, .22 * clamp((t - 6) / 2) * clamp((40 - t) / 3), 3);
   }
 
   // ---------- side panel ----------

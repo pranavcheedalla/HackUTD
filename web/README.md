@@ -21,9 +21,13 @@ Recordings open paused at Discover. Use **Next → / ← Back** or the keyboard 
 python tools/serve.py          # then open http://127.0.0.1:8765
 ```
 
-The page opens on the case file. **Hand it the codebase** opens the centered NorthBase
+The page opens on the case file. **Hand it the codebase** opens the NorthBase
 zip drop screen. A shooting star crosses the same sky from left to right; the codebase
 inventory is not displayed. You can also open that screen directly with `#codebases`.
+
+The large wordmark sits slightly left of center on desktop. Station captions keep the
+explanation, proof, and Details link clear of background program labels and source text.
+The replay disclosure remains visible without a date or duplicate status headers.
 
 A recognised zip zooms through the drop star for 1.5 seconds and arrives paused at
 Discover. Escape cancels the entrance and returns to the drop screen. Reduced-motion
