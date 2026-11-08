@@ -17,13 +17,13 @@
   .controls .sep { width: 1px; height: 12px; background: var(--line); }
   /* The readout: an annotation in the sky, not a drawer. The galaxy stays visible behind it,
      darkened toward the right; a leader line on the canvas ties it to the ring or star. */
-  .panel { position: fixed; top: 0; right: 0; height: 100vh; width: min(560px, 92vw); box-sizing: border-box; padding: 58px 46px 34px 78px;
-    background: linear-gradient(90deg, rgba(6,5,13,0) 0%, rgba(6,5,13,.66) 18%, rgba(6,5,13,.86) 55%, rgba(6,5,13,.9) 100%);
+  .panel { position: fixed; top: 0; right: 0; height: 100vh; width: min(560px, max(380px, calc(100vw - 420px))); box-sizing: border-box; padding: 58px 46px 34px 78px;
+    background: linear-gradient(90deg, rgba(6,5,13,0) 0%, rgba(6,5,13,.84) 11%, rgba(6,5,13,.93) 32%, rgba(6,5,13,.95) 100%);
     -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 70px); mask-image: linear-gradient(90deg, transparent 0, #000 70px);
     opacity: 0; transform: translateX(28px); pointer-events: none; transition: opacity .55s ease, transform .7s cubic-bezier(.2,.7,.2,1);
     display: flex; flex-direction: column; gap: 22px; z-index: 5; }
   .panel.open { opacity: 1; transform: none; pointer-events: auto; }
-  .panel.station { width: min(700px, 94vw); }
+  .panel.station { width: min(700px, max(400px, calc(100vw - 400px))); }
   .panel header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
   .panel h2 { margin: 0; font-weight: 400; font-size: 12px; letter-spacing: 5px; text-transform: uppercase; color: rgba(242,241,248,.94); }
   .panel .meta { font-size: 9.5px; letter-spacing: 3px; color: rgba(232,234,242,.42); text-transform: uppercase; margin-top: 9px; }

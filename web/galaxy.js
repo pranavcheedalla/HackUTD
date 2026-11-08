@@ -106,7 +106,7 @@
   }
 
   // ---------- playback ----------
-  let clock = 0, last = performance.now(), speed = 1, playing = true, focus = null, resumeAfter = false;
+  let clock = 0, last = performance.now(), speed = 1, playing = true, focus = null, resumeAfter = false, focusX = null;  // focusX: world x the open readout is about
   let cam = 0, cs = 0, trail = [], fr = 0, shoot = null, hits = [];
   const playBtn = document.getElementById('play');
   playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? 'Pause' : 'Play'; playBtn.setAttribute('aria-label', playBtn.textContent); };
@@ -322,8 +322,10 @@
     cs += (target - cs) * .03; const c = cs;
     const failing = b.k === 'dwell' && b.fail && u > .42;
     const jit = failing && u < .5 && Math.random() < .3 ? (Math.random() - .5) * 7 : 0;
-    const wx = p * GAP, camT = focus !== null ? focus * GAP + W * .2 : wx;  // a station panel pulls the camera to its ring
-    cam += (camT - cam) * (focus !== null ? .08 : b.k === 'swoop' ? .12 : .055);
+    // an open readout pulls what it describes into the middle of the free sky left of it
+    const freeMid = panel.classList.contains('open') ? (innerWidth - panel.getBoundingClientRect().width) / 2 / K : W / 2;
+    const wx = p * GAP, camT = focusX !== null ? focusX + W / 2 - freeMid : wx;
+    cam += (camT - cam) * (focusX !== null ? .08 : b.k === 'swoop' ? .12 : .055);
     const ox = W / 2 - cam, lc = rgb(mix([225, 230, 245], [195, 170, 255], c));
 
     x.save(); x.translate(jit, 0);
@@ -421,7 +423,7 @@
     if (c > .02) { x.save(); x.globalCompositeOperation = 'multiply'; x.fillStyle = `rgb(${rgb(mix([255, 255, 255], [205, 170, 255], c))})`; x.fillRect(-10, H - 190, W + 20, 190); x.restore(); }
     x.restore();
 
-    if (focus === null) annotation(t, ox, lc);  // an open station readout already says it
+    if (!panel.classList.contains('open')) annotation(t, ox, lc);  // an open readout already says it
     leader(t, ox, lc);
 
     // intro and outro type
@@ -430,7 +432,7 @@
       txt('LEGACY  →  VERIFIED', W / 2, 70, 20, .9 * a, 10, 'center', '240,240,246', '300');
       txt(`${n} COBOL PROGRAM${n > 1 ? 'S' : ''}  ·  ${R.title.toUpperCase()}`, W / 2, 98, 10, .5 * a, 4);
     }
-    if (b.k === 'outro') {
+    if (b.k === 'outro' && !panel.classList.contains('open')) {
       const a = clamp((t - b.t0 - .4) / 1.2), ok = mods.filter(q => q.status === 'done').length;
       const total = mods.reduce((s, q) => s + (q.status === 'done' ? q.tests_total : 0), 0);
       txt(`${ok} / ${n} VERIFIED`, W / 2, H - 78, 20, .9 * a, 8, 'center', '245,246,252', '300');
@@ -445,9 +447,12 @@
 
     // corners
     if (b.k !== 'intro') {
-      txt(`${(m.file || m.id).toUpperCase()}  ·  ${String(mi + 1).padStart(2, '0')} / ${String(n).padStart(2, '0')}${m.kind === 'subprogram' ? '  ·  SUBPROGRAM' : ''}`, 24, 30, 11, .5, 3, 'left');
+      const left = `${(m.file || m.id).toUpperCase()}  ·  ${String(mi + 1).padStart(2, '0')} / ${String(n).padStart(2, '0')}${m.kind === 'subprogram' ? '  ·  SUBPROGRAM' : ''}`;
+      txt(left, 24, 30, 11, .5, 3, 'left');
       const right = b.k === 'outro' ? 'MIGRATION COMPLETE' : b.blocked ? 'BLOCKED' : failing ? 'MISMATCH' : p > 5.98 ? `VERIFIED  ·  ${m.tests_passed} / ${m.tests_total}` : c > .1 ? 'BECOMING PYTHON' : 'LEGACY COBOL';
-      if (!panel.classList.contains('open')) txt(right, W - 24, 30, 11, .5, 3, 'right');
+      // narrow screens: drop the status under the file name instead of letting the two collide
+      const fits = measure(left, 11, 3) + measure(right, 11, 3) + 80 < W;
+      if (!panel.classList.contains('open')) txt(right, fits ? W - 24 : 24, fits ? 30 : 48, fits ? 11 : 10, fits ? .5 : .4, 3, fits ? 'right' : 'left');
     }
     const label = R.kind === 'mutation' ? 'CONTROLLED MUTATION  ·  PLANTED BUG, NOT A MODEL OUTPUT'
       : `REPLAY OF A REAL ${R.mode === 'real_model' ? 'NEMOTRON' : 'OFFLINE FIXTURE'} RUN  ·  ${(R.started_at || '').slice(0, 16).replace('T', ' ')}`;
@@ -460,7 +465,12 @@
   let pMod = null, pTab = 'cobol', pStar = null;  // pStar: the module whose star the readout points at
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const TABS = [['cobol', 'COBOL'], ['python', 'Python'], ['spec', 'Spec'], ['tests', 'Answer key'], ['attempts', 'Attempts']];
-  function openPanel(i) {
+  function hold(worldX) {  // pause the replay while a readout is open; resume on close if it was playing
+    if (focusX === null) resumeAfter = playing;
+    playing = false; playBtn.textContent = 'Play'; focusX = worldX;
+  }
+  function openPanel(i, worldX) {
+    focus = null; if (worldX !== undefined) hold(worldX);
     pMod = R.modules[i]; pStar = i; document.getElementById('p-title').textContent = pMod.file || pMod.id;
     const st = pMod.status === 'done' ? `verified · ${pMod.tests_passed}/${pMod.tests_total}` : (pMod.error || pMod.status);
     document.getElementById('p-meta').textContent = `${pMod.kind} · ${st} · ${pMod.attempts} attempt${pMod.attempts === 1 ? '' : 's'}`;
@@ -470,15 +480,14 @@
   }
   function closePanel() {
     panel.classList.remove('open', 'station'); panel.setAttribute('aria-hidden', 'true'); pStar = null;
-    if (focus !== null) { focus = null; if (resumeAfter) { playing = true; playBtn.textContent = 'Pause'; } }
+    if (focusX !== null) { focus = null; focusX = null; if (resumeAfter) { playing = true; playBtn.textContent = 'Pause'; } }
   }
   // a station panel: that step's real output for the program on screen (web/stations/*.js)
   function openStation(i) {
     const S = window.Stations && window.Stations.get(i + 1);
     const b = beatAt(Math.min(clock, TL.end - 1e-3)), mi = b.mi !== undefined ? b.mi : (b.k === 'outro' ? R.modules.length - 1 : 0);
     const m = R.modules[mi];
-    if (focus === null) resumeAfter = playing;
-    playing = false; playBtn.textContent = 'Play'; focus = i; pStar = null;
+    hold(i * GAP); focus = i; pStar = null;
     document.getElementById('p-title').textContent = `${STATIONS[i][0]} — ${STATIONS[i][1]}`;
     document.getElementById('p-meta').textContent = `${m.file || m.id} · ${m.kind}${S && S.agent ? ' · ' + S.agent : ''}`;
     let out;
@@ -528,6 +537,8 @@
       if ((m.unit_tests_quarantined || []).length) h += H.section('Unit tests held for review', H.list(m.unit_tests_quarantined));
     }
     setBody(h);
+    const hi = (pTab === 'cobol' || pTab === 'python') && pBody.querySelector('.st-hi');
+    if (hi) pBody.scrollTop = Math.max(0, hi.offsetTop - pBody.offsetTop - 90);
   }
   function hitAt(e) {
     const r = cv.getBoundingClientRect(), mx = (e.clientX - r.left) / K, my = (e.clientY - r.top) / K;
@@ -536,7 +547,8 @@
   }
   cv.addEventListener('click', e => {
     const hh = hitAt(e); if (!hh) return closePanel();
-    if (typeof hh.id === 'string') openStation(+hh.id.slice(3)); else { if (focus !== null) closePanel(); openPanel(hh.id); }
+    if (typeof hh.id === 'string') openStation(+hh.id.slice(3));
+    else openPanel(hh.id, hh.x - (W / 2 - cam));  // the star's world position, so the camera can frame it
   });
   cv.addEventListener('mousemove', e => cv.classList.toggle('pointer', !!hitAt(e)));
 
@@ -560,5 +572,6 @@
   // for rehearsing a moment: galaxy.seek(seconds), galaxy.t
   window.galaxy = { seek(s) { clock = Math.max(0, s); trail = []; lastFail = null; cam = (beatAt(clock).k === 'move' ? beatAt(clock).a : (beatAt(clock).at || 0)) * GAP;
                              for (let i = 0; i < 90; i++) { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.save(); draw(clock); x.restore(); } }, get t() { return clock; },
-                    get beats() { return TL && TL.beats.map(b => [b.k, b.mi, b.at, +b.t0.toFixed(1), b.fail || false]); } };
+                    get beats() { return TL && TL.beats.map(b => [b.k, b.mi, b.at, +b.t0.toFixed(1), b.fail || false]); },
+                    get hits() { return hits.map(h => ({ id: h.id, x: h.x * K, y: h.y * K })); } };  // css px, for rehearsal checks
 })();
