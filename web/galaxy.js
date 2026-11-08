@@ -267,6 +267,29 @@
     }
   }
 
+  // ---------- star-chart leader: ties the open readout to its ring or star ----------
+  let leadIn = 0;
+  function leader(t, ox, lc) {
+    const open = panel.classList.contains('open');
+    leadIn = open ? Math.min(1, leadIn + .045) : 0; if (!open) return;
+    let ax, ay, r;
+    if (focus !== null) { ax = focus * GAP + ox; ay = CY; r = 34; }
+    else if (pStar !== null) { const hh = hits.find(q => q.id === pStar); if (!hh) return; ax = hh.x; ay = hh.y; r = 14; }
+    else return;
+    const px = (innerWidth - panel.offsetWidth) / K + 58 / K, py = 62 / K + 4;
+    if (px <= ax + r + 20) return;
+    const ex = ax + r * .72, ey = ay - r * .72, kx = ex + Math.max(18, Math.min(60, (py < ey ? ey - py : 30))), ky = py;
+    const seg = [[ex, ey], [kx, ky], [px, py]], len = Math.hypot(kx - ex, ky - ey) + (px - kx), draw = len * ease(leadIn);
+    x.save(); x.strokeStyle = `rgba(${lc},.42)`; x.lineWidth = .7; x.beginPath(); x.moveTo(ex, ey);
+    const l1 = Math.hypot(kx - ex, ky - ey);
+    if (draw <= l1) { const f = draw / l1; x.lineTo(ex + (kx - ex) * f, ey + (ky - ey) * f); }
+    else { x.lineTo(kx, ky); x.lineTo(kx + (draw - l1), ky); }
+    x.stroke();
+    x.strokeStyle = `rgba(${lc},.55)`; x.beginPath(); x.arc(ax, ay, r + 5, -Math.PI * .42, -Math.PI * .08); x.stroke();
+    if (leadIn >= 1) { x.fillStyle = `rgba(${lc},.7)`; x.fillRect(px - 1, py - 1, 2, 2); }
+    x.restore();
+  }
+
   // ---------- the frame ----------
   let lastFail = null;
   const CLUSTER = [[-70, -86], [62, -104], [-22, -140], [104, -60], [-118, -40], [30, -176]];
@@ -398,7 +421,8 @@
     if (c > .02) { x.save(); x.globalCompositeOperation = 'multiply'; x.fillStyle = `rgb(${rgb(mix([255, 255, 255], [205, 170, 255], c))})`; x.fillRect(-10, H - 190, W + 20, 190); x.restore(); }
     x.restore();
 
-    annotation(t, ox, lc);
+    if (focus === null) annotation(t, ox, lc);  // an open station readout already says it
+    leader(t, ox, lc);
 
     // intro and outro type
     if (b.k === 'intro') {
@@ -423,21 +447,21 @@
     if (b.k !== 'intro') {
       txt(`${(m.file || m.id).toUpperCase()}  ·  ${String(mi + 1).padStart(2, '0')} / ${String(n).padStart(2, '0')}${m.kind === 'subprogram' ? '  ·  SUBPROGRAM' : ''}`, 24, 30, 11, .5, 3, 'left');
       const right = b.k === 'outro' ? 'MIGRATION COMPLETE' : b.blocked ? 'BLOCKED' : failing ? 'MISMATCH' : p > 5.98 ? `VERIFIED  ·  ${m.tests_passed} / ${m.tests_total}` : c > .1 ? 'BECOMING PYTHON' : 'LEGACY COBOL';
-      txt(right, W - 24, 30, 11, .5, 3, 'right');
+      if (!panel.classList.contains('open')) txt(right, W - 24, 30, 11, .5, 3, 'right');
     }
     const label = R.kind === 'mutation' ? 'CONTROLLED MUTATION  ·  PLANTED BUG, NOT A MODEL OUTPUT'
       : `REPLAY OF A REAL ${R.mode === 'real_model' ? 'NEMOTRON' : 'OFFLINE FIXTURE'} RUN  ·  ${(R.started_at || '').slice(0, 16).replace('T', ' ')}`;
-    txt(label, W - 24, H - 22, 9, .32, 2.5, 'right');
+    if (innerWidth > 1100 && !panel.classList.contains('open')) txt(label, W - 24, H - 22, 9, .32, 2.5, 'right');
     if (travelling && !panel.classList.contains('open') && t < 40) txt('CLICK A STAR OR A RING TO INSPECT', W / 2, H - 48, 9, .22 * clamp((t - 6) / 2) * clamp((40 - t) / 3), 3);
   }
 
   // ---------- side panel ----------
   const panel = document.getElementById('panel'), pBody = document.getElementById('p-body'), pTabs = document.getElementById('p-tabs');
-  let pMod = null, pTab = 'cobol';
+  let pMod = null, pTab = 'cobol', pStar = null;  // pStar: the module whose star the readout points at
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const TABS = [['cobol', 'COBOL'], ['python', 'Python'], ['spec', 'Spec'], ['tests', 'Answer key'], ['attempts', 'Attempts']];
   function openPanel(i) {
-    pMod = R.modules[i]; document.getElementById('p-title').textContent = pMod.file || pMod.id;
+    pMod = R.modules[i]; pStar = i; document.getElementById('p-title').textContent = pMod.file || pMod.id;
     const st = pMod.status === 'done' ? `verified · ${pMod.tests_passed}/${pMod.tests_total}` : (pMod.error || pMod.status);
     document.getElementById('p-meta').textContent = `${pMod.kind} · ${st} · ${pMod.attempts} attempt${pMod.attempts === 1 ? '' : 's'}`;
     pTabs.innerHTML = TABS.map(([k, l]) => `<button data-k="${k}" class="${k === pTab ? 'on' : ''}">${l}</button>`).join('');
@@ -445,7 +469,7 @@
     renderTab(); panel.classList.remove('station'); panel.classList.add('open'); panel.setAttribute('aria-hidden', 'false');
   }
   function closePanel() {
-    panel.classList.remove('open', 'station'); panel.setAttribute('aria-hidden', 'true');
+    panel.classList.remove('open', 'station'); panel.setAttribute('aria-hidden', 'true'); pStar = null;
     if (focus !== null) { focus = null; if (resumeAfter) { playing = true; playBtn.textContent = 'Pause'; } }
   }
   // a station panel: that step's real output for the program on screen (web/stations/*.js)
@@ -454,7 +478,7 @@
     const b = beatAt(Math.min(clock, TL.end - 1e-3)), mi = b.mi !== undefined ? b.mi : (b.k === 'outro' ? R.modules.length - 1 : 0);
     const m = R.modules[mi];
     if (focus === null) resumeAfter = playing;
-    playing = false; playBtn.textContent = 'Play'; focus = i;
+    playing = false; playBtn.textContent = 'Play'; focus = i; pStar = null;
     document.getElementById('p-title').textContent = `${STATIONS[i][0]} — ${STATIONS[i][1]}`;
     document.getElementById('p-meta').textContent = `${m.file || m.id} · ${m.kind}${S && S.agent ? ' · ' + S.agent : ''}`;
     let out;
@@ -462,7 +486,7 @@
     catch (err) { console.error(`station ${i + 1} render:`, err); out = window.Stations.H.empty('This view hit an error. See the console.'); }
     const tabs = out && typeof out === 'object' && Array.isArray(out.tabs) ? out.tabs : null;
     pTabs.style.display = tabs && tabs.length > 1 ? '' : 'none';
-    const show = k => { pBody.innerHTML = tabs ? tabs[k].html : String(out || ''); pBody.scrollTop = 0;
+    const show = k => { setBody(tabs ? tabs[k].html : String(out || ''));
       [...pTabs.children].forEach((bn, j) => bn.classList.toggle('on', j === k)); };
     pTabs.innerHTML = tabs ? tabs.map((tb, j) => `<button data-st="${j}">${esc(tb.label)}</button>`).join('') : '';
     pTabs.onclick = e => { const k = e.target.dataset && e.target.dataset.st; if (k !== undefined) show(+k); };
@@ -470,24 +494,40 @@
   }
   const programTabs = e => { const k = e.target.dataset && e.target.dataset.k; if (!k) return; pTab = k; [...pTabs.children].forEach(bn => bn.classList.toggle('on', bn.dataset.k === k)); renderTab(); };
   document.getElementById('p-close').onclick = closePanel;
+  // the program readout uses the same building blocks as the stations, so the two never drift apart
+  const COBOL_LOGIC = /\b(IF|EVALUATE|WHEN|COMPUTE|MOVE|ADD|SUBTRACT|MULTIPLY|DIVIDE|PERFORM|CALL|DISPLAY|ACCEPT)\b/i;
+  const PY_KEY = /^\s*def (main|call)\b|ROUND_|quantize|^\s*import |^\s*from \S+ import /;
+  const linesWhere = (src, re, skip) => String(src || '').split('\n').map((l, k) => (!skip || !skip(l)) && re.test(l) ? k + 1 : 0).filter(Boolean);
+  const cobolComment = l => l.length > 6 && l[6] === '*' || /^\s*\*>/.test(l);
+  function setBody(html) {
+    pBody.innerHTML = html; pBody.scrollTop = 0;
+    [...pBody.children].forEach((el, k) => el.style.setProperty('--i', Math.min(k, 12)));
+  }
   function renderTab() {
-    const m = pMod; let h = '';
-    if (pTab === 'cobol') h = `<pre>${esc(m.cobol || 'Source not in this replay.')}</pre>`;
-    if (pTab === 'python') h = `<pre>${esc(m.python || 'Not written yet.')}</pre>`;
+    const m = pMod, H = window.Stations.H; let h = '';
+    if (pTab === 'cobol') h = m.cobol ? H.text('Bright lines carry the logic.') + H.code(m.cobol, { highlight: linesWhere(m.cobol, COBOL_LOGIC, cobolComment) }) : H.empty('Source not in this replay.');
+    if (pTab === 'python') h = m.python ? H.text('Bright lines are the entry points and the COBOL number rules.') + H.code(m.python, { highlight: linesWhere(m.python, PY_KEY) }) : H.empty('Not written yet.');
     if (pTab === 'spec') {
-      const s = m.spec || {};
-      h = `<div class="k">Summary</div><p>${esc(s.summary || '—')}</p>`;
+      const sp = m.spec || {};
+      h = sp.summary ? H.section('Summary', H.text(sp.summary)) : H.empty('No spec was recorded for this program.');
       for (const [k, l] of [['business_rules', 'Business rules'], ['edge_cases', 'Edge cases'], ['quirks', 'COBOL quirks']])
-        if ((s[k] || []).length) h += `<div class="k">${l}</div>` + s[k].map(r => `<p>· ${esc(typeof r === 'string' ? r : JSON.stringify(r))}</p>`).join('');
+        if ((sp[k] || []).length) h += H.section(l, H.list(sp[k].map(r => typeof r === 'string' ? r : JSON.stringify(r)), k === 'business_rules'));
     }
-    if (pTab === 'tests') h = `<div class="k">Recorded from the real COBOL (${(m.golden || []).length} shown)</div><table>${(m.golden || []).map(g => `<tr><td>${esc(g.input === '' ? '(empty)' : g.input)}</td><td>${esc(g.output)}</td></tr>`).join('')}</table>`;
+    if (pTab === 'tests') {
+      const g = m.golden || [], bad = new Set((m.history || []).flatMap(a => (a.failures || []).map(f => f.input)));
+      h = g.length ? H.section('Recorded from the real COBOL', H.table(['Input', 'Output'], g.slice(0, 40).map(c => [c.input, c.output]), { tone: k => bad.has(g[k].input) ? 'bad' : '' }))
+        : H.empty('No answer key in this replay.');
+    }
     if (pTab === 'attempts') {
-      h = (m.history || []).map(a => `<div class="att"><div>Attempt ${a.attempt} · <span class="${a.passed === a.total ? 'good' : 'bad'}">${a.passed} / ${a.total} match</span></div>` +
-        (a.failures || []).map(f => `<p>input <b>${esc(f.input)}</b><br>cobol&nbsp;&nbsp;&nbsp;${esc(f.expected)}<br><span class="bad">rewrite ${esc(f.actual)}</span></p>`).join('') +
-        (a.explanation && a.explanation.reason ? `<p>Nemotron (${esc(a.explanation.verdict || 'explanation')}): ${esc(a.explanation.reason)}</p>` : '') + '</div>').join('') || '<p>No attempts recorded.</p>';
-      if ((m.unit_tests_quarantined || []).length) h += `<div class="k">Generated unit tests held for review</div><p>${esc(m.unit_tests_quarantined.join(', '))}</p>`;
+      h = (m.history || []).map(a => {
+        let body = H.dots([...Array(a.passed || 0).fill('ok'), ...Array(Math.max(0, (a.total || 0) - (a.passed || 0))).fill('bad')]) + H.text(`${a.passed} of ${a.total} match.`);
+        (a.failures || []).slice(0, 3).forEach(f => { body += H.text(`Input ${f.input === '' ? '(empty)' : f.input}`) + H.diff(f.expected, f.actual); });
+        if (a.explanation && a.explanation.reason) body += H.quote(a.explanation.reason, `Nemotron · ${a.explanation.verdict === 'legacy_quirk' ? 'COBOL quirk' : 'new code bug'}`);
+        return H.section(`Attempt ${a.attempt}`, body);
+      }).join('') || H.empty('No attempts recorded.');
+      if ((m.unit_tests_quarantined || []).length) h += H.section('Unit tests held for review', H.list(m.unit_tests_quarantined));
     }
-    pBody.innerHTML = h; pBody.scrollTop = 0;
+    setBody(h);
   }
   function hitAt(e) {
     const r = cv.getBoundingClientRect(), mx = (e.clientX - r.left) / K, my = (e.clientY - r.top) / K;
