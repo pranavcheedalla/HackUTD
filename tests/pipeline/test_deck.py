@@ -23,3 +23,11 @@ def test_the_wrap_up_numbers_match_the_recordings():
     assert f"<b>{sum(m['tests_total'] for m in done)}</b>" in deck  # 163
     settle = next(m for m in rep["modules"] if m["id"] == "settle")
     assert f"verified {settle['tests_passed']} / {settle['tests_total']}" in deck  # 28 / 28
+
+
+def test_the_stack_slide_uses_the_logos_it_ships_with():
+    deck = (ROOT / "web" / "deck.html").read_text()
+    for name in re.findall(r"url\(logos/([a-z0-9]+)\.svg\)", deck):
+        logo = (ROOT / "web" / "logos" / f"{name}.svg").read_text()
+        assert logo.startswith("<svg") and "<script" not in logo.lower()
+    assert {"nvidia", "python", "langchain", "gnu", "html5", "javascript"} <= set(re.findall(r"logos/([a-z0-9]+)\.svg", deck))

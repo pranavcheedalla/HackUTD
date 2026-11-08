@@ -37,20 +37,34 @@
   /* 2 · how it's built: the stack on the galaxy's own station line */
   .head { margin: 0; font: 400 clamp(26px, 2.9vw, 44px)/1.25 var(--sans); color: rgba(244,243,250,.96); max-width: 900px; letter-spacing: -.3px; }
   .head i { font-style: normal; color: var(--violet); }
-  .line { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0 26px; margin-top: 9vh; }
-  .line::before { content: ''; position: absolute; left: 0; right: 0; top: 23px; height: 1px;
-    background: linear-gradient(90deg, rgba(232,234,242,0), rgba(232,234,242,.35) 8%, rgba(212,196,255,.55) 70%, rgba(185,240,220,.6) 92%, rgba(185,240,220,0)); }
-  .st { position: relative; display: flex; flex-direction: column; gap: 10px; }
-  .ring { width: 46px; height: 46px; border-radius: 50%; border: 1px solid rgba(232,234,242,.4); position: relative; background: #07070a; margin-bottom: 14px; }
-  .ring::after { content: ''; position: absolute; inset: 20px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 12px 2px rgba(232,234,242,.55); }
-  .st.ai .ring { border-color: rgba(212,196,255,.75); } .st.ai .ring::after { background: #efe8ff; box-shadow: 0 0 14px 3px rgba(200,180,255,.7); }
-  .st.ref .ring { border-color: rgba(185,240,220,.75); } .st.ref .ring::after { background: #e6fff6; box-shadow: 0 0 14px 3px rgba(150,240,210,.6); }
-  .st .n { font-size: 9px; letter-spacing: 3px; color: rgba(232,234,242,.35); }
-  .st h3 { margin: 0; font: 400 12px var(--mono); letter-spacing: 3.5px; text-transform: uppercase; color: rgba(242,241,248,.95); }
-  .st.ai h3 { color: var(--violet); } .st.ref h3 { color: var(--mint); }
-  .st p { margin: 0; font: 400 14px/1.55 var(--sans); color: rgba(232,234,242,.66); }
-  .st .role { font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase; color: rgba(232,234,242,.38); }
-
+  .arch { position: relative; width: 100%; max-width: 1280px; height: min(50vh, 470px); margin-top: 6vh; }
+  .wires { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .wires path { fill: none; vector-effect: non-scaling-stroke; }
+  .w { stroke: rgba(232,234,242,.22); stroke-width: 1; }
+  .w.ai { stroke: rgba(212,196,255,.45); } .w.ref { stroke: rgba(185,240,220,.45); } .w.human { stroke: rgba(255,184,203,.35); stroke-dasharray: 3 5; }
+  /* stars travelling the wires: what flows where */
+  .f { stroke: rgba(242,241,248,.9); stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: .1 90; animation: flow 3.2s linear infinite; filter: drop-shadow(0 0 3px rgba(232,234,242,.9)); }
+  .f.ai { stroke: #efe8ff; animation-duration: 2.6s; } .f.ref { stroke: #e6fff6; animation-duration: 2.4s; } .f.human { stroke: #ffd6e1; animation-duration: 4s; }
+  @keyframes flow { to { stroke-dashoffset: -90; } }
+  .wl { position: absolute; transform: translate(-50%, -50%); font-size: 8.5px; letter-spacing: 2.5px; text-transform: uppercase; color: rgba(232,234,242,.42); white-space: nowrap; }
+  .wl.ai { color: rgba(212,196,255,.75); } .wl.ref { color: rgba(185,240,220,.75); } .wl.human { color: rgba(255,184,203,.65); transform: translate(calc(-100% - 10px), -50%); }
+  .node { position: absolute; transform: translate(-50%, -32px); width: 190px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+  .logos { height: 64px; min-width: 64px; padding: 0 14px; box-sizing: border-box; border-radius: 32px; border: 1px solid rgba(232,234,242,.32); background: #07070a;
+    display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 0 22px rgba(232,234,242,.06); }
+  .lg { display: block; width: 28px; height: 28px; background: rgba(242,241,248,.92); -webkit-mask: var(--lg) center / contain no-repeat; mask: var(--lg) center / contain no-repeat;
+    filter: drop-shadow(0 0 6px rgba(232,234,242,.35)); }
+  .node.ai .logos { border-color: rgba(212,196,255,.7); box-shadow: 0 0 26px rgba(200,180,255,.18); } .node.ai .lg { background: #e9e0ff; }
+  .node.ref .logos { border-color: rgba(185,240,220,.7); box-shadow: 0 0 26px rgba(150,240,210,.16); } .node.ref .lg { background: #dcfff2; }
+  .node.core .logos { width: 76px; height: 76px; border-radius: 50%; border-color: rgba(242,241,248,.6); }
+  .node.core .lg { width: 34px; height: 34px; }
+  .node.human .logos { height: 44px; min-width: 44px; border-color: rgba(255,184,203,.55); }
+  .person { position: relative; width: 16px; height: 18px; }
+  .person::before { content: ''; position: absolute; left: 4px; top: 0; width: 8px; height: 8px; border-radius: 50%; border: 1.3px solid #ffd6e1; box-sizing: border-box; }
+  .person::after { content: ''; position: absolute; left: 0; bottom: 0; width: 16px; height: 8px; border-radius: 9px 9px 0 0; border: 1.3px solid #ffd6e1; border-bottom: 0; box-sizing: border-box; }
+  .node b { font: 400 11px var(--mono); letter-spacing: 3px; text-transform: uppercase; color: rgba(242,241,248,.95); }
+  .node.ai b { color: var(--violet); } .node.ref b { color: var(--mint); } .node.human b { color: #ffc7d5; }
+  .node span { font: 400 12.5px/1.45 var(--sans); color: rgba(232,234,242,.6); max-width: 190px; }
+  .node.human { transform: translate(-50%, -22px); flex-direction: row; width: auto; gap: 12px; }
   /* 3 · what we proved (the aurora: verified) */
   .big { margin: 0; font: 300 clamp(48px, 6.4vw, 104px)/1.05 var(--mono); letter-spacing: -.04em; color: #f4f2fb; }
   .big span { color: var(--mint); text-shadow: 0 0 30px rgba(150,240,210,.35); }
@@ -65,8 +79,8 @@
   .foot { position: fixed; left: 7vw; right: 7vw; bottom: 4.5vh; display: flex; justify-content: space-between; align-items: baseline; font-size: 9px; letter-spacing: 3px; text-transform: uppercase; color: rgba(232,234,242,.32); }
   .foot button { background: none; border: 0; padding: 4px 0; cursor: pointer; font: inherit; letter-spacing: inherit; text-transform: inherit; color: rgba(232,234,242,.5); }
   .foot button:hover { color: rgba(242,241,248,.9); }
-  @media (max-width: 900px) { .stats { grid-template-columns: 1fr 1fr; } .line { grid-template-columns: 1fr 1fr; gap: 30px 26px; } .line::before { display: none; } .slide { padding: 6vh 6vw 12vh; overflow-y: auto; justify-content: flex-start; } }
-  @media (prefers-reduced-motion: reduce) { .slide { transition: none; } .on .brand, .on .brand::before, .on .brand::after { animation: none; } }
+  @media (max-width: 900px) { .stats { grid-template-columns: 1fr 1fr; } .arch { transform: scale(.7); transform-origin: left top; } .slide { padding: 6vh 6vw 12vh; overflow-y: auto; justify-content: flex-start; } }
+  @media (prefers-reduced-motion: reduce) { .f { animation: none; } .slide { transition: none; } .on .brand, .on .brand::before, .on .brand::after { animation: none; } }
 </style>
 </head>
 <body>
@@ -86,25 +100,42 @@
   </div>
 </section>
 
-<section class="slide" data-n="2" aria-label="How it's built">
+<section class="slide s2" data-n="2" aria-label="How it's built">
   <p class="kicker">02  ·  <b>How it's built</b></p>
   <h2 class="head">Nemotron writes the Python. <i>The real COBOL decides</i> whether it ships.</h2>
-  <div class="line">
-    <div class="st ai"><span class="ring"></span><span class="n">01</span><h3>NVIDIA Nemotron</h3>
-      <p>Reads the COBOL, writes a plain-English spec, invents tricky test inputs, rewrites it in Python, explains any mismatch.</p>
-      <span class="role">Nemotron 3.5 Super · Lightning</span></div>
-    <div class="st"><span class="ring"></span><span class="n">02</span><h3>LangGraph</h3>
-      <p>Runs the agents as a loop: spec → record → rewrite ⇄ verify, until it matches or asks a person.</p>
-      <span class="role">Orchestration</span></div>
-    <div class="st ref"><span class="ring"></span><span class="n">03</span><h3>GnuCOBOL</h3>
-      <p>Compiles and runs the original program on every input. What it prints is the answer key.</p>
-      <span class="role">The referee</span></div>
-    <div class="st"><span class="ring"></span><span class="n">04</span><h3>Python sandbox</h3>
-      <p>Runs each rewrite on the same inputs, and rejects any code that reads the answers instead of computing them.</p>
-      <span class="role">Verify · anti-cheat</span></div>
-    <div class="st ai"><span class="ring"></span><span class="n">05</span><h3>NorthBound</h3>
-      <p>Drop a zip of COBOL and watch every step live, with a person in the loop when the agent gets stuck.</p>
-      <span class="role">Canvas UI · local server</span></div>
+  <div class="arch">
+    <svg class="wires" viewBox="0 0 1000 440" preserveAspectRatio="none" aria-hidden="true">
+      <path class="w" d="M150 220 H330"/>
+      <path class="w" d="M440 220 H560"/>
+      <path class="w ai" d="M660 196 C720 140 740 88 820 76"/>
+      <path class="w ref" d="M680 220 H820"/>
+      <path class="w" d="M660 244 C720 300 740 352 820 364"/>
+      <path class="w human" d="M610 395 V318"/>
+      <path class="f" d="M150 220 H330"/><path class="f" d="M440 220 H560"/>
+      <path class="f ai" d="M660 196 C720 140 740 88 820 76"/><path class="f ref" d="M680 220 H820"/>
+      <path class="f" d="M660 244 C720 300 740 352 820 364"/><path class="f human" d="M610 395 V318"/>
+    </svg>
+    <span class="wl" style="left:24%;top:44%">zip of COBOL  ·  live progress</span>
+    <span class="wl" style="left:50%;top:44%">isolated run</span>
+    <span class="wl ai" style="left:73%;top:19%">spec · tests · Python</span>
+    <span class="wl ref" style="left:75%;top:44%">answer key</span>
+    <span class="wl" style="left:78.5%;top:79%">outputs compared</span>
+    <span class="wl human" style="left:60%;top:81%">hint, when stuck</span>
+
+    <div class="node" style="left:8%;top:50%"><div class="logos"><i class="lg" style="--lg:url(logos/html5.svg)"></i><i class="lg" style="--lg:url(logos/javascript.svg)"></i></div>
+      <b>NorthBound</b><span>Canvas UI in the browser: drop a zip, watch every step</span></div>
+    <div class="node" style="left:38.5%;top:50%"><div class="logos"><i class="lg" style="--lg:url(logos/python.svg)"></i></div>
+      <b>Local server</b><span>Python · copies each run into its own session</span></div>
+    <div class="node core" style="left:61%;top:50%"><div class="logos"><i class="lg" style="--lg:url(logos/langchain.svg)"></i></div>
+      <b>LangGraph</b><span>The agent loop: spec → record → rewrite ⇄ verify</span></div>
+    <div class="node ai" style="left:88%;top:17%"><div class="logos"><i class="lg" style="--lg:url(logos/nvidia.svg)"></i></div>
+      <b>NVIDIA Nemotron</b><span>3.5 Super · reads, writes, explains</span></div>
+    <div class="node ref" style="left:88%;top:50%"><div class="logos"><i class="lg" style="--lg:url(logos/gnu.svg)"></i></div>
+      <b>GnuCOBOL</b><span>Runs the real COBOL: the referee</span></div>
+    <div class="node" style="left:88%;top:83%"><div class="logos"><i class="lg" style="--lg:url(logos/python.svg)"></i></div>
+      <b>Python sandbox</b><span>Runs the rewrite · blocks cheating</span></div>
+    <div class="node human" style="left:61%;top:93%"><div class="logos"><i class="person"></i></div>
+      <b>A person</b></div>
   </div>
 </section>
 
