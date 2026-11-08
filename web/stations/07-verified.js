@@ -4,6 +4,7 @@ Stations.register(7, {
   agent: 'accepted',
 
   render({ module, H }) {
+    if (module.status === 'running' || module.status === 'pending') return H.empty('Not accepted yet. The run is still working on this program.');
     if (module.status !== 'done') {
       return H.empty('This program was not verified.') + (module.error ? H.text(module.error) : '');
     }
@@ -24,6 +25,8 @@ Stations.register(7, {
     let tests;
     if (module.unit_tests_status === 'passed') {
       tests = H.tag('passed', 'ok') + H.text('Nemotron also wrote unit tests for the new code, and they pass.');
+    } else if (module.unit_tests_status === 'skipped') {
+      tests = H.tag('skipped', 'dim') + H.text('This was a quick live run: the bonus unit-test step was skipped. Verification against the real COBOL is complete.');
     } else if (module.unit_tests_status === 'needs_review') {
       tests = H.tag('needs review', 'bad')
         + H.text('Nemotron also wrote unit tests. These disagreed with the verified code and are kept, skipped, for a person to check:')

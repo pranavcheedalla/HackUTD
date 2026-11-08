@@ -85,6 +85,33 @@ def _safe(node_name: str):
     return deco
 
 
+# ---------- quick live run: write the Python while the answer key is being recorded ----------
+# The first rewrite needs only the spec and the COBOL, not the answer key, so a quick run
+# (PREFETCH_REWRITE=1) starts that Nemotron call as soon as the spec exists. Retries and
+# programs with dependencies always rewrite in order, as before.
+_prefetched: dict = {}
+_pool = None
+
+
+def _prefetch_rewrite(state: GraphState, spec: dict) -> None:
+    global _pool
+    if os.getenv("PREFETCH_REWRITE") != "1" or state.get("dep_modules"):
+        return
+    from concurrent.futures import ThreadPoolExecutor
+    _pool = _pool or ThreadPoolExecutor(max_workers=2, thread_name_prefix="prefetch")
+    _prefetched[state["id"]] = _pool.submit(agents.rewrite, spec, state["cobol_src"], None)
+
+
+def _first_rewrite(state: GraphState) -> str:
+    future = _prefetched.pop(state["id"], None)
+    if future is not None:
+        try:
+            return future.result()
+        except Exception as exc:  # noqa: BLE001 - fall back to the normal call
+            print(f"[rewrite] {state['id']}: early rewrite failed ({type(exc).__name__}), calling again")
+    return agents.rewrite(state["spec"], state["cobol_src"], None)
+
+
 # ---------- nodes ----------
 
 @_safe("extract_spec")
@@ -93,6 +120,7 @@ def extract_spec(state: GraphState) -> GraphState:
     spec["module_id"] = state["id"]  # keep ids consistent with file names
     SPECS_DIR.mkdir(exist_ok=True)
     (SPECS_DIR / f"{state['id']}.json").write_text(__import__("json").dumps(spec, indent=2))
+    _prefetch_rewrite(state, spec)
     out = {**state, "spec": spec, "status": "spec"}
     status.update(out, "extract_spec", spec.get("summary", ""))
     return out
@@ -198,7 +226,12 @@ def rewrite(state: GraphState) -> GraphState:
     spec = with_hints(state["spec"], hints)
     if deps:
         src = agents.rewrite(spec, state["cobol_src"], failures, deps=deps)
+    elif not failures and attempts == 1 and not hints:
+        src = _first_rewrite(state)
     else:
+        early = _prefetched.pop(state["id"], None)
+        if early is not None:  # written before the hint arrived: the hint must win
+            early.cancel()
         src = agents.rewrite(spec, state["cobol_src"], failures)
     MODERN_DIR.mkdir(exist_ok=True)
     py_path = MODERN_DIR / f"{state['id']}.py"
@@ -267,6 +300,11 @@ def attempt_record(state: GraphState, res: dict) -> dict:
 @_safe("accept")
 def accept(state: GraphState) -> GraphState:
     # unit tests are a bonus layer: failures here don't block acceptance
+    if os.getenv("SKIP_UNIT_TESTS") == "1":  # a quick live demo run: verification is complete, the bonus layer is skipped
+        out = {**state, "status": "done", "last_failures": [], "unit_tests_status": "skipped"}
+        hinted = "; a human hint guided the rewrite" if state.get("human_hints") else ""
+        status.update(out, "accept", f"verified identical. unit tests skipped (quick live run){hinted}")
+        return out
     try:
         UNIT_DIR.mkdir(parents=True, exist_ok=True)
         tests_src = agents.write_unit_tests(state["spec"], state["python_src"])

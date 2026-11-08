@@ -77,6 +77,36 @@ def test_no_hint_means_the_spec_is_untouched(run):
     assert seen[0] == {"business_rules": ["total the lines"]} and out["human_hints"] == []
 
 
+class _Early:
+    """A stand-in for quick mode's early rewrite (PREFETCH_REWRITE), written before any hint."""
+    def __init__(self):
+        self.cancelled = False
+
+    def result(self):
+        return "def main(s):\n    return 'early'\n"
+
+    def cancel(self):
+        self.cancelled = True
+
+
+def test_a_hint_before_attempt_one_replaces_the_early_rewrite(run, monkeypatch):
+    tmp, seen = run
+    early = _Early()
+    monkeypatch.setitem(graph._prefetched, "invoice", early)
+    _hint(tmp, "truncate")
+    out = graph.rewrite(_state(attempts=0, last_failures=[]))
+    assert early.cancelled and "invoice" not in graph._prefetched
+    assert seen[0]["business_rules"][-1].endswith("truncate") and "early" not in out["python_src"]
+    assert out["human_hints"][0]["attempt"] == 1
+
+
+def test_without_a_hint_attempt_one_uses_the_early_rewrite(run, monkeypatch):
+    _, seen = run
+    monkeypatch.setitem(graph._prefetched, "invoice", _Early())
+    out = graph.rewrite(_state(attempts=0, last_failures=[]))
+    assert "early" in out["python_src"] and seen == []
+
+
 def test_a_broken_hint_file_is_ignored(run):
     tmp, _ = run
     (tmp / "feedback").mkdir()
