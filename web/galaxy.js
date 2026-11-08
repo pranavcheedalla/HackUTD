@@ -106,7 +106,7 @@
   }
 
   // ---------- playback ----------
-  let clock = 0, last = performance.now(), speed = 1, playing = true;
+  let clock = 0, last = performance.now(), speed = 1, playing = true, focus = null, resumeAfter = false;
   let cam = 0, cs = 0, trail = [], fr = 0, shoot = null, hits = [];
   const playBtn = document.getElementById('play');
   playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? 'Pause' : 'Play'; playBtn.setAttribute('aria-label', playBtn.textContent); };
@@ -118,6 +118,7 @@
     if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
     if (e.key === 'r' || e.key === 'R') restart();
     if (e.key === 'Escape') closePanel();
+    if (/^[1-7]$/.test(e.key) && R) openStation(+e.key - 1);
     if (e.key === 'ArrowRight') clock = Math.min(TL.end, clock + 3);
     if (e.key === 'ArrowLeft') { clock = Math.max(0, clock - 3); trail = []; }
   });
@@ -298,7 +299,8 @@
     cs += (target - cs) * .03; const c = cs;
     const failing = b.k === 'dwell' && b.fail && u > .42;
     const jit = failing && u < .5 && Math.random() < .3 ? (Math.random() - .5) * 7 : 0;
-    const wx = p * GAP; cam += (wx - cam) * (b.k === 'swoop' ? .12 : .055);
+    const wx = p * GAP, camT = focus !== null ? focus * GAP + W * .2 : wx;  // a station panel pulls the camera to its ring
+    cam += (camT - cam) * (focus !== null ? .08 : b.k === 'swoop' ? .12 : .055);
     const ox = W / 2 - cam, lc = rgb(mix([225, 230, 245], [195, 170, 255], c));
 
     x.save(); x.translate(jit, 0);
@@ -349,6 +351,18 @@
       if (here && travelling) for (let r = 0; r < 2; r++) { const rr = 22 + ((u * 1.4 + r * .5) % 1) * 50; x.strokeStyle = `rgba(${rc},${.3 * (1 - (rr - 22) / 50)})`; x.beginPath(); x.arc(sx, CY, rr, 0, 7); x.stroke(); }
       txt(`${STATIONS[i][0]} — ${STATIONS[i][1].toUpperCase()}`, sx, CY + 120, 12, .25 + .6 * near, 3);
       if (b.k !== 'intro' && b.k !== 'swoop') txt(subtitle(m, i, here ? b : {}, u), sx, CY + 140, 11, .15 + .5 * near, 2);
+      if (b.k !== 'intro') hits.push({ x: sx, y: CY, r: 34, id: 'st:' + i });
+      if (focus === i) { x.strokeStyle = `rgba(${rc},.5)`; x.beginPath(); x.arc(sx, CY, 30 + Math.sin(t * 2) * 2, 0, 7); x.stroke(); }
+      const S = window.Stations && window.Stations.get(i + 1);
+      if (S && S.overlay && ((here && travelling) || focus === i)) {
+        try {
+          x.save();
+          S.overlay({ ctx: x, cx: sx, cy: CY, t, u: focus === i ? 1 : u, c, lc, module: m, replay: R, focused: focus === i,
+                      attempt: here && b.h !== undefined ? m.history[b.h] : m.history[m.history.length - 1],
+                      txt, star, clamp, mix, rgb, W, H });
+        } catch (err) { if (!S._warned) { S._warned = true; console.error(`station ${i + 1} overlay:`, err); } }
+        finally { x.restore(); }
+      }
     }
 
     // codebase cluster at Discover: programs still waiting their turn
@@ -414,7 +428,7 @@
     const label = R.kind === 'mutation' ? 'CONTROLLED MUTATION  ·  PLANTED BUG, NOT A MODEL OUTPUT'
       : `REPLAY OF A REAL ${R.mode === 'real_model' ? 'NEMOTRON' : 'OFFLINE FIXTURE'} RUN  ·  ${(R.started_at || '').slice(0, 16).replace('T', ' ')}`;
     txt(label, W - 24, H - 22, 9, .32, 2.5, 'right');
-    if (travelling && !panel.classList.contains('open') && t < 40) txt('CLICK A STAR TO INSPECT', W / 2, H - 48, 9, .22 * clamp((t - 6) / 2) * clamp((40 - t) / 3), 3);
+    if (travelling && !panel.classList.contains('open') && t < 40) txt('CLICK A STAR OR A RING TO INSPECT', W / 2, H - 48, 9, .22 * clamp((t - 6) / 2) * clamp((40 - t) / 3), 3);
   }
 
   // ---------- side panel ----------
@@ -427,10 +441,34 @@
     const st = pMod.status === 'done' ? `verified · ${pMod.tests_passed}/${pMod.tests_total}` : (pMod.error || pMod.status);
     document.getElementById('p-meta').textContent = `${pMod.kind} · ${st} · ${pMod.attempts} attempt${pMod.attempts === 1 ? '' : 's'}`;
     pTabs.innerHTML = TABS.map(([k, l]) => `<button data-k="${k}" class="${k === pTab ? 'on' : ''}">${l}</button>`).join('');
-    renderTab(); panel.classList.add('open'); panel.setAttribute('aria-hidden', 'false');
+    pTabs.style.display = ''; pTabs.onclick = programTabs;
+    renderTab(); panel.classList.remove('station'); panel.classList.add('open'); panel.setAttribute('aria-hidden', 'false');
   }
-  function closePanel() { panel.classList.remove('open'); panel.setAttribute('aria-hidden', 'true'); }
-  pTabs.onclick = e => { const k = e.target.dataset && e.target.dataset.k; if (!k) return; pTab = k; [...pTabs.children].forEach(bn => bn.classList.toggle('on', bn.dataset.k === k)); renderTab(); };
+  function closePanel() {
+    panel.classList.remove('open', 'station'); panel.setAttribute('aria-hidden', 'true');
+    if (focus !== null) { focus = null; if (resumeAfter) { playing = true; playBtn.textContent = 'Pause'; } }
+  }
+  // a station panel: that step's real output for the program on screen (web/stations/*.js)
+  function openStation(i) {
+    const S = window.Stations && window.Stations.get(i + 1);
+    const b = beatAt(Math.min(clock, TL.end - 1e-3)), mi = b.mi !== undefined ? b.mi : (b.k === 'outro' ? R.modules.length - 1 : 0);
+    const m = R.modules[mi];
+    if (focus === null) resumeAfter = playing;
+    playing = false; playBtn.textContent = 'Play'; focus = i;
+    document.getElementById('p-title').textContent = `${STATIONS[i][0]} — ${STATIONS[i][1]}`;
+    document.getElementById('p-meta').textContent = `${m.file || m.id} · ${m.kind}${S && S.agent ? ' · ' + S.agent : ''}`;
+    let out;
+    try { out = S ? S.render({ module: m, replay: R, H: window.Stations.H }) : window.Stations.H.empty('No view for this station yet.'); }
+    catch (err) { console.error(`station ${i + 1} render:`, err); out = window.Stations.H.empty('This view hit an error. See the console.'); }
+    const tabs = out && typeof out === 'object' && Array.isArray(out.tabs) ? out.tabs : null;
+    pTabs.style.display = tabs && tabs.length > 1 ? '' : 'none';
+    const show = k => { pBody.innerHTML = tabs ? tabs[k].html : String(out || ''); pBody.scrollTop = 0;
+      [...pTabs.children].forEach((bn, j) => bn.classList.toggle('on', j === k)); };
+    pTabs.innerHTML = tabs ? tabs.map((tb, j) => `<button data-st="${j}">${esc(tb.label)}</button>`).join('') : '';
+    pTabs.onclick = e => { const k = e.target.dataset && e.target.dataset.st; if (k !== undefined) show(+k); };
+    show(0); panel.classList.add('open', 'station'); panel.setAttribute('aria-hidden', 'false');
+  }
+  const programTabs = e => { const k = e.target.dataset && e.target.dataset.k; if (!k) return; pTab = k; [...pTabs.children].forEach(bn => bn.classList.toggle('on', bn.dataset.k === k)); renderTab(); };
   document.getElementById('p-close').onclick = closePanel;
   function renderTab() {
     const m = pMod; let h = '';
@@ -453,9 +491,13 @@
   }
   function hitAt(e) {
     const r = cv.getBoundingClientRect(), mx = (e.clientX - r.left) / K, my = (e.clientY - r.top) / K;
-    return hits.find(hh => Math.hypot(hh.x - mx, hh.y - my) < hh.r);
+    const near = hits.filter(hh => Math.hypot(hh.x - mx, hh.y - my) < hh.r);
+    return near.find(hh => typeof hh.id === 'number') || near[0];  // a star wins over the ring under it
   }
-  cv.addEventListener('click', e => { const hh = hitAt(e); if (hh) openPanel(hh.id); else closePanel(); });
+  cv.addEventListener('click', e => {
+    const hh = hitAt(e); if (!hh) return closePanel();
+    if (typeof hh.id === 'string') openStation(+hh.id.slice(3)); else { if (focus !== null) closePanel(); openPanel(hh.id); }
+  });
   cv.addEventListener('mousemove', e => cv.classList.toggle('pointer', !!hitAt(e)));
 
   // ---------- loading ----------

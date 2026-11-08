@@ -265,7 +265,9 @@
      "input": "1|12.339|0.00",
      "output": "ERROR:INVALID_INPUT"
     }
-   ]
+   ],
+   "attempt_sources": [],
+   "heldout": null
   }
  ],
  "events": [],

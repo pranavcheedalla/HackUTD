@@ -85,6 +85,10 @@ def export_session(session: Path) -> dict:
             "unit_tests_quarantined": m.get("unit_tests_quarantined", []),
             "spec": m.get("spec"), "cobol": cobol, "python": _read(session / "modern" / f"{mid}.py"),
             "golden": _golden(session, mid),
+            # each attempt's Python, when the run kept it (pipeline/graph.py rewrite node)
+            "attempt_sources": [{"attempt": a.get("attempt"), "python": SECRET.sub("nvapi-…", a.get("python", ""))}
+                                for a in m.get("attempt_sources") or []],
+            "heldout": None,  # filled by --audit
         })
     return {"kind": "run", "mode": state.get("mode", "real_model"), "session": session.name,
             "started_at": state.get("started_at"), "modules": modules, "events": events}
@@ -118,6 +122,7 @@ def main() -> int:
     ap.add_argument("--name", required=True, help="replay file name, e.g. codebase")
     ap.add_argument("--title", default="", help="shown in the page's session menu")
     ap.add_argument("--mutation", action="store_true", help="export the planted-bug mutation check")
+    ap.add_argument("--audit", type=Path, help="held-out audit JSON ({modules: {id: {passed, total}}}) to attach")
     args = ap.parse_args()
     if not re.fullmatch(r"[a-z0-9-]{1,40}", args.name):
         ap.error("--name: lowercase letters, digits and dashes only")
@@ -125,6 +130,11 @@ def main() -> int:
         ap.error(f"not a finished session folder: {args.session}")
     replay = export_mutation(args.session) if args.mutation else export_session(args.session)
     replay.update(name=args.name, title=args.title or args.name)
+    if args.audit:
+        audit = json.loads(args.audit.read_text()).get("modules", {})
+        for m in replay["modules"]:
+            if m["id"] in audit:
+                m["heldout"] = {"passed": audit[m["id"]]["passed"], "total": audit[m["id"]]["total"]}
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / f"{args.name}.json").write_text(json.dumps(replay, indent=1))
     index_path = OUT_DIR / "index.json"

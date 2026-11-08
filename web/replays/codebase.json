@@ -209,7 +209,12 @@
      "input": "g|1000.00|0.00",
      "output": "LK-TIER=g|LK-SUBTOTAL=0001000.00|LK-RATE=05.00"
     }
-   ]
+   ],
+   "attempt_sources": [],
+   "heldout": {
+    "passed": 200,
+    "total": 200
+   }
   },
   {
    "id": "interest",
@@ -392,7 +397,12 @@
      "input": "999999999999900",
      "output": "ERROR: YEARS MUST BE AT LEAST 1"
     }
-   ]
+   ],
+   "attempt_sources": [],
+   "heldout": {
+    "passed": 200,
+    "total": 200
+   }
   },
   {
    "id": "invoice",
@@ -599,7 +609,12 @@
      "input": "00010000101G",
      "output": "SUBTOTAL:       1.01\nDISCOUNT:     0.12\nNET:            0.89"
     }
-   ]
+   ],
+   "attempt_sources": [],
+   "heldout": {
+    "passed": 200,
+    "total": 200
+   }
   }
  ],
  "events": [
