@@ -1,0 +1,421 @@
+{
+  "run_id": "50e6f973",
+  "started_at": "2026-11-07T18:00:27",
+  "updated_at": "2026-11-07T18:04:22",
+  "modules": {
+    "discount": {
+      "id": "discount",
+      "status": "done",
+      "attempts": 1,
+      "tests_passed": 30,
+      "tests_total": 30,
+      "divergences": [],
+      "cobol_path": "<repo>/runs/sessions/20261107-180027-real-27d0f7/samples/legacy/discount.cbl",
+      "last_failures": [],
+      "kind": "subprogram",
+      "program_id": "DISCOUNT",
+      "link": [],
+      "copy_dirs": [],
+      "params": [
+        {
+          "name": "LK-TIER",
+          "pic": "X",
+          "kind": "text",
+          "int_digits": 0,
+          "dec_digits": 0,
+          "length": 1,
+          "signed": false
+        },
+        {
+          "name": "LK-SUBTOTAL",
+          "pic": "9(7)V99",
+          "kind": "numeric",
+          "int_digits": 7,
+          "dec_digits": 2,
+          "length": 9,
+          "signed": false
+        },
+        {
+          "name": "LK-RATE",
+          "pic": "9(2)V99",
+          "kind": "numeric",
+          "int_digits": 2,
+          "dec_digits": 2,
+          "length": 4,
+          "signed": false
+        }
+      ],
+      "depends_on": [],
+      "dep_modules": [],
+      "spec": {
+        "module_id": "discount",
+        "summary": "A discount rate is selected based on customer tier, subtotal threshold, or defaults to zero. The chosen rate is moved into LK-RATE and returned to the caller.",
+        "inputs": [
+          {
+            "name": "lk-tier",
+            "type": "string",
+            "format": "token 1, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC X: text, 1 chars"
+          },
+          {
+            "name": "lk-subtotal",
+            "type": "decimal",
+            "format": "token 2, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(7)V99: unsigned number, 7 integer digits + 2 implied decimals (no decimal point stored), max 9999999.99"
+          },
+          {
+            "name": "lk-rate",
+            "type": "decimal",
+            "format": "token 3, separated by '|'; human-readable number with literal decimal point where applicable; internal PIC 9(2)V99: unsigned number, 2 integer digits + 2 implied decimals (no decimal point stored), max 99.99"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "LK-RATE",
+            "type": "decimal",
+            "format": "PIC 9(2)V99, 2 integer digits + 2 implied decimals, unsigned, result displayed as 4 digits with implied decimal (e.g., 1250 for 12.50 percent)"
+          }
+        ],
+        "business_rules": [
+          "If LK-TIER equals 'G', LK-RATE is set to 12.50 percent.",
+          "If LK-TIER equals 'S', LK-RATE is set to 7.25 percent.",
+          "If LK-SUBTOTAL is greater than or equal to 1000.00, LK-RATE is set to 5.00 percent.",
+          "For all other cases (including invalid tier and subtotal below 1000.00), LK-RATE is set to 0.00.",
+          "The comparison LK-SUBTOTAL >= 1000.00 uses the implied decimal value (subtotal of 100000.00 triggers the branch)."
+        ],
+        "edge_cases": [
+          "LK-TIER = 'G' with any subtotal results in LK-RATE = 12.50.",
+          "LK-TIER = 'S' with any subtotal results in LK-RATE = 7.25.",
+          "LK-SUBTOTAL = 1000.00 (exact boundary) triggers the 5.00 percent rate, bypassing WHEN OTHER.",
+          "LK-SUBTOTAL = 999.99 does not trigger the 1000.00 branch; LK-RATE defaults to 0.00 if tier is not G or S.",
+          "Empty or whitespace LK-TIER token results in LK-RATE = 0.00 (WHEN OTHER taken).",
+          "LK-SUBTOTAL = 0.00 with tier not G or S results in LK-RATE = 0.00."
+        ],
+        "quirks": [
+          "LK-RATE PIC 9(2)V99 stores values as absolute integers (no sign); a MOVE of 12.50 stores 1250 internally but displays with implied decimal formatting.",
+          "No ROUNDED clause on any MOVE; fractional results from computation would truncate, but here only literal moves occur.",
+          "LK-SUBTOTAL >= 1000.00 comparison uses the full 9(7)V99 value; subtotals up to 9999999.99 are valid and the branch triggers at exactly 1000.00.",
+          "LK-TIER is a PIC X field; comparison is exact character match. Any non-'G' or non-'S' value (including spaces, digits, or other letters) routes to WHEN OTHER.",
+          "The test driver reads NUMVAL tokens with literal decimal points; the subprogram receives already-converted linkage fields, so internal formatting of the input line does not affect LK-SUBTOTAL or LK-RATE values."
+        ]
+      },
+      "golden_path": "<repo>/runs/sessions/20261107-180027-real-27d0f7/golden/discount.jsonl",
+      "py_path": "<repo>/runs/sessions/20261107-180027-real-27d0f7/modern/discount.py",
+      "unit_tests_status": "needs_review"
+    },
+    "interest": {
+      "id": "interest",
+      "status": "done",
+      "attempts": 1,
+      "tests_passed": 22,
+      "tests_total": 22,
+      "divergences": [],
+      "cobol_path": "<repo>/runs/sessions/20261107-180027-real-27d0f7/samples/legacy/interest.cbl",
+      "last_failures": [],
+      "kind": "program",
+      "program_id": "INTEREST",
+      "link": [],
+      "copy_dirs": [],
+      "params": [],
+      "depends_on": [],
+      "dep_modules": [],
+      "spec": {
+        "module_id": "interest",
+        "summary": "A simple interest calculator that reads a fixed-width 15-character input line containing principal, rate, and years, validates that years is at least 1, computes interest and total, and prints formatted output. If years is 0, it prints an error and stops.",
+        "inputs": [
+          {
+            "name": "IN-PRINCIPAL",
+            "type": "decimal",
+            "format": "cols 1-9, PIC 9(7)V99, 7 integer digits + 2 implied decimals, no decimal point stored"
+          },
+          {
+            "name": "IN-RATE",
+            "type": "decimal",
+            "format": "cols 10-13, PIC 9(2)V99, 2 integer digits + 2 implied decimals, no decimal point stored"
+          },
+          {
+            "name": "IN-YEARS",
+            "type": "integer",
+            "format": "cols 14-15, PIC 9(2), 2 integer digits"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "OUT-INTEREST",
+            "type": "decimal",
+            "format": "PIC Z(6)9.99, 10 chars wide, 2 decimals shown, leading zeros replaced by spaces"
+          },
+          {
+            "name": "OUT-TOTAL",
+            "type": "decimal",
+            "format": "PIC Z(7)9.99, 11 chars wide, 2 decimals shown, leading zeros replaced by spaces"
+          }
+        ],
+        "business_rules": [
+          "If IN-YEARS equals 0, the program prints \"ERROR: YEARS MUST BE AT LEAST 1\" and stops; no arithmetic is performed.",
+          "Interest is calculated as IN-PRINCIPAL * IN-RATE * IN-YEARS / 100, with intermediate decimals computed exactly and rounding applied to the final result when stored in WS-INTEREST (PIC 9(7)V99).",
+          "Total is calculated as IN-PRINCIPAL + WS-INTEREST, stored in WS-TOTAL (PIC 9(8)V99).",
+          "The calculated WS-INTEREST is moved to OUT-INTEREST (PIC Z(6)9.99) and WS-TOTAL is moved to OUT-TOTAL (PIC Z(7)9.99), applying display editing that replaces leading zeros with spaces.",
+          "DISPLAY \"INTEREST: \" OUT-INTEREST prints the literal text \"INTEREST: \" followed by the edited interest value.",
+          "DISPLAY \"TOTAL:    \" OUT-TOTAL prints the literal text \"TOTAL:    \" followed by the edited total value."
+        ],
+        "edge_cases": [
+          "IN-YEARS = 0 triggers the error branch and stops the program.",
+          "A result that exceeds the capacity of WS-INTEREST (PIC 9(7)V99) silently loses its leftmost digits without error.",
+          "A result that exceeds the capacity of WS-TOTAL (PIC 9(8)V99) silently loses its leftmost digits without error.",
+          "Leading zeros are allowed within the source's digit-count limits."
+        ],
+        "quirks": [
+          "COMPUTE ... ROUNDED rounds the exact intermediate result to 2 implied decimals when storing into WS-INTEREST; truncation occurs at the receiving field, not at each operator.",
+          "Without ON SIZE ERROR, overflow in COMPUTE silently truncates the leftmost digits.",
+          "The edited PIC Z(6)9.99 for OUT-INTEREST is 10 characters wide; leading zeros are replaced by spaces, but the decimal point and two decimal digits are always printed.",
+          "The edited PIC Z(7)9.99 for OUT-TOTAL is 11 characters wide; leading zeros are replaced by spaces, but the decimal point and two decimal digits are always printed.",
+          "DISPLAY concatenates operands with no separators; the literal \"INTEREST: \" (including the trailing space) and the edited number are output as one continuous string.",
+          "The literal \"TOTAL:    \" has exactly 5 trailing spaces to align the total output to a fixed column position."
+        ]
+      },
+      "golden_path": "<repo>/runs/sessions/20261107-180027-real-27d0f7/golden/interest.jsonl",
+      "py_path": "<repo>/runs/sessions/20261107-180027-real-27d0f7/modern/interest.py",
+      "unit_tests_status": "needs_review"
+    },
+    "invoice": {
+      "id": "invoice",
+      "status": "done",
+      "attempts": 1,
+      "tests_passed": 20,
+      "tests_total": 20,
+      "divergences": [],
+      "cobol_path": "<repo>/runs/sessions/20261107-180027-real-27d0f7/samples/legacy/invoice.cbl",
+      "last_failures": [],
+      "kind": "program",
+      "program_id": "INVOICE",
+      "link": [
+        "<repo>/runs/sessions/20261107-180027-real-27d0f7/samples/legacy/discount.cbl"
+      ],
+      "copy_dirs": [
+        "<repo>/runs/sessions/20261107-180027-real-27d0f7/samples/legacy/copybooks"
+      ],
+      "params": [],
+      "depends_on": [
+        "discount"
+      ],
+      "dep_modules": [
+        {
+          "module_id": "discount",
+          "program_id": "DISCOUNT",
+          "params": [
+            {
+              "name": "LK-TIER",
+              "pic": "X",
+              "kind": "text",
+              "int_digits": 0,
+              "dec_digits": 0,
+              "length": 1,
+              "signed": false
+            },
+            {
+              "name": "LK-SUBTOTAL",
+              "pic": "9(7)V99",
+              "kind": "numeric",
+              "int_digits": 7,
+              "dec_digits": 2,
+              "length": 9,
+              "signed": false
+            },
+            {
+              "name": "LK-RATE",
+              "pic": "9(2)V99",
+              "kind": "numeric",
+              "int_digits": 2,
+              "dec_digits": 2,
+              "length": 4,
+              "signed": false
+            }
+          ],
+          "status": "done"
+        }
+      ],
+      "spec": {
+        "module_id": "invoice",
+        "summary": "A COBOL invoice program reads a 12-character fixed-width line containing quantity, unit price, and customer tier, computes subtotal and discount, and displays formatted output or error messages for invalid inputs. The discount rate is determined by the customer tier via a DISCOUNT subroutine call.",
+        "inputs": [
+          {
+            "name": "INV-QTY",
+            "type": "integer",
+            "format": "cols 1-4, PIC 9(4), unsigned 4-digit integer, max 9999"
+          },
+          {
+            "name": "INV-UNIT-PRICE",
+            "type": "decimal",
+            "format": "cols 5-11, PIC 9(5)V99, unsigned 5 integer digits + 2 implied decimals, no decimal point stored, max 99999.99"
+          },
+          {
+            "name": "INV-CUST-TIER",
+            "type": "string",
+            "format": "col 12, PIC X, 1 character, 'G' for GOLD or 'S' for SILVER"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "OUT-SUBTOTAL",
+            "type": "decimal",
+            "format": "Z(6)9.99, 10 characters wide, display-edited with leading zero suppression, 2 decimal places shown"
+          },
+          {
+            "name": "OUT-DISC",
+            "type": "decimal",
+            "format": "Z(4)9.99, 8 characters wide, display-edited with leading zero suppression, 2 decimal places shown"
+          },
+          {
+            "name": "OUT-NET",
+            "type": "decimal",
+            "format": "-Z(6)9.99, 11 characters wide, display-edited with sign, 2 decimal places shown"
+          },
+          {
+            "name": "DISPLAY_LINE_28",
+            "type": "string",
+            "format": "ERROR: QUANTITY MUST BE AT LEAST 1"
+          },
+          {
+            "name": "DISPLAY_LINE_33",
+            "type": "string",
+            "format": "ERROR: SUBTOTAL TOO LARGE"
+          },
+          {
+            "name": "DISPLAY_LINE_43",
+            "type": "string",
+            "format": "SUBTOTAL: "
+          },
+          {
+            "name": "DISPLAY_LINE_44",
+            "type": "string",
+            "format": "DISCOUNT: "
+          },
+          {
+            "name": "DISPLAY_LINE_45",
+            "type": "string",
+            "format": "NET:     "
+          }
+        ],
+        "business_rules": [
+          "If INV-QTY is zero, display \"ERROR: QUANTITY MUST BE AT LEAST 1\" and stop.",
+          "WS-SUBTOTAL is computed as INV-QTY * INV-UNIT-PRICE (both unsigned). If the result exceeds 9999999.99, the ON SIZE ERROR clause displays \"ERROR: SUBTOTAL TOO LARGE\" and stops.",
+          "WS-DISC-RATE is determined by the DISCOUNT subroutine based on INV-CUST-TIER; the rate value is used in the discount calculation.",
+          "WS-DISC-AMT is computed as WS-SUBTOTAL * WS-DISC-RATE / 100. Intermediate decimals are kept exactly; the final result is truncated (not rounded) to 2 decimal places when stored in PIC 9(5)V99. If the truncated result exceeds 99999.99, high-order digits are silently lost.",
+          "WS-NET is computed as WS-SUBTOTAL - WS-DISC-AMT. If the result exceeds 9999999.99, high-order digits are silently lost.",
+          "OUT-SUBTOTAL receives WS-SUBTOTAL via MOVE; OUT-DISC receives WS-DISC-AMT via MOVE; OUT-NET receives WS-NET via MOVE.",
+          "DISPLAY concatenates its operands with no separators; literal text keeps its exact spacing."
+        ],
+        "edge_cases": [
+          "INV-QTY = 0 triggers the error message and stops the program.",
+          "INV-QTY = 9999 and INV-UNIT-PRICE = 99999 results in a subtotal overflow; the program displays \"ERROR: SUBTOTAL TOO LARGE\" and stops.",
+          "A discount calculation resulting in 12.339 is stored as 12.33 (truncation, not rounding).",
+          "A discount calculation resulting in a value above 99999.99 silently loses high-order digits in WS-DISC-AMT.",
+          "A net amount above 9999999.99 silently loses high-order digits in WS-NET.",
+          "INV-CUST-TIER = 'G' or 'S' determines the discount rate via the DISCOUNT call; invalid tier values may result in a default or zero rate."
+        ],
+        "quirks": [
+          "PIC 9 output is zero-filled; only Z suppresses zeros.",
+          "OUT-SUBTOTAL PIC Z(6)9.99 is 10 characters wide; OUT-DISC PIC Z(4)9.99 is 8 characters wide; OUT-NET PIC -Z(6)9.99 is 11 characters wide.",
+          "OUT-NET displays a leading minus sign only when the value is negative; for positive values, the sign position is a space.",
+          "ACCEPT reads one line into the receiving field; a short line is padded with spaces to fill the fixed width.",
+          "[static check, line 38] WS-DISC-AMT (PIC 9(5)V99: unsigned number, 5 integer digits + 2 implied decimals (no decimal point stored), max 99999.99) is stored WITHOUT ROUNDED: digits beyond 2 decimal place(s) are TRUNCATED, not rounded (e.g. 12.339 is stored as 12.33, not 12.34)."
+        ]
+      },
+      "golden_path": "<repo>/runs/sessions/20261107-180027-real-27d0f7/golden/invoice.jsonl",
+      "py_path": "<repo>/runs/sessions/20261107-180027-real-27d0f7/modern/invoice.py",
+      "unit_tests_status": "passed"
+    }
+  },
+  "events": [
+    {
+      "t": "2026-11-07T18:00:46",
+      "module": "discount",
+      "node": "extract_spec",
+      "msg": "A discount rate is selected based on customer tier, subtotal threshold, or defaults to zero. The chosen rate is moved into LK-RATE and returned to the caller."
+    },
+    {
+      "t": "2026-11-07T18:00:54",
+      "module": "discount",
+      "node": "record",
+      "msg": "recorded 30 golden cases"
+    },
+    {
+      "t": "2026-11-07T18:01:09",
+      "module": "discount",
+      "node": "rewrite",
+      "msg": "attempt 1"
+    },
+    {
+      "t": "2026-11-07T18:01:09",
+      "module": "discount",
+      "node": "verify",
+      "msg": "30/30 equivalence tests passed"
+    },
+    {
+      "t": "2026-11-07T18:01:42",
+      "module": "discount",
+      "node": "accept",
+      "msg": "verified identical. unit test writer failed: Generated unit tests need review: These tests fail: test_business_rule_branches_exact_rates, test_extra_long_input_no_crash, test_subtotal_boundaries_with_invalid_tier, test_when_other_branch_taken\nvh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_business_rule_branches_exact_rates[Z|1000.00|0-5.00_0]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_business_rule_branches_exact_rates[A|1000.00|0-5.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_business_rule_branches_exact_rates[Z|9999999.99|0-5.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_business_rule_branches_exact_rates[Z|1000.00|0-5.00_1]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_business_rule_branches_exact_rates[Z|999.99|0-0.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_when_other_branch_taken[]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_when_other_branch_taken[ ]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_when_other_branch_taken[|1000.00|0]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_when_other_branch_taken[X|0.00|0]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_when_other_branch_taken[Z|999.99|0]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_when_other_branch_taken[1|500.00|0]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_when_other_branch_taken[g|1000.00|0]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_subtotal_boundaries_with_invalid_tier[0.00-0.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_subtotal_boundaries_with_invalid_tier[0.01-0.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_subtotal_boundaries_with_invalid_tier[999.99-0.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_subtotal_boundaries_with_invalid_tier[1000.00-5.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_subtotal_boundaries_with_invalid_tier[1000.01-5.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_subtotal_boundaries_with_invalid_tier[9999999.99-5.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_c8prfbek/test_discount.py::test_extra_long_input_no_crash[input_line0]\n23 failed, 40 passed in 0.10s\n"
+    },
+    {
+      "t": "2026-11-07T18:01:58",
+      "module": "interest",
+      "node": "extract_spec",
+      "msg": "A simple interest calculator that reads a fixed-width 15-character input line containing principal, rate, and years, validates that years is at least 1, computes interest and total, and prints formatted output. If years is 0, it prints an error and stops."
+    },
+    {
+      "t": "2026-11-07T18:02:10",
+      "module": "interest",
+      "node": "record",
+      "msg": "recorded 22 golden cases"
+    },
+    {
+      "t": "2026-11-07T18:02:22",
+      "module": "interest",
+      "node": "rewrite",
+      "msg": "attempt 1"
+    },
+    {
+      "t": "2026-11-07T18:02:22",
+      "module": "interest",
+      "node": "verify",
+      "msg": "22/22 equivalence tests passed"
+    },
+    {
+      "t": "2026-11-07T18:02:51",
+      "module": "interest",
+      "node": "accept",
+      "msg": "verified identical. unit test writer failed: Generated unit tests need review: These tests fail: test_exact_output_values, test_normal_computation_branch\n     \"input_line, expected_interest, expected_total\",\n        [\n            # principal = 1.00, rate = 5.00%, years = 1\n            # interest = 1.00 * 5.00 * 1 / 100 = 0.05 -> ROUNDED to 0.05\n            # total = 1.00 + 0.05 = 1.05\n            (\"00000010005001\", \"         0.05\", \"        1.05\"),\n            # principal = 0.00, rate = 0.00, years = 1 -> interest 0.00, total 0.00\n            (\"000000000000001\", \"         0.00\", \"        0.00\"),\n            # principal = 100.00, rate = 10.00%, years = 2\n            # interest = 100.00 * 10.00 * 2 / 100 = 20.00\n            # total = 100.00 + 20.00 = 120.00\n            (\"00001000100002\", \"        20.00\", \"      120.00\"),\n        ],\n    )\n    def test_exact_output_values(input_line, expected_interest, expected_total):\n        \"\"\"Hand-computed from spec: P * R * Y / 100 rounded, then P + interest.\"\"\"\n        output = main(input_line)\n>       assert _interest_line(output) == \"INTEREST: \" + expected_interest\nE       AssertionError: assert 'INTEREST:       0.00' == 'INTEREST:         20.00'\nE         \nE         - INTEREST:         20.00\nE         ?                 ---\nE         + INTEREST:       0.00\n\n/var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_h16qo3ka/test_interest.py:158: AssertionError\n________________ test_normal_computation_branch[00000010005050] ________________\n\ninput_line = '00000010005050'\n\n    @pytest.mark.parametrize(\n        \"input_line\",\n        [\n            \"00000010005001\",   # years = 01 -> compute\n            \"00000010005050\",   # years = 50 -> compute\n            \"00000010005099\",   # years = 99 -> compute\n        ],\n    )\n    def test_normal_computation_branch(input_line):\n        \"\"\"Spec: years >= 1 takes the arithmetic path, not the error path.\"\"\"\n        output = main(input_line)\n>       assert output.startswith(\"INTEREST: \")\nE       AssertionError: assert False\nE        +  where False = <built-in method startswith of str object at 0x10a836d30>('INTEREST: ')\nE        +    where <built-in method startswith of str object at 0x10a836d30> = 'ERROR: YEARS MUST BE AT LEAST 1'.startswith\n\n/var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_h16qo3ka/test_interest.py:242: AssertionError\n=========================== short test summary info ============================\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_h16qo3ka/test_interest.py::test_exact_output_values[00000010005001-         0.05-        1.05]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_h16qo3ka/test_interest.py::test_exact_output_values[000000000000001-         0.00-        0.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_h16qo3ka/test_interest.py::test_exact_output_values[00001000100002-        20.00-      120.00]\nFAILED ../../../../../../../var/folders/6g/v_2424613mg4427zdpj4y1vh0000gn/T/p4_pyt_h16qo3ka/test_interest.py::test_normal_computation_branch[00000010005050]\n4 failed, 38 passed in 0.08s\n"
+    },
+    {
+      "t": "2026-11-07T18:03:11",
+      "module": "invoice",
+      "node": "extract_spec",
+      "msg": "A COBOL invoice program reads a 12-character fixed-width line containing quantity, unit price, and customer tier, computes subtotal and discount, and displays formatted output or error messages for invalid inputs. The discount rate is determined by the customer tier via a DISCOUNT subroutine call."
+    },
+    {
+      "t": "2026-11-07T18:03:16",
+      "module": "invoice",
+      "node": "record",
+      "msg": "recorded 20 golden cases"
+    },
+    {
+      "t": "2026-11-07T18:03:30",
+      "module": "invoice",
+      "node": "rewrite",
+      "msg": "attempt 1"
+    },
+    {
+      "t": "2026-11-07T18:03:30",
+      "module": "invoice",
+      "node": "verify",
+      "msg": "20/20 equivalence tests passed"
+    },
+    {
+      "t": "2026-11-07T18:04:22",
+      "module": "invoice",
+      "node": "accept",
+      "msg": "verified identical. unit tests written"
+    }
+  ],
+  "mode": "real_model"
+}

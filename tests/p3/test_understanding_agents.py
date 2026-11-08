@@ -198,3 +198,34 @@ def test_input_schema_bounds_reply_size():
     assert cases["maxItems"] == MAX_CASES
     assert cases["items"]["properties"]["input"]["maxLength"] <= 300
     assert cases["items"]["properties"]["covers"]["maxLength"] <= 160
+
+
+def test_fixed_width_inputs_are_built_from_field_values(monkeypatch):
+    """Super could not count columns (26/27 invoice records had the wrong width); code builds them now."""
+    import importlib
+    from agents.understand import load_cobol_source
+    gi = importlib.import_module("agents.generate_inputs")
+    seen = {}
+    values = [[str(q), price, tier] for q in (1, 2, 10, 9999) for price, tier in
+              (("500.00", "G"), ("0.01", "S"), ("99999.99", "X"), ("12.5", "g"), ("100", " "))]
+    values += [["1", "123.456", "G"], ["-1", "5", "G"], ["10000", "1", "G"], ["1", "2"]]  # dropped: cannot fit
+
+    def fake(model, system, user, schema=None):
+        seen["system"], seen["schema"] = system, schema
+        return {"cases": [{"values": v, "covers": "x"} for v in values]}
+    monkeypatch.setattr(gi._llm, "call_llm", fake)
+    lines = gi.generate_inputs({"module_id": "invoice"}, load_cobol_source(str(SAMPLES / "invoice.cbl")))
+    assert "values" in str(seen["schema"]) and "INV-UNIT-PRICE" in seen["system"]
+    assert "00020050000G" in lines and "00010001250g" in lines
+    assert all(len(line) == 12 for line in lines)
+    assert not any("123456" in line or line.startswith("10000") for line in lines)
+
+
+def test_short_fixed_width_answer_is_topped_up_with_valid_records(monkeypatch):
+    import importlib
+    gi = importlib.import_module("agents.generate_inputs")
+    monkeypatch.setattr(gi._llm, "call_llm",
+                        lambda *a, **k: {"cases": [{"values": ["1000.00", "5.00", "3"], "covers": "typical"}]})
+    lines = gi.generate_inputs({"module_id": "interest"}, (SAMPLES / "interest.cbl").read_text())
+    assert 20 <= len(lines) <= 30 and "000100000050003" in lines
+    assert all(len(line) == 15 and line.isdigit() for line in lines)

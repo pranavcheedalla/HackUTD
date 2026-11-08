@@ -92,6 +92,110 @@ INPUTS_SCHEMA = {
 LAST_RUN: dict = {"cases": [], "warnings": []}
 
 
+RECORD_NOTE = """
+
+THIS PROGRAM READS A FIXED-WIDTH RECORD. Do NOT type the record yourself (column counting is
+error-prone). For every case return "values": one human-readable value per field, in exactly
+this order:
+{fields}
+Numbers as plain decimals (e.g. "500.00", "2", "0"), no padding and no implied-decimal digits;
+text fields as the literal characters (e.g. "G"). A program-side formatter builds the exact
+record. Values that cannot fit a field are dropped, so stay within each field's range.
+"""
+
+RECORD_SCHEMA = {
+    "type": "object",
+    "required": ["cases"],
+    "properties": {"cases": {"type": "array", "maxItems": MAX_CASES, "items": {
+        "type": "object", "required": ["values", "covers"],
+        "properties": {"values": {"type": "array", "maxItems": 40, "items": {"type": "string", "maxLength": 80}},
+                       "covers": {"type": "string", "maxLength": 160}}}}},
+}
+
+
+def _record_mode(analysis) -> bool:
+    """Fixed-width ACCEPT record: the model gives field values and code builds the columns."""
+    return bool(analysis.input_layout) and not analysis.delimiter and getattr(analysis, "kind", "program") != "subprogram"
+
+
+def _record_fields(analysis) -> str:
+    rows = []
+    for f in analysis.input_layout:
+        leaf = analysis.index.get(f["name"])
+        if leaf is not None and leaf.kind == "numeric":
+            top = Decimal(10) ** leaf.int_digits - Decimal(1).scaleb(-leaf.decimals)
+            kind = f"number 0..{top}" + (f", up to {leaf.decimals} decimals" if leaf.decimals else ", whole")
+        else:
+            kind = f"text, {f['length']} character(s)"
+        codes = "; codes: " + ", ".join(f"{n}={v}" for n, v in f["conditions"]) if f["conditions"] else ""
+        rows.append(f"  {len(rows) + 1}. {f['name']}: {kind}{codes}")
+    return "\n".join(rows)
+
+
+def _encode_record(values: list, analysis, warnings: list[str]) -> str | None:
+    """Build the exact fixed-width line from per-field values; None if a value cannot fit."""
+    if len(values) != len(analysis.input_layout):
+        warnings.append(f"dropped record case with {len(values)} values for {len(analysis.input_layout)} fields")
+        return None
+    out = []
+    for f, raw in zip(analysis.input_layout, values):
+        raw = str(raw)
+        leaf = analysis.index.get(f["name"])
+        if leaf is not None and leaf.kind == "numeric":
+            try:
+                value = Decimal(raw.strip() or "0")
+            except ArithmeticError:
+                warnings.append(f"dropped record case: {f['name']}={raw!r} is not a number")
+                return None
+            scaled = value.scaleb(leaf.decimals)
+            if value < 0 or scaled != scaled.to_integral_value() or scaled >= Decimal(10) ** f["length"]:
+                warnings.append(f"dropped record case: {f['name']}={raw!r} does not fit {leaf.pic}")
+                return None
+            out.append(str(int(scaled)).zfill(f["length"]))
+        else:
+            out.append(raw[:f["length"]].ljust(f["length"]))
+    return "".join(out)
+
+
+def _record_grid(analysis) -> list[dict]:
+    """Deterministic valid records (zero / smallest / one / middle / max per numeric field,
+    each 88-level code plus an invalid one per text field) to top up a short model answer."""
+    from itertools import product
+    options = []
+    for f in analysis.input_layout:
+        leaf = analysis.index.get(f["name"])
+        if leaf is not None and leaf.kind == "numeric":
+            top = Decimal(10) ** leaf.int_digits - Decimal(1).scaleb(-leaf.decimals)
+            unit = Decimal(1).scaleb(-leaf.decimals)
+            options.append([str(v) for v in dict.fromkeys(
+                [Decimal(1), (top / 2).quantize(unit), top, Decimal(0), unit])])
+        else:
+            codes = [v.strip("'\"") for _, v in f["conditions"]]
+            options.append(list(dict.fromkeys([*codes, "Z", " "])))
+    cases, sink = [], []
+    for combo in product(*options):
+        line = _encode_record(list(combo), analysis, sink)
+        if line is not None:
+            cases.append({"input": line, "covers": "deterministic boundary record: " + ", ".join(combo)})
+        if len(cases) >= MAX_CASES:
+            break
+    return cases
+
+
+def _record_cases(raw, analysis, warnings: list[str]) -> list[dict]:
+    """Field-value cases are encoded; ready-made "input" lines are still accepted as before."""
+    items = raw.get("cases") or raw.get("inputs") or [] if isinstance(raw, dict) else raw
+    out = []
+    for c in items if isinstance(items, list) else []:
+        if isinstance(c, dict) and isinstance(c.get("values"), list):
+            line = _encode_record(c["values"], analysis, warnings)
+            if line is not None:
+                out.append({"input": line, "covers": str(c.get("covers", ""))})
+        else:
+            out += _cases([c])
+    return out
+
+
 def _cases(raw) -> list[dict]:
     if isinstance(raw, str):
         from agents._json import extract_json
@@ -299,7 +403,16 @@ def generate_inputs(spec: dict, cobol_src: str) -> list[str]:
                                        source=numbered(cobol_src))
     warnings: list[str] = []
 
-    proposals = _clean(_cases(_call(system, user, INPUTS_SCHEMA)), analysis.input_width, warnings)
+    records = _record_mode(analysis)
+    if records:
+        system += RECORD_NOTE.format(fields=_record_fields(analysis))
+
+    def ask(prompt: str) -> list[dict]:
+        if records:
+            return _record_cases(_call(system, prompt, RECORD_SCHEMA), analysis, warnings)
+        return _cases(_call(system, prompt, INPUTS_SCHEMA))
+
+    proposals = _clean(ask(user), analysis.input_width, warnings)
     if analysis.delimiter:
         # Keep deliberately malformed cases, but reject the old padded-buffer fallback.
         proposals = [c for c in proposals if len(c['input']) < 256]
@@ -312,8 +425,11 @@ def generate_inputs(spec: dict, cobol_src: str) -> list[str]:
         more_user = user + GENERATE_INPUTS_MORE.format(
             count=len(cases), min_cases=MIN_CASES, need=need,
             existing="\n".join(f"- {c['input']!r}  ({c['covers']})" for c in cases) or "(none)")
-        extra = _keep_driver_format(_cases(_call(system, more_user, INPUTS_SCHEMA)), analysis, warnings)
+        extra = _keep_driver_format(ask(more_user), analysis, warnings)
         cases = _clean(cases + extra, analysis.input_width, warnings)
+        if len(cases) < MIN_CASES and records:
+            warnings.append(f"only {len(cases)} model cases after retry; adding deterministic boundary records")
+            cases = _clean(cases + _record_grid(analysis), analysis.input_width, warnings)
         if len(cases) < MIN_CASES:
             warnings.append(f"only {len(cases)} cases after retry")
 

@@ -1,0 +1,2 @@
+{"mode": "held_out_inputs_against_actual_cobol", "inputs": "tests/fixtures/codebase/inputs.json + 150 seeded random valid records per module (seed 7112026)",
+ "modules": {"discount": {"passed": 160, "total": 160}, "interest": {"passed": 158, "total": 158}, "invoice": {"passed": 162, "total": 162}}}

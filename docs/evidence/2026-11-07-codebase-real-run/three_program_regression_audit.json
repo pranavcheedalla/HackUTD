@@ -1,0 +1,20 @@
+{
+  "mode": "held_out_inputs_against_actual_cobol",
+  "modules": {
+    "interest": {
+      "passed": 308,
+      "total": 308,
+      "failures": []
+    },
+    "invoice": {
+      "passed": 312,
+      "total": 312,
+      "failures": []
+    },
+    "payroll": {
+      "passed": 306,
+      "total": 306,
+      "failures": []
+    }
+  }
+}

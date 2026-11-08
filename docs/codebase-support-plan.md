@@ -146,3 +146,10 @@ someone edited a file they don't own. Keep the owner's version.
 - The real sample run migrates DISCOUNT before INVOICE, and all modules are `done`.
 - The original 3-program run still passes.
 - The dashboard shows the dependency chain.
+
+## Result (merged 2026-11-07)
+
+All four branches merged without conflicts. Merge mode: 23/23, 0 pending. Real run on
+`samples/legacy`: 3/3 modules, 72/72, held-out 480/480. The original 3 programs still pass 90/90
+and 926/926. One live-only bug (model-typed fixed-width records) was fixed with record mode.
+Evidence: `docs/evidence/2026-11-07-codebase-real-run/`.

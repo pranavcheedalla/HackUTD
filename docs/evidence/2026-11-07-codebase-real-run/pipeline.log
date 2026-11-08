@@ -1,0 +1,31 @@
+Session: <repo>/runs/sessions/20261107-180027-real-27d0f7
+Migration order: discount -> interest -> invoice
+
+=== discount ===
+[test_writer] discount: repairing tests (These tests fail: test_business_rule_branches_exact_rates, test_extra_long_input_no_crash, test_rate_monotonic_non_decreasing_with_subtotal, test_subtotal_boundaries_with_invalid_tier, test_when_other_branch_taken)
+  -> done  (30/30 tests, 1 attempts)
+
+=== interest ===
+[generate_inputs] dropped record case: IN-PRINCIPAL='1000.005' does not fit 9(7)V99
+[generate_inputs] dropped record case: IN-PRINCIPAL='1000.009' does not fit 9(7)V99
+[generate_inputs] dropped record case: IN-PRINCIPAL='10000000.00' does not fit 9(7)V99
+[generate_inputs] dropped record case: IN-PRINCIPAL='99999999.00' does not fit 9(7)V99
+[generate_inputs] dropped record case: IN-PRINCIPAL='-100.00' does not fit 9(7)V99
+[generate_inputs] dropped record case: IN-RATE='AB' is not a number
+[generate_inputs] dropped record case: IN-RATE='  .' is not a number
+[generate_inputs] dropped record case with 4 values for 3 fields
+[test_writer] interest: repairing tests (These tests fail: test_exact_output_values, test_normal_computation_branch)
+  -> done  (22/22 tests, 1 attempts)
+
+=== invoice ===
+[generate_inputs] dropped record case: INV-UNIT-PRICE='100.005' does not fit 9(5)V99
+[generate_inputs] dropped record case: INV-UNIT-PRICE='100.009' does not fit 9(5)V99
+[generate_inputs] dropped record case: INV-UNIT-PRICE='ABCD' is not a number
+[generate_inputs] dropped record case: INV-UNIT-PRICE='   .  ' is not a number
+[generate_inputs] dropped record case: INV-QTY='-1' does not fit 9(4)
+[generate_inputs] dropped record case: INV-QTY='12345' does not fit 9(4)
+[generate_inputs] dropped record case: INV-UNIT-PRICE='100000.00' does not fit 9(5)V99
+[test_writer] invoice: repairing tests (pytest could not run the file:)
+  -> done  (20/20 tests, 1 attempts)
+
+3/3 modules verified. Live state: runs/state.json
