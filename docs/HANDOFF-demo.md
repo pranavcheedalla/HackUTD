@@ -43,7 +43,7 @@ controls. PR #10 contains the latest frontend and navigation work. See
   - `codebase` (Invoicing; discount 27/30 → 30/30);
   - `retail` (what the demo zip plays: `bank` plus `settle`, 6 programs, with the person's hint);
   - `bank` (5/5; ALERTS printed nothing on attempt 1, 0/20, then fixed);
-  - `settle` (SETTLE alone: 7/29, a person's hint, then 29/29);
+  - `settle` (SETTLE alone: 4/28, a person's hint, then 28/28);
   - `planted-bug` (12.34 vs 12.35, a controlled mutation).
 - **Deck:** https://claude.ai/artifact/Ap61TUyjZMWmSy9TSfNut7 (7 slides with speaker notes).
 
@@ -52,9 +52,14 @@ controls. PR #10 contains the latest frontend and navigation work. See
 1. **Open NorthBound → Read the case file (30 s):** "Hard to change, and dangerous to change without proof." Click **Hand it the codebase →** to return to the landing page.
 2. Drop demo/retail-bank.zip; after the star entrance the codebase **runs through on its own like a live run**: each station shows Nemotron working (with the real run's elapsed time, `REAL RUN · mm:ss`), then the real result lands and the star moves on, including ALERTS failing and retrying. About 4 minutes at 1×, 2.5 at 1.6×. Say: 'this replays a real run from tonight, step by step; the full live run takes about 7 minutes.' Pause, Next (skips a wait) and Back still work.
    **Then SETTLE (program 6, card settlement):** a separate real run, labelled on screen. It fails Verify
-   (7 of 29), stops at **Needs a person**: the panel shows the failing case and the real hint a person sent
-   types itself in. The star goes back to Rewrite and attempt 2 matches 29 of 29. Recorded Nov 8,
-   session `20261108-101813-real-d5993d`; merged after the bank in `web/replays/retail.json`.
+   (4 of 28) and the replay **waits for you** at Needs a person: a band drops in across the top with the
+   failing case. Type the prompt and press Enter (Tab fills it in; Next sends it too):
+
+   > The amount has no implied decimal: 000010000 means 10000.00, not 100.00. Keep only the last 7 digits.
+
+   That is the exact hint a person sent in the recorded run (session `20261108-105033-real-83cd24`), so the
+   fix that follows is real: the star goes back to Rewrite and attempt 2 matches 28 of 28.
+   Rehearsal: `galaxy.simTo(31)` in the console jumps a running replay to just before SETTLE asks.
 3. **Pause on the moments that matter** (or use Next/Back):
    - the ALERTS mismatch, caught and fixed;
    - then click the Verify ring → `DETAILS`.

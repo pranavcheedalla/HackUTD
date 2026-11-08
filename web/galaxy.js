@@ -158,6 +158,7 @@
     chase = false;  // the presenter has taken over
     if (SIM && direction > 0) {  // replay: Next skips the wait and lands this step's real result
       const b = beatAt(Math.min(clock, TL.end - 1e-3));
+      if (b.working && b.review && !SIM.hintSent) { sendHint(null); return; }  // Next sends the run's own hint
       if (b.working) { SIM.n++; simApply(); clock = Math.max(clock, b.t0); syncPlayback(); return; }
     }
     const list = stops(), current = stopIndex(list), between = betweenStops(list, current);
@@ -676,6 +677,10 @@
   function simApply() {
     const rep = simPartial(), prevWork = TL && TL.beats.find(b => b.working);
     R = rep; TL = rep.finished ? buildTimeline(rep) : liveTimeline(rep);
+    if (prevWork && prevWork.review) {  // the hint was sent: carry on from the end of the ask, the star goes back
+      const rb = TL.beats.find(q => q.review && q.mi === prevWork.mi && q.h === prevWork.h);
+      if (rb && !rb.working) clock = Math.max(clock, rb.t1 - .05);
+    }
     if (prevWork && clock > prevWork.t0 && !prevWork.review) {  // the step finished: show its result from the star's arrival
       const nb = beatAt(prevWork.t0 + .01);
       if (!nb.working || nb.mi !== prevWork.mi || nb.at !== prevWork.at || nb.h !== prevWork.h) clock = prevWork.t0;
@@ -691,7 +696,17 @@
   function simTick() {  // each frame while playing: finish the working step once its time is up
     if (!SIM || !TL) return;
     const w = TL.beats.find(b => b.working);
+    if (w && w.review) {  // a person is being asked: wait for the presenter's hint, then a beat to read "sent"
+      if (SIM.hintSent && clock >= SIM.sentAt + 1.6) { SIM.n++; simApply(); }
+      return;
+    }
     if (w && clock >= w.t0 + w.workDur) { SIM.n++; simApply(); }
+  }
+  // the presenter's hint at the "Needs a person" stop (web/hints.js); null sends the run's recorded hint
+  function sendHint(text) {
+    if (!SIM || SIM.hintSent) return;
+    SIM.hintSent = true; SIM.typedHint = text; SIM.sentAt = clock;
+    playing = true; syncPlayback();
   }
   function startSim(full) {
     SIM = { full, n: 0 }; workSince.clear(); TL = null; simApply();
@@ -1142,7 +1157,12 @@
                     get beats() { return TL && TL.beats.map(b => [b.k, b.mi, b.at, +b.t0.toFixed(1), b.fail || false]); },
                     runRecording(name) { return load(name, { codebase: null }); },  // the drop path, without a file
                     // what a recording shows right now (web/hints.js replays a person's hint from it)
-                    view() { return R && TL && !R.live ? { R, TL, full: SIM ? SIM.full : R, beat: beatAt(Math.min(clock, TL.end - 1e-3)), clock } : null; },
+                    view() { return R && TL && !R.live ? { R, TL, full: SIM ? SIM.full : R, beat: beatAt(Math.min(clock, TL.end - 1e-3)), clock,
+                      sim: !!SIM, hintSent: !!(SIM && SIM.hintSent), typedHint: SIM && SIM.typedHint } : null; },
+                    sendHint(text) { sendHint(text); },
+                    // rehearsal: jump a running replay to just before its n-th real event (e.g. SETTLE's first)
+                    simTo(n) { if (!SIM) return; SIM.n = Math.max(0, Math.min(n, SIM.full.events.length)); SIM.hintSent = false; simApply();
+                               const w = TL.beats.find(b => b.working); clock = w ? w.t0 : clock; trail = []; lastFail = null; playing = true; syncPlayback(); },
                     get sim() { return SIM && { revealed: SIM.n, events: SIM.full.events.length }; },
                     get hits() { return hits.map(h => ({ id: h.id, x: h.x * K, y: h.y * K })); } };  // css px, for rehearsal checks
 })();

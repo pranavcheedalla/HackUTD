@@ -92,14 +92,17 @@ const read=s=>vm.runInContext(s,context);
 const full=JSON.parse(fs.readFileSync('web/replays/retail.json','utf8'));
 assert.deepEqual(full.modules.map(m=>m.id),['accrue','feerate','alerts','loanpay','statemnt','settle']);
 const settle=full.modules[5];
-assert.equal(settle.human_hints.length,1); assert.ok(settle.run_note.includes('a person sent the hint'));
+assert.equal(settle.human_hints.length,1); assert.ok(settle.run_note.includes('human hint'));
 read(`FULL=${JSON.stringify(full)}; normalize=r=>r; startSim(FULL)`);
 
 let asked=false, reviewWait=0, hintsBeforeAnswer=null, backAfterReview=false, sawReview=false, guard=0;
 while(read('SIM.n')<full.events.length && guard++<400000){
   const w=read('TL.beats.find(b=>b.working)');
   if(w && w.review){ sawReview=true; reviewWait=read('TL.beats.find(b=>b.working).workDur');
-    const m=read("R.modules.find(m=>m.id==='settle')"); asked=m.status==='needs_review'; hintsBeforeAnswer=m.human_hints.length; }
+    const m=read("R.modules.find(m=>m.id==='settle')"); asked=m.status==='needs_review'; hintsBeforeAnswer=m.human_hints.length;
+    // the replay waits for the presenter: nothing moves on until a hint is sent
+    if(!read('SIM.hintSent')){ const n=read('SIM.n'); read('clock+=30; simTick()'); assert.equal(read('SIM.n'),n,'waits for the hint');
+      read('sendHint("The amount has no implied decimal")'); assert.equal(read('SIM.typedHint'),'The amount has no implied decimal'); } }
   if(sawReview && read("TL.beats.some(b=>b.k==='move'&&b.back&&b.mi===5)")) backAfterReview=true;
   read('clock+=.05; simTick()');
 }
