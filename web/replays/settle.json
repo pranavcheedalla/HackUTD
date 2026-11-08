@@ -1,0 +1,340 @@
+{
+ "kind": "run",
+ "mode": "real_model",
+ "session": "20261108-101813-real-d5993d",
+ "started_at": "2026-11-08T10:18:14",
+ "modules": [
+  {
+   "id": "settle",
+   "file": "settle.cbl",
+   "program_id": "SETTLE",
+   "kind": "program",
+   "depends_on": [],
+   "status": "done",
+   "error": null,
+   "attempts": 2,
+   "tests_passed": 29,
+   "tests_total": 29,
+   "history": [
+    {
+     "attempt": 1,
+     "passed": 7,
+     "total": 29,
+     "failures": [
+      {
+       "input": "000010000V001",
+       "expected": "FEE:  195.10\nNET:    9804.90",
+       "actual": "FEE:    2.05\nNET:      97.95"
+      },
+      {
+       "input": "000010000M001",
+       "expected": "FEE:  215.10\nNET:    9784.90",
+       "actual": "FEE:    2.25\nNET:      97.75"
+      },
+      {
+       "input": "000010000A001",
+       "expected": "FEE:  350.10\nNET:    9649.90",
+       "actual": "FEE:    3.60\nNET:      96.40"
+      },
+      {
+       "input": "000010000X001",
+       "expected": "FEE:  299.10\nNET:    9700.90",
+       "actual": "FEE:    3.09\nNET:      96.91"
+      },
+      {
+       "input": "000000001V000",
+       "expected": "FEE:    0.01\nNET:       0.99",
+       "actual": "FEE:    0.00\nNET:       0.01"
+      }
+     ],
+     "explanation": {
+      "verdict": "new_code_bug",
+      "reason": "The Python code ignores the transaction fee, so it calculates $2.05 instead of $195.10 and $97.95 instead of $9804.90.",
+      "input": "000010000V001"
+     }
+    },
+    {
+     "attempt": 2,
+     "passed": 29,
+     "total": 29,
+     "failures": [],
+     "explanation": null
+    }
+   ],
+   "divergences": [],
+   "unit_tests_status": "skipped",
+   "unit_tests_quarantined": [],
+   "spec": {
+    "module_id": "settle",
+    "summary": "Reads a fixed-width 13-character batch record containing amount, card network code, and transaction count. Computes a merchant fee as amount times network rate plus 0.10 per transaction, truncates decimals, caps the fee at 500.00 and at the amount itself, then prints the fee and net payout as edited numbers. If the amount is zero, prints an error message and stops.",
+    "inputs": [
+     {
+      "name": "WS-LINE",
+      "type": "string",
+      "format": "cols 1-13, PIC X(13), 13 characters of text"
+     },
+     {
+      "name": "IN-AMOUNT",
+      "type": "decimal",
+      "format": "cols 1-9, PIC 9(7)V99, 7 integer digits with 2 implied decimals, no decimal point stored, zero-padded, unsigned"
+     },
+     {
+      "name": "IN-NETWORK",
+      "type": "string",
+      "format": "col 10, PIC X, 1 character: V = Visa, M = Mastercard, A = Amex, any other uses default rate"
+     },
+     {
+      "name": "IN-COUNT",
+      "type": "integer",
+      "format": "cols 11-13, PIC 9(3), 3 integer digits, zero-padded, unsigned"
+     }
+    ],
+    "outputs": [
+     {
+      "name": "ERROR line",
+      "type": "string",
+      "format": "Literal text \"ERROR: EMPTY BATCH\", 18 characters wide"
+     },
+     {
+      "name": "FEE line",
+      "type": "string",
+      "format": "Literal \"FEE: \" followed by OUT-FEE edited by PIC Z(3)9.99, leading zeros suppressed to spaces, exactly 2 decimals shown, total line width 12 characters"
+     },
+     {
+      "name": "NET line",
+      "type": "string",
+      "format": "Literal \"NET: \" followed by OUT-NET edited by PIC Z(6)9.99, leading zeros suppressed to spaces, exactly 2 decimals shown, total line width 15 characters"
+     }
+    ],
+    "business_rules": [
+     "If IN-AMOUNT equals 0, display \"ERROR: EMPTY BATCH\" and stop; no fee or net is calculated.",
+     "Network rate is selected by IN-NETWORK: V = 0.0195, M = 0.0215, A = 0.0350, any other value = 0.0299.",
+     "WS-FEE-RAW = IN-AMOUNT * WS-RATE + IN-COUNT * 0.10, computed with implied decimals and stored into PIC 9(6)V99 without ROUNDED, so any digits beyond 2 decimal places are truncated.",
+     "WS-FEE-RAW is moved to WS-FEE (PIC 9(4)V99); because WS-FEE is smaller, any high-order digits above 9999.99 are silently lost.",
+     "If WS-FEE is greater than 500, WS-FEE is set to 500 (stored as 500.00).",
+     "If WS-FEE is greater than IN-AMOUNT, WS-FEE is set to IN-AMOUNT.",
+     "WS-NET = IN-AMOUNT - WS-FEE, stored into PIC 9(7)V99 without ROUNDED; because WS-NET is unsigned, a negative result is stored without its sign.",
+     "OUT-FEE and OUT-NET are moved to their edited display fields; OUT-FEE uses PIC Z(3)9.99 (7 chars) and OUT-NET uses PIC Z(6)9.99 (10 chars), with leading zeros replaced by spaces and exactly two decimal digits shown."
+    ],
+    "edge_cases": [
+     "Input \"000000000V000\": IN-AMOUNT is 0, so \"ERROR: EMPTY BATCH\" is displayed and the program stops.",
+     "Input \"000010000V001\": amount 100.00, rate 0.0195, count 1 -> raw fee 1.95 + 0.10 = 2.05, fee 2.05, net 97.95; prints \"FEE:    2.05\" and \"NET:    97.95\".",
+     "Input \"000010000A001\": amount 100.00, rate 0.0350, count 1 -> raw fee 3.50 + 0.10 = 3.60, fee 3.60, net 96.40.",
+     "Input \"000010000X001\": amount 100.00, network X uses default rate 0.0299 -> raw fee 2.99 + 0.10 = 3.09, fee 3.09, net 96.91.",
+     "Input \"999999999V999\": amount 9999999.99, rate 0.0195 -> product 194999.999805, plus 99.90 = 195099.899805, truncated to 195099.89 in WS-FEE-RAW; moved to WS-FEE (fits), fee 195099.89, net 9804900.10; prints \"FEE: 195099.89\" and \"NET: 9804900.10\".",
+     "Input \"000000100V999\": amount 1.00, count 999 -> raw fee 0.0195 + 99.90 = 99.9195, truncated to 99.91; fee 99.91, net negative -98.91 stored as 98.91 because WS-NET is unsigned; prints \"FEE:   99.91\" and \"NET:    98.91\".",
+     "Input \"000000001V001\": amount 0.01, rate 0.0195 -> product 0.000195, plus 0.10 = 0.100195, truncated to 0.10; fee 0.10, fee > amount so fee set to 0.01, net 0.00; prints \"FEE:    0.01\" and \"NET:    0.00\"."
+    ],
+    "quirks": [
+     "IN-AMOUNT PIC 9(7)V99 has an implied decimal point; the input columns contain only digits with no decimal point, e.g. cols 1-9 \"000010000\" mean 100.00, not 100000000.",
+     "WS-RATE PIC V9(4) has no integer digits; MOVE .0195 stores 0.0195 as 4 implied decimal digits.",
+     "COMPUTE WS-FEE-RAW at line 44 has no ROUNDED, so 12.339 is stored as 12.33, not 12.34.",
+     "COMPUTE WS-FEE-RAW has no ON SIZE ERROR; a result above 999999.99 silently loses its high-order digits.",
+     "MOVE WS-FEE-RAW TO WS-FEE at line 45 narrows from PIC 9(6)V99 to PIC 9(4)V99; values above 9999.99 lose their leftmost digits without error.",
+     "WS-FEE and WS-NET are unsigned (no S), so a negative computed result loses its sign and stores the absolute value.",
+     "COMPUTE WS-NET at line 52 has no ROUNDED and no ON SIZE ERROR; results above 9999999.99 lose high-order digits, and negative results are stored unsigned.",
+     "OUT-FEE PIC Z(3)9.99 suppresses leading zeros with spaces; 2.05 displays as \"   2.05\" (3 spaces, digit, decimal, 2 digits), exactly 7 characters.",
+     "OUT-NET PIC Z(6)9.99 suppresses leading zeros with spaces; 97.95 displays as \"    97.95\" (4 spaces, 2 digits, decimal, 2 digits), exactly 10 characters.",
+     "DISPLAY \"FEE: \" OUT-FEE concatenates the literal and edited field with no separator; the literal includes its trailing space."
+    ]
+   },
+   "cobol": "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. SETTLE.\n      * Card settlement: merchant fee and net payout for one batch.\n      * Input: one fixed-width line, 13 characters, no decimal points\n      *   cols 1-9   batch amount in cents  (PIC 9(7)V99)\n      *   col  10    card network   V = Visa, M = Mastercard, A = Amex\n      *   cols 11-13 transactions   PIC 9(3)\n      * Fee = amount * network rate + 0.10 per transaction,\n      * rounded to the nearest cent, capped at 500.00.\n      * (Changed 1998: record now read as text and split with MOVE;\n      *  fee field shortened to 4 digits. -- R.K.)\n       DATA DIVISION.\n       WORKING-STORAGE SECTION.\n       01  WS-LINE               PIC X(13).\n       01  IN-AMOUNT             PIC 9(7)V99.\n       01  IN-NETWORK            PIC X.\n       01  IN-COUNT              PIC 9(3).\n       01  WS-RATE               PIC V9(4).\n       01  WS-FEE-RAW            PIC 9(6)V99.\n       01  WS-FEE                PIC 9(4)V99.\n       01  WS-NET                PIC 9(7)V99.\n       01  OUT-FEE               PIC Z(3)9.99.\n       01  OUT-NET               PIC Z(6)9.99.\n       PROCEDURE DIVISION.\n       MAIN-PARA.\n           ACCEPT WS-LINE\n           MOVE WS-LINE(1:9) TO IN-AMOUNT\n           MOVE WS-LINE(10:1) TO IN-NETWORK\n           MOVE WS-LINE(11:3) TO IN-COUNT\n           IF IN-AMOUNT = 0\n               DISPLAY \"ERROR: EMPTY BATCH\"\n               STOP RUN\n           END-IF\n           EVALUATE IN-NETWORK\n               WHEN 'V'\n                   MOVE .0195 TO WS-RATE\n               WHEN 'M'\n                   MOVE .0215 TO WS-RATE\n               WHEN 'A'\n                   MOVE .0350 TO WS-RATE\n               WHEN OTHER\n                   MOVE .0299 TO WS-RATE\n           END-EVALUATE\n           COMPUTE WS-FEE-RAW = IN-AMOUNT * WS-RATE + IN-COUNT * 0.10\n           MOVE WS-FEE-RAW TO WS-FEE\n           IF WS-FEE > 500\n               MOVE 500 TO WS-FEE\n           END-IF\n           IF WS-FEE > IN-AMOUNT\n               MOVE IN-AMOUNT TO WS-FEE\n           END-IF\n           COMPUTE WS-NET = IN-AMOUNT - WS-FEE\n           MOVE WS-FEE TO OUT-FEE\n           MOVE WS-NET TO OUT-NET\n           DISPLAY \"FEE: \" OUT-FEE\n           DISPLAY \"NET: \" OUT-NET\n           STOP RUN.\n",
+   "python": "\"\"\"Module: settle\n\nPython 3.11 migration of COBOL program SETTLE.\nByte-for-byte equivalent DISPLAY output for every input.\n\"\"\"\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\n\n# ---------------------------------------------------------------------------\n# COBOL data semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Working-storage record for SETTLE\n# ---------------------------------------------------------------------------\n\nclass SettleRecord:\n    \"\"\"Holds all working-storage fields for one SETTLE run.\"\"\"\n\n    def __init__(self) -> None:\n        self.ws_line: str = \"\"\n        self.in_amount: Decimal = Decimal(\"0\")      # PIC 9(7)V99\n        self.in_network: str = \"\"                   # PIC X\n        self.in_count: Decimal = Decimal(\"0\")       # PIC 9(3)\n        self.ws_rate: Decimal = Decimal(\"0\")        # PIC V9(4)\n        self.ws_fee_raw: Decimal = Decimal(\"0\")     # PIC 9(6)V99\n        self.ws_fee: Decimal = Decimal(\"0\")         # PIC 9(4)V99\n        self.ws_net: Decimal = Decimal(\"0\")         # PIC 9(7)V99\n        self.out_fee: str = \"\"                      # PIC Z(3)9.99\n        self.out_net: str = \"\"                      # PIC Z(6)9.99\n\n\n# ---------------------------------------------------------------------------\n# Main entry point\n# ---------------------------------------------------------------------------\n\ndef main(input_line: str) -> str:\n    \"\"\"Return everything COBOL SETTLE would DISPLAY for one input line.\n\n    Lines are joined by \"\\n\" with NO trailing newline.\n    Never raises.\n    \"\"\"\n    rec = SettleRecord()\n\n    # ACCEPT WS-LINE  (13-character fixed buffer)\n    rec.ws_line = input_line[:13].ljust(13)\n\n    # MOVE WS-LINE(1:9) TO IN-AMOUNT   PIC 9(7)V99, implied decimal\n    # COBOL MOVE of text into a numeric field reads the digits as a whole number\n    # with NO implied decimal: \"000010000\" -> 10000.00, then only the last 7\n    # integer digits are kept (10000.00 -> 0000100.00 = 100.00).\n    amt_text = rec.ws_line[0:9]\n    amt_whole = Decimal(int(re.sub(r\"[^0-9]\", \"\", amt_text.replace(\" \", \"0\")) or \"0\"))\n    rec.in_amount = pic_store(amt_whole, int_digits=7, dec_digits=2, signed=False)\n\n    # MOVE WS-LINE(10:1) TO IN-NETWORK  PIC X\n    rec.in_network = rec.ws_line[9:10]\n\n    # MOVE WS-LINE(11:3) TO IN-COUNT   PIC 9(3)\n    rec.in_count = pic_from_text(rec.ws_line[10:13], int_digits=3, dec_digits=0)\n\n    # IF IN-AMOUNT = 0  DISPLAY \"ERROR: EMPTY BATCH\"  STOP RUN\n    if rec.in_amount == Decimal(\"0\"):\n        return \"ERROR: EMPTY BATCH\"\n\n    # EVALUATE IN-NETWORK  select rate into WS-RATE (PIC V9(4), 4 implied decimals)\n    if rec.in_network == \"V\":\n        rec.ws_rate = Decimal(\"0.0195\")\n    elif rec.in_network == \"M\":\n        rec.ws_rate = Decimal(\"0.0215\")\n    elif rec.in_network == \"A\":\n        rec.ws_rate = Decimal(\"0.0350\")\n    else:\n        rec.ws_rate = Decimal(\"0.0299\")\n\n    # COMPUTE WS-FEE-RAW = IN-AMOUNT * WS-RATE + IN-COUNT * 0.10\n    # Stored into PIC 9(6)V99 without ROUNDED -> decimals beyond 2 are truncated.\n    raw = rec.in_amount * rec.ws_rate + rec.in_count * Decimal(\"0.10\")\n    rec.ws_fee_raw = pic_store(raw, int_digits=6, dec_digits=2, signed=False)\n\n    # MOVE WS-FEE-RAW TO WS-FEE   PIC 9(4)V99  (narrows; high-order digits lost)\n    rec.ws_fee = pic_store(rec.ws_fee_raw, int_digits=4, dec_digits=2, signed=False)\n\n    # IF WS-FEE > 500  MOVE 500 TO WS-FEE   (stored as 500.00)\n    if rec.ws_fee > Decimal(\"500\"):\n        rec.ws_fee = pic_store(Decimal(\"500\"), int_digits=4, dec_digits=2, signed=False)\n\n    # IF WS-FEE > IN-AMOUNT  MOVE IN-AMOUNT TO WS-FEE\n    if rec.ws_fee > rec.in_amount:\n        rec.ws_fee = pic_store(rec.in_amount, int_digits=4, dec_digits=2, signed=False)\n\n    # COMPUTE WS-NET = IN-AMOUNT - WS-FEE   PIC 9(7)V99, unsigned\n    # Negative results lose their sign; high-order digits above 9999999.99 are dropped.\n    rec.ws_net = pic_store(rec.in_amount - rec.ws_fee, int_digits=7, dec_digits=2, signed=False)\n\n    # MOVE WS-FEE TO OUT-FEE   PIC Z(3)9.99\n    rec.out_fee = edit_picture(rec.ws_fee, \"Z(3)9.99\")\n\n    # MOVE WS-NET TO OUT-NET   PIC Z(6)9.99\n    rec.out_net = edit_picture(rec.ws_net, \"Z(6)9.99\")\n\n    # DISPLAY \"FEE: \" OUT-FEE   (literal includes trailing space, no separator)\n    fee_line = \"FEE: \" + rec.out_fee\n\n    # DISPLAY \"NET: \" OUT-NET\n    net_line = \"NET: \" + rec.out_net\n\n    return fee_line + \"\\n\" + net_line\n\n\n# ---------------------------------------------------------------------------\n# Allow direct execution: python settle.py < input.txt\n# ---------------------------------------------------------------------------\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline()\n    # Strip only the trailing newline; COBOL ACCEPT keeps everything else.\n    if line.endswith(\"\\n\"):\n        line = line[:-1]\n    if line.endswith(\"\\r\"):\n        line = line[:-1]\n    print(main(line), end=\"\")\n",
+   "golden": [
+    {
+     "input": "000000000V000",
+     "output": "ERROR: EMPTY BATCH"
+    },
+    {
+     "input": "000010000V001",
+     "output": "FEE:  195.10\nNET:    9804.90"
+    },
+    {
+     "input": "000010000M001",
+     "output": "FEE:  215.10\nNET:    9784.90"
+    },
+    {
+     "input": "000010000A001",
+     "output": "FEE:  350.10\nNET:    9649.90"
+    },
+    {
+     "input": "000010000X001",
+     "output": "FEE:  299.10\nNET:    9700.90"
+    },
+    {
+     "input": "000000001V000",
+     "output": "FEE:    0.01\nNET:       0.99"
+    },
+    {
+     "input": "999999999V999",
+     "output": "FEE:  500.00\nNET: 9999499.00"
+    },
+    {
+     "input": "000000000M000",
+     "output": "ERROR: EMPTY BATCH"
+    },
+    {
+     "input": "000000100V999",
+     "output": "FEE:  100.00\nNET:       0.00"
+    },
+    {
+     "input": "000000001V001",
+     "output": "FEE:    0.11\nNET:       0.89"
+    },
+    {
+     "input": "000050000V000",
+     "output": "FEE:  500.00\nNET:   49500.00"
+    },
+    {
+     "input": "000050001V000",
+     "output": "FEE:  500.00\nNET:   49501.00"
+    },
+    {
+     "input": "000049999V000",
+     "output": "FEE:  500.00\nNET:   49499.00"
+    },
+    {
+     "input": "000000005V001",
+     "output": "FEE:    0.19\nNET:       4.81"
+    },
+    {
+     "input": "000000009V001",
+     "output": "FEE:    0.27\nNET:       8.73"
+    },
+    {
+     "input": "000010000V000",
+     "output": "FEE:  195.00\nNET:    9805.00"
+    },
+    {
+     "input": "000010000M000",
+     "output": "FEE:  215.00\nNET:    9785.00"
+    },
+    {
+     "input": "000010000A000",
+     "output": "FEE:  350.00\nNET:    9650.00"
+    },
+    {
+     "input": "000010000X000",
+     "output": "FEE:  299.00\nNET:    9701.00"
+    },
+    {
+     "input": "000000000X000",
+     "output": "ERROR: EMPTY BATCH"
+    },
+    {
+     "input": "000000000 000",
+     "output": "ERROR: EMPTY BATCH"
+    },
+    {
+     "input": "000000000V  0",
+     "output": "ERROR: EMPTY BATCH"
+    },
+    {
+     "input": "000000000V-00",
+     "output": "ERROR: EMPTY BATCH"
+    },
+    {
+     "input": "000000000V00 ",
+     "output": "ERROR: EMPTY BATCH"
+    },
+    {
+     "input": "000000100M999",
+     "output": "FEE:  100.00\nNET:       0.00"
+    },
+    {
+     "input": "000000100A999",
+     "output": "FEE:  100.00\nNET:       0.00"
+    },
+    {
+     "input": "000000100X999",
+     "output": "FEE:  100.00\nNET:       0.00"
+    },
+    {
+     "input": "000000002V001",
+     "output": "FEE:    0.13\nNET:       1.87"
+    },
+    {
+     "input": "000000003V001",
+     "output": "FEE:    0.15\nNET:       2.85"
+    }
+   ],
+   "attempt_sources": [
+    {
+     "attempt": 1,
+     "python": "\"\"\"Module: settle\n\nPython 3.11 migration of COBOL program SETTLE.\nByte-for-byte equivalent DISPLAY output for every input.\n\"\"\"\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\n\n# ---------------------------------------------------------------------------\n# COBOL data semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Working-storage record for SETTLE\n# ---------------------------------------------------------------------------\n\nclass SettleRecord:\n    \"\"\"Holds all working-storage fields for one SETTLE run.\"\"\"\n\n    def __init__(self) -> None:\n        self.ws_line: str = \"\"\n        self.in_amount: Decimal = Decimal(\"0\")      # PIC 9(7)V99\n        self.in_network: str = \"\"                   # PIC X\n        self.in_count: Decimal = Decimal(\"0\")       # PIC 9(3)\n        self.ws_rate: Decimal = Decimal(\"0\")        # PIC V9(4)\n        self.ws_fee_raw: Decimal = Decimal(\"0\")     # PIC 9(6)V99\n        self.ws_fee: Decimal = Decimal(\"0\")         # PIC 9(4)V99\n        self.ws_net: Decimal = Decimal(\"0\")         # PIC 9(7)V99\n        self.out_fee: str = \"\"                      # PIC Z(3)9.99\n        self.out_net: str = \"\"                      # PIC Z(6)9.99\n\n\n# ---------------------------------------------------------------------------\n# Main entry point\n# ---------------------------------------------------------------------------\n\ndef main(input_line: str) -> str:\n    \"\"\"Return everything COBOL SETTLE would DISPLAY for one input line.\n\n    Lines are joined by \"\\n\" with NO trailing newline.\n    Never raises.\n    \"\"\"\n    rec = SettleRecord()\n\n    # ACCEPT WS-LINE  (13-character fixed buffer)\n    rec.ws_line = input_line[:13].ljust(13)\n\n    # MOVE WS-LINE(1:9) TO IN-AMOUNT   PIC 9(7)V99, implied decimal\n    rec.in_amount = pic_from_text(rec.ws_line[0:9], int_digits=7, dec_digits=2)\n\n    # MOVE WS-LINE(10:1) TO IN-NETWORK  PIC X\n    rec.in_network = rec.ws_line[9:10]\n\n    # MOVE WS-LINE(11:3) TO IN-COUNT   PIC 9(3)\n    rec.in_count = pic_from_text(rec.ws_line[10:13], int_digits=3, dec_digits=0)\n\n    # IF IN-AMOUNT = 0  DISPLAY \"ERROR: EMPTY BATCH\"  STOP RUN\n    if rec.in_amount == Decimal(\"0\"):\n        return \"ERROR: EMPTY BATCH\"\n\n    # EVALUATE IN-NETWORK  select rate into WS-RATE (PIC V9(4), 4 implied decimals)\n    if rec.in_network == \"V\":\n        rec.ws_rate = Decimal(\"0.0195\")\n    elif rec.in_network == \"M\":\n        rec.ws_rate = Decimal(\"0.0215\")\n    elif rec.in_network == \"A\":\n        rec.ws_rate = Decimal(\"0.0350\")\n    else:\n        rec.ws_rate = Decimal(\"0.0299\")\n\n    # COMPUTE WS-FEE-RAW = IN-AMOUNT * WS-RATE + IN-COUNT * 0.10\n    # Stored into PIC 9(6)V99 without ROUNDED -> decimals beyond 2 are truncated.\n    raw = rec.in_amount * rec.ws_rate + rec.in_count * Decimal(\"0.10\")\n    rec.ws_fee_raw = pic_store(raw, int_digits=6, dec_digits=2, signed=False)\n\n    # MOVE WS-FEE-RAW TO WS-FEE   PIC 9(4)V99  (narrows; high-order digits lost)\n    rec.ws_fee = pic_store(rec.ws_fee_raw, int_digits=4, dec_digits=2, signed=False)\n\n    # IF WS-FEE > 500  MOVE 500 TO WS-FEE   (stored as 500.00)\n    if rec.ws_fee > Decimal(\"500\"):\n        rec.ws_fee = pic_store(Decimal(\"500\"), int_digits=4, dec_digits=2, signed=False)\n\n    # IF WS-FEE > IN-AMOUNT  MOVE IN-AMOUNT TO WS-FEE\n    if rec.ws_fee > rec.in_amount:\n        rec.ws_fee = pic_store(rec.in_amount, int_digits=4, dec_digits=2, signed=False)\n\n    # COMPUTE WS-NET = IN-AMOUNT - WS-FEE   PIC 9(7)V99, unsigned\n    # Negative results lose their sign; high-order digits above 9999999.99 are dropped.\n    rec.ws_net = pic_store(rec.in_amount - rec.ws_fee, int_digits=7, dec_digits=2, signed=False)\n\n    # MOVE WS-FEE TO OUT-FEE   PIC Z(3)9.99\n    rec.out_fee = edit_picture(rec.ws_fee, \"Z(3)9.99\")\n\n    # MOVE WS-NET TO OUT-NET   PIC Z(6)9.99\n    rec.out_net = edit_picture(rec.ws_net, \"Z(6)9.99\")\n\n    # DISPLAY \"FEE: \" OUT-FEE   (literal includes trailing space, no separator)\n    fee_line = \"FEE: \" + rec.out_fee\n\n    # DISPLAY \"NET: \" OUT-NET\n    net_line = \"NET: \" + rec.out_net\n\n    return fee_line + \"\\n\" + net_line\n\n\n# ---------------------------------------------------------------------------\n# Allow direct execution: python settle.py < input.txt\n# ---------------------------------------------------------------------------\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline()\n    # Strip only the trailing newline; COBOL ACCEPT keeps everything else.\n    if line.endswith(\"\\n\"):\n        line = line[:-1]\n    if line.endswith(\"\\r\"):\n        line = line[:-1]\n    print(main(line), end=\"\")\n"
+    },
+    {
+     "attempt": 2,
+     "python": "\"\"\"Module: settle\n\nPython 3.11 migration of COBOL program SETTLE.\nByte-for-byte equivalent DISPLAY output for every input.\n\"\"\"\nfrom decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP\nimport re\n\n\n# ---------------------------------------------------------------------------\n# COBOL data semantics helpers (copied verbatim per migration standard)\n# ---------------------------------------------------------------------------\n\ndef pic_store(value, int_digits, dec_digits=0, signed=False, rounded=False):\n    \"\"\"Store a value into PIC [S]9(int_digits)V9(dec_digits), like COBOL MOVE/COMPUTE.\n\n    - extra decimals are TRUNCATED (unless the COBOL statement says ROUNDED)\n    - extra high-order integer digits are silently dropped (no ON SIZE ERROR)\n    - unsigned fields drop the sign\n    \"\"\"\n    q = Decimal(1).scaleb(-dec_digits)\n    v = Decimal(value).quantize(q, rounding=ROUND_HALF_UP if rounded else ROUND_DOWN)\n    negative = v < 0\n    v = (abs(v) % (Decimal(10) ** int_digits)).quantize(q)\n    return -v if (negative and signed) else v\n\n\ndef pic_from_text(text, int_digits, dec_digits=0, signed=False):\n    \"\"\"Parse raw characters of a PIC 9 field read by ACCEPT (implied decimal point).\n    '0012345' with dec_digits=2 -> Decimal('123.45'). Spaces count as zeros.\"\"\"\n    s = text.strip()\n    negative = s.startswith(\"-\") or s.endswith(\"-\")\n    digits = re.sub(r\"[^0-9]\", \"\", text.replace(\" \", \"0\")) or \"0\"\n    v = Decimal(int(digits)).scaleb(-dec_digits)\n    return pic_store(-v if negative else v, int_digits, dec_digits, signed)\n\n\ndef split_fixed(line, widths):\n    \"\"\"Split an ACCEPTed line into fixed-width fields (group item layout).\n    Short lines are padded with spaces, long lines are cut, like COBOL.\"\"\"\n    total = sum(widths)\n    line = line[:total].ljust(total)\n    out, pos = [], 0\n    for w in widths:\n        out.append(line[pos : pos + w])\n        pos += w\n    return out\n\n\ndef display_num(value, int_digits, dec_digits=0, signed=False):\n    \"\"\"How GnuCOBOL DISPLAYs an un-edited numeric field PIC [S]9(n)V9(m):\n    leading zeros, '.' for the implied decimal, leading +/- if signed.\n    e.g. PIC 9(3)V99 1.5 -> '001.50';  PIC S9(3) -7 -> '-007'.\"\"\"\n    v = pic_store(value, int_digits, dec_digits, signed)\n    a = abs(v)\n    int_part = int(a)\n    s = str(int_part).zfill(int_digits)\n    if dec_digits:\n        frac = int((a - int_part).scaleb(dec_digits))\n        s += \".\" + str(frac).zfill(dec_digits)\n    if signed:\n        s = (\"-\" if v < 0 else \"+\") + s\n    return s\n\n\ndef _expand_pic(pic):\n    return re.sub(r\"(.)\\((\\d+)\\)\", lambda m: m.group(1) * int(m.group(2)), pic.upper())\n\n\ndef edit_picture(value, pic):\n    \"\"\"Format a value with a numeric-EDITED picture, e.g. 'Z,ZZZ,ZZ9.99', '-ZZ9.99',\n    'ZZ9.99CR', '$ZZ,ZZ9.99', '9(5)'. Supports Z 9 , . + - CR DB and one fixed $.\n    Truncates extra decimals and high-order digits exactly like a COBOL MOVE.\"\"\"\n    p = _expand_pic(pic)\n    lead_sign = p[0] if p[:1] in \"+-\" else \"\"\n    if lead_sign:\n        p = p[1:]\n    trail_sign = \"\"\n    for t in (\"CR\", \"DB\", \"+\", \"-\"):\n        if p.endswith(t):\n            trail_sign, p = t, p[: -len(t)]\n            break\n    dollar = p.startswith(\"$\")\n    if dollar:\n        p = p[1:]\n\n    int_pat, _, dec_pat = p.partition(\".\")\n    n_int = sum(c in \"9Z\" for c in int_pat)\n    n_dec = sum(c in \"9Z\" for c in dec_pat)\n    v = pic_store(value, n_int, n_dec, signed=True)\n    negative = v < 0\n    a = abs(v)\n    int_digits = str(int(a)).zfill(n_int)\n    dec_digits = str(int((a - int(a)).scaleb(n_dec))).zfill(n_dec) if n_dec else \"\"\n\n    # integer part with zero suppression\n    out, di, suppressing = [], 0, True\n    for c in int_pat:\n        if c in \"9Z\":\n            d = int_digits[di]\n            di += 1\n            if c == \"Z\" and suppressing and d == \"0\":\n                out.append(\" \")\n            else:\n                suppressing = False\n                out.append(d)\n        elif c == \",\":\n            out.append(\" \" if suppressing else \",\")\n        else:\n            out.append(c)\n    body = \"\".join(out)\n\n    if \"9\" not in p and a == 0:  # all-Z picture with zero value -> all blanks\n        return \" \" * len(_expand_pic(pic))\n    if dec_pat:\n        body += \".\" + dec_digits\n\n    if dollar:\n        body = \"$\" + body\n    if lead_sign:\n        body = (\"-\" if negative else (\"+\" if lead_sign == \"+\" else \" \")) + body\n    if trail_sign in (\"+\", \"-\"):\n        body += \"-\" if negative else (\"+\" if trail_sign == \"+\" else \" \")\n    elif trail_sign:\n        body += trail_sign if negative else \"  \"\n    return body\n\n\n# ---------------------------------------------------------------------------\n# Working-storage record for SETTLE\n# ---------------------------------------------------------------------------\n\nclass SettleRecord:\n    \"\"\"Holds all working-storage fields for one SETTLE run.\"\"\"\n\n    def __init__(self) -> None:\n        self.ws_line: str = \"\"\n        self.in_amount: Decimal = Decimal(\"0\")      # PIC 9(7)V99\n        self.in_network: str = \"\"                   # PIC X\n        self.in_count: Decimal = Decimal(\"0\")       # PIC 9(3)\n        self.ws_rate: Decimal = Decimal(\"0\")        # PIC V9(4)\n        self.ws_fee_raw: Decimal = Decimal(\"0\")     # PIC 9(6)V99\n        self.ws_fee: Decimal = Decimal(\"0\")         # PIC 9(4)V99\n        self.ws_net: Decimal = Decimal(\"0\")         # PIC 9(7)V99\n        self.out_fee: str = \"\"                      # PIC Z(3)9.99\n        self.out_net: str = \"\"                      # PIC Z(6)9.99\n\n\n# ---------------------------------------------------------------------------\n# Main entry point\n# ---------------------------------------------------------------------------\n\ndef main(input_line: str) -> str:\n    \"\"\"Return everything COBOL SETTLE would DISPLAY for one input line.\n\n    Lines are joined by \"\\n\" with NO trailing newline.\n    Never raises.\n    \"\"\"\n    rec = SettleRecord()\n\n    # ACCEPT WS-LINE  (13-character fixed buffer)\n    rec.ws_line = input_line[:13].ljust(13)\n\n    # MOVE WS-LINE(1:9) TO IN-AMOUNT   PIC 9(7)V99, implied decimal\n    # COBOL MOVE of text into a numeric field reads the digits as a whole number\n    # with NO implied decimal: \"000010000\" -> 10000.00, then only the last 7\n    # integer digits are kept (10000.00 -> 0000100.00 = 100.00).\n    amt_text = rec.ws_line[0:9]\n    amt_whole = Decimal(int(re.sub(r\"[^0-9]\", \"\", amt_text.replace(\" \", \"0\")) or \"0\"))\n    rec.in_amount = pic_store(amt_whole, int_digits=7, dec_digits=2, signed=False)\n\n    # MOVE WS-LINE(10:1) TO IN-NETWORK  PIC X\n    rec.in_network = rec.ws_line[9:10]\n\n    # MOVE WS-LINE(11:3) TO IN-COUNT   PIC 9(3)\n    rec.in_count = pic_from_text(rec.ws_line[10:13], int_digits=3, dec_digits=0)\n\n    # IF IN-AMOUNT = 0  DISPLAY \"ERROR: EMPTY BATCH\"  STOP RUN\n    if rec.in_amount == Decimal(\"0\"):\n        return \"ERROR: EMPTY BATCH\"\n\n    # EVALUATE IN-NETWORK  select rate into WS-RATE (PIC V9(4), 4 implied decimals)\n    if rec.in_network == \"V\":\n        rec.ws_rate = Decimal(\"0.0195\")\n    elif rec.in_network == \"M\":\n        rec.ws_rate = Decimal(\"0.0215\")\n    elif rec.in_network == \"A\":\n        rec.ws_rate = Decimal(\"0.0350\")\n    else:\n        rec.ws_rate = Decimal(\"0.0299\")\n\n    # COMPUTE WS-FEE-RAW = IN-AMOUNT * WS-RATE + IN-COUNT * 0.10\n    # Stored into PIC 9(6)V99 without ROUNDED -> decimals beyond 2 are truncated.\n    raw = rec.in_amount * rec.ws_rate + rec.in_count * Decimal(\"0.10\")\n    rec.ws_fee_raw = pic_store(raw, int_digits=6, dec_digits=2, signed=False)\n\n    # MOVE WS-FEE-RAW TO WS-FEE   PIC 9(4)V99  (narrows; high-order digits lost)\n    rec.ws_fee = pic_store(rec.ws_fee_raw, int_digits=4, dec_digits=2, signed=False)\n\n    # IF WS-FEE > 500  MOVE 500 TO WS-FEE   (stored as 500.00)\n    if rec.ws_fee > Decimal(\"500\"):\n        rec.ws_fee = pic_store(Decimal(\"500\"), int_digits=4, dec_digits=2, signed=False)\n\n    # IF WS-FEE > IN-AMOUNT  MOVE IN-AMOUNT TO WS-FEE\n    if rec.ws_fee > rec.in_amount:\n        rec.ws_fee = pic_store(rec.in_amount, int_digits=4, dec_digits=2, signed=False)\n\n    # COMPUTE WS-NET = IN-AMOUNT - WS-FEE   PIC 9(7)V99, unsigned\n    # Negative results lose their sign; high-order digits above 9999999.99 are dropped.\n    rec.ws_net = pic_store(rec.in_amount - rec.ws_fee, int_digits=7, dec_digits=2, signed=False)\n\n    # MOVE WS-FEE TO OUT-FEE   PIC Z(3)9.99\n    rec.out_fee = edit_picture(rec.ws_fee, \"Z(3)9.99\")\n\n    # MOVE WS-NET TO OUT-NET   PIC Z(6)9.99\n    rec.out_net = edit_picture(rec.ws_net, \"Z(6)9.99\")\n\n    # DISPLAY \"FEE: \" OUT-FEE   (literal includes trailing space, no separator)\n    fee_line = \"FEE: \" + rec.out_fee\n\n    # DISPLAY \"NET: \" OUT-NET\n    net_line = \"NET: \" + rec.out_net\n\n    return fee_line + \"\\n\" + net_line\n\n\n# ---------------------------------------------------------------------------\n# Allow direct execution: python settle.py < input.txt\n# ---------------------------------------------------------------------------\n\nif __name__ == \"__main__\":\n    import sys\n\n    line = sys.stdin.readline()\n    # Strip only the trailing newline; COBOL ACCEPT keeps everything else.\n    if line.endswith(\"\\n\"):\n        line = line[:-1]\n    if line.endswith(\"\\r\"):\n        line = line[:-1]\n    print(main(line), end=\"\")\n"
+    }
+   ],
+   "human_hints": [
+    {
+     "attempt": 2,
+     "note": "MOVE of text into a numeric field reads the digits as a whole number with no implied decimal: 000010000 is 10000.00, and only the last 7 digits are kept. Do not use pic_from_text for these MOVEs.",
+     "at": "2026-11-08T10:18:59"
+    }
+   ],
+   "heldout": null
+  }
+ ],
+ "events": [
+  {
+   "t": "2026-11-08T10:18:37",
+   "module": "settle",
+   "node": "extract_spec",
+   "msg": "Reads a fixed-width 13-character batch record containing amount, card network code, and transaction count. Computes a merchant fee as amount times network rate plus 0.10 per transaction, truncates decimals, caps the fee at 500.00 and at the amount itself, then prints the fee and net payout as edited numbers. If the amount is zero, prints an error message and stops."
+  },
+  {
+   "t": "2026-11-08T10:18:52",
+   "module": "settle",
+   "node": "record",
+   "msg": "recorded 29 golden cases"
+  },
+  {
+   "t": "2026-11-08T10:18:53",
+   "module": "settle",
+   "node": "rewrite",
+   "msg": "attempt 1"
+  },
+  {
+   "t": "2026-11-08T10:18:53",
+   "module": "settle",
+   "node": "verify",
+   "msg": "7/29 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-08T10:18:54",
+   "module": "settle",
+   "node": "needs_review",
+   "msg": "could not verify after 1 attempts; waiting up to 180s for a person's feedback"
+  },
+  {
+   "t": "2026-11-08T10:18:59",
+   "module": "settle",
+   "node": "needs_review",
+   "msg": "feedback received; 2 more attempts follow it"
+  },
+  {
+   "t": "2026-11-08T10:19:17",
+   "module": "settle",
+   "node": "rewrite",
+   "msg": "attempt 2 (fixing failures) (using 1 human hint)"
+  },
+  {
+   "t": "2026-11-08T10:19:17",
+   "module": "settle",
+   "node": "verify",
+   "msg": "29/29 equivalence tests passed"
+  },
+  {
+   "t": "2026-11-08T10:19:17",
+   "module": "settle",
+   "node": "accept",
+   "msg": "verified identical. unit tests skipped (quick live run); a human hint guided the rewrite"
+  }
+ ],
+ "name": "settle",
+ "title": "Card settlement \u00b7 needs a person",
+ "codebase": "samples/review"
+}

@@ -73,3 +73,43 @@ assert.equal(read('SIM.n'),1);
 read('restart()'); assert.equal(read('SIM.n'),0); assert.equal(read('playing'),true);
 read('SIM=null; R=FULL; TL=buildTimeline(R); restart()'); assert.equal(read('playing'),false);
 ''')
+
+
+def test_settle_asks_a_person_and_the_hint_is_replayed_before_the_retry():
+    run_js(r'''
+const fs=require('fs'), vm=require('vm'), assert=require('node:assert/strict');
+const source=fs.readFileSync('web/galaxy.js','utf8'), elements=new Map();
+const context=vm.createContext({W:1000,H:520,CY:252,innerWidth:1000,innerHeight:520,
+  intake:{classList:{add(){},remove(){},contains:()=>false},setAttribute(){}},reducedMotion:{matches:true},
+  document:{getElementById(id){if(!elements.has(id))elements.set(id,{textContent:'',dataset:{},setAttribute(){}});return elements.get(id)}},
+  performance:{now:()=>0},window:{},addEventListener(){},closePanel(){},closeCaption(){},intakeOpen:()=>false,
+  panel:{classList:{contains:()=>false}},workSince:new Map(),STATIONS:['Discover','Read','Probe','Record','Rewrite','Verify','Verified'].map((s,i)=>[i,s])});
+const block=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b));
+vm.runInContext(block('  // ---------- helpers ----------','  // ---------- static layers ----------'),context);
+vm.runInContext(block('  // ---------- replay → timeline ----------','  // ---------- module text for the scene ----------'),context);
+vm.runInContext(block('  // ---------- live: the timeline so far','  function draw(t) {'),context);
+const read=s=>vm.runInContext(s,context);
+const full=JSON.parse(fs.readFileSync('web/replays/retail.json','utf8'));
+assert.deepEqual(full.modules.map(m=>m.id),['accrue','feerate','alerts','loanpay','statemnt','settle']);
+const settle=full.modules[5];
+assert.equal(settle.human_hints.length,1); assert.ok(settle.run_note.includes('a person sent the hint'));
+read(`FULL=${JSON.stringify(full)}; normalize=r=>r; startSim(FULL)`);
+
+let asked=false, reviewWait=0, hintsBeforeAnswer=null, backAfterReview=false, sawReview=false, guard=0;
+while(read('SIM.n')<full.events.length && guard++<400000){
+  const w=read('TL.beats.find(b=>b.working)');
+  if(w && w.review){ sawReview=true; reviewWait=read('TL.beats.find(b=>b.working).workDur');
+    const m=read("R.modules.find(m=>m.id==='settle')"); asked=m.status==='needs_review'; hintsBeforeAnswer=m.human_hints.length; }
+  if(sawReview && read("TL.beats.some(b=>b.k==='move'&&b.back&&b.mi===5)")) backAfterReview=true;
+  read('clock+=.05; simTick()');
+}
+assert.ok(sawReview,'the replay stops at Verify while SETTLE asks a person');
+assert.ok(asked,'Details show SETTLE as needs_review while it asks');
+assert.equal(hintsBeforeAnswer,0,'the hint is not shown as sent before the person sent it');
+assert.equal(reviewWait,8.5,'long enough to read the case and type the hint');
+assert.ok(backAfterReview,'after the hint the star goes back to Rewrite');
+assert.equal(read('R.finished'),true);
+// the finished recording keeps the same stop, so Back returns to the ask
+assert.ok(read('buildTimeline(FULL).beats.some(b=>b.review && b.mi===5)'));
+assert.equal(read("R.modules.find(m=>m.id==='settle').status"),'done');
+''')

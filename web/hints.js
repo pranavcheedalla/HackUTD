@@ -3,7 +3,9 @@
  * pipeline pauses that program in needs_review and this readout asks a person what it is missing
  * (pipeline/graph.py needs_review; POST /api/runs/<session>/feedback in tools/serve.py). The
  * feedback is added to the spec for 2 more attempts. It only guides the rewrite: acceptance still
- * needs every golden case to match the real COBOL. Recordings show nothing here. */
+ * needs every golden case to match the real COBOL. A recording that includes a person's hint replays
+ * that moment here from what was recorded (replayStep): the ask, the real hint typing in, and the
+ * retry, timed by the galaxy's clock so Pause, Next and Back stay in step. */
 (() => {
   const POLL_MS = 1500, MAX = 500;
   const style = document.createElement('style');
@@ -148,19 +150,78 @@
 
   function say(text, bad = false) { msg.textContent = text; msg.classList.toggle('bad', bad); }
 
+  // ---------- a recording: replay the person's hint exactly as it happened ----------
+  const TYPE_FROM = 1.4, TYPE_CPS = 48, SENT_AFTER = .5;  // seconds into the stop; characters per second
+  function replayStep() {
+    const v = window.galaxy && galaxy.view && galaxy.view(), b = v && v.beat;
+    const m = b && b.mi !== undefined ? v.R.modules[b.mi] : null;
+    const full = m && (v.full.modules || []).find(q => q.id === m.id);
+    const hint = full && (full.human_hints || [])[0];
+    if (!hint) { box.hidden = true; return; }
+    const reviewedAt = hint.attempt - 2;  // the failed attempt that made it ask (history index)
+    const stop = v.TL.beats.find(q => q.mi === b.mi && q.review);  // the stop where it asked a person
+    const inReview = !!stop && b === stop;
+    const retrying = !!stop && !inReview && b.mi === stop.mi && b.k !== 'swoop' && b.t0 >= stop.t1 - 1e-6;
+    if (!inReview && !retrying) { box.hidden = true; return; }
+    box.hidden = false; note.readOnly = true; sendBtn.disabled = true;
+    const hist = full.history || [], h = hist[reviewedAt] || {}, ex = h.explanation || {}, f = (h.failures || [])[0];
+    if (inReview) {
+      const t = v.clock - b.t0, typed = Math.max(0, Math.min(hint.note.length, Math.floor((t - TYPE_FROM) * TYPE_CPS)));
+      const sent = typed >= hint.note.length && t > TYPE_FROM + hint.note.length / TYPE_CPS + SENT_AFTER;
+      box.classList.toggle('ask', !sent);
+      for (const el of [note, sendBtn.parentElement]) el.hidden = false;
+      titleEl.textContent = 'Needs a person';
+      stateEl.textContent = sent ? 'feedback sent' : 'waiting';
+      whyEl.textContent = `The agent could not modernize ${upper(m.id)}: after ${hint.attempt - 1} attempt${hint.attempt > 2 ? 's' : ''} it matches `
+        + `${h.passed} of ${h.total} cases.` + (ex.reason ? ` Why: ${ex.reason}` : '') + ' What is it missing?';
+      caseEl.replaceChildren();
+      if (f) {
+        const row = (label, value, bad) => {
+          const el = document.createElement(bad ? 'b' : 'span');
+          el.textContent = String(value).split('\n').map((l, i) => (i ? '' : label).padEnd(8) + l).join('\n') + '\n';
+          return el;
+        };
+        caseEl.append(row('input', f.input), row('cobol', f.expected), row('python', f.actual, true));
+      }
+      note.value = hint.note.slice(0, typed);
+      note.scrollTop = note.scrollHeight;
+      say(sent ? `Sent. ${upper(m.id)} gets 2 more attempts.` : '');
+      log.replaceChildren();
+    } else {
+      const done = b.at === 6 && m.status === 'done';
+      box.classList.remove('ask');
+      for (const el of [note, sendBtn.parentElement]) el.hidden = true;
+      titleEl.textContent = 'Human feedback';
+      stateEl.textContent = done ? 'verified' : 'agent retrying';
+      whyEl.textContent = done ? '' : 'The agent is rewriting with the person\'s feedback. It still has to match the real COBOL on every case.';
+      caseEl.replaceChildren();
+      log.replaceChildren(item(done ? 'ok' : 'working', done ? `${m.id} · verified after attempt ${hint.attempt}` : `${m.id} · attempt ${hint.attempt}`, hint.note));
+    }
+  }
+
   async function poll() {
     const m = /^#live=([0-9a-z-]+)$/.exec(location.hash);
-    if (!m) { box.hidden = true; session = rep = asking = null; return setTimeout(poll, POLL_MS); }
+    if (!m) {
+      session = rep = asking = null;
+      if (note.readOnly === false && !box.hidden) box.hidden = true;
+      try { replayStep(); } catch (err) { box.hidden = true; }
+      place();
+      return setTimeout(poll, 80);
+    }
+    note.readOnly = false; sendBtn.disabled = sending;
     if (m[1] !== session) { session = m[1]; rep = asking = sentTo = null; say(''); }
     try {
       const r = await fetch(`api/runs/${session}/replay`, { cache: 'no-store' });
       if (r.status === 200) { rep = await r.json(); render(); }
     } catch (err) { /* the galaxy already reports a lost run */ }
+    place();
+    setTimeout(poll, POLL_MS);
+  }
+  function place() {
     box.classList.toggle('under-panel', !!(panel && panel.classList.contains('open')));
     // sit above the toolbar and the canvas's LIVE label, however many lines the toolbar wraps to
     const bar = document.querySelector('.controls');
     if (bar) box.style.bottom = `${Math.max(52, innerHeight - bar.getBoundingClientRect().top + 44)}px`;
-    setTimeout(poll, POLL_MS);
   }
   poll();
 })();

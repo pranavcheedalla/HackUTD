@@ -48,3 +48,23 @@ def test_no_early_rewrite_unless_asked_or_with_dependencies(monkeypatch):
     monkeypatch.setenv("PREFETCH_REWRITE", "1")
     graph._prefetch_rewrite({"id": "b", "cobol_src": "", "dep_modules": [{"module_id": "x"}]}, {})
     assert graph._prefetched == {}
+
+
+def test_one_program_live_never_waits_for_a_person(monkeypatch):
+    seen = {}
+
+    class Proc:
+        def poll(self): return 0
+        def terminate(self): pass
+
+    def popen(cmd, cwd, stdout, stderr, env):
+        seen[cmd[cmd.index("--legacy-dir") + 1]] = env
+        return Proc()
+
+    monkeypatch.setattr(serve, "_api_key", lambda: True)
+    monkeypatch.setattr(serve.subprocess, "Popen", popen)
+    monkeypatch.setattr(serve.time, "sleep", lambda s: None)
+    serve._start("samples/bank", only="loanpay", quick=True)
+    serve._start("samples/review", only="settle", quick=True)
+    assert seen["samples/bank"]["REVIEW_WAIT"] == "0"
+    assert seen["samples/review"]["REVIEW_WAIT"] != "0" and seen["samples/review"]["MAX_ATTEMPTS"] == "1"

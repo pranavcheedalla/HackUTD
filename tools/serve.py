@@ -154,6 +154,8 @@ def _start(codebase: str, only: str | None = None, quick: bool = False) -> tuple
         tries = _about(ROOT / codebase).get("max_attempts")  # codebase.json: ask a person sooner
         if isinstance(tries, int) and 1 <= tries <= 3:
             env["MAX_ATTEMPTS"] = str(tries)
+        elif quick:  # One program live never stops to wait for a person (samples/review is built to ask)
+            env["REVIEW_WAIT"] = "0"
         proc = subprocess.Popen(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=env)
         session = None
         for _ in range(60):  # isolated_run publishes its session name right after copying the repo

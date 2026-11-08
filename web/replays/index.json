@@ -1,5 +1,11 @@
 [
  {
+  "name": "retail",
+  "title": "Retail bank \u00b7 6 programs (with a person)",
+  "kind": "run",
+  "codebase": "samples/bank"
+ },
+ {
   "name": "codebase",
   "title": "Multi-file codebase \u00b7 discount \u2192 invoice",
   "kind": "run",
@@ -13,7 +19,12 @@
  {
   "name": "bank",
   "title": "Retail bank \u00b7 5 programs",
+  "kind": "run"
+ },
+ {
+  "name": "settle",
+  "title": "Card settlement \u00b7 needs a person",
   "kind": "run",
-  "codebase": "samples/bank"
+  "codebase": "samples/review"
  }
 ]

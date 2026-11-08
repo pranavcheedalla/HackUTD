@@ -94,6 +94,7 @@
         mv(5);
         const fail = h.passed < h.total;
         push({ k: 'dwell', mi, at: 5, h: hi, fail }, fail ? 6.4 : talk(5, 2.6));
+        if (fail && (m.human_hints || []).some(x => x.attempt === hi + 2)) push({ k: 'dwell', mi, at: 5, h: hi, review: true, sent: true }, REVIEW_DUR);
       });
       if (m.status === 'done') { mv(6); push({ k: 'dwell', mi, at: 6, done: true }, talk(6, 3)); }
       else push({ k: 'dwell', mi, at: 5, failedEnd: true }, 3.6);
@@ -102,6 +103,7 @@
     return { beats, end: t };
   }
   const READ = 4.2;  // seconds a narrated stop holds
+  const REVIEW_DUR = 8.5;  // a person reads the failing case, types the hint, sends it (web/hints.js types it)
   function beatAt(t) {
     const b = TL.beats; let lo = 0, hi = b.length - 1;
     while (lo < hi) { const mid = (lo + hi) >> 1; if (b[mid].t1 < t) lo = mid + 1; else hi = mid; }
@@ -144,7 +146,7 @@
     previousBtn.disabled = !R || !!entrance || !!travel || (i === 0 && !betweenStops(list, i));
     const canFinishStep = !!SIM && !!TL && TL.beats.some(q => q.working);  // a replayed run: Next lands the working step's result
     nextBtn.disabled = !R || !!entrance || !!travel || (i >= list.length - 1 && !canFinishStep);
-    const label2 = b ? `${entrance ? 'Arriving → ' : travel ? 'Travelling → ' : ''}${b.k === 'outro' ? 'Summary' : STATIONS[b.at][1]} · ${i + 1}/${list.length}` : '';
+    const label2 = b ? `${entrance ? 'Arriving → ' : travel ? 'Travelling → ' : ''}${b.k === 'outro' ? 'Summary' : b.review ? 'Needs a person' : STATIONS[b.at][1]} · ${i + 1}/${list.length}` : '';
     if (stepStatus.textContent !== label2) stepStatus.textContent = label2;
     stepStatus.dataset.time = clock.toFixed(3);
     stepStatus.dataset.playing = String(playing);
@@ -378,6 +380,7 @@
       const ai = capFocus === 5 ? Math.max(0, hist.findIndex(a => a.passed < a.total)) : Math.max(0, hist.length - 1);
       return { n: capFocus, mi, a: 1, since: 0, ai, clicked: true };
     }
+    if (b.k === 'dwell' && b.review) return null;  // a person is being asked: the Needs-a-person panel has the floor
     if (b.k === 'dwell' && b.working) return { n: b.at, mi: b.mi, a: clamp((t - b.t0 - .35) / .55), since: b.t0 + .35, ai: b.h || 0, working: true, beat: b, t };
     let nb = b, tail = 1;
     if (b.k === 'move' && b.back && lastFail) { nb = lastFail; tail = clamp(1 - (t - b.t0) / 1.1); }  // the reason lingers as the star goes back
@@ -622,6 +625,15 @@
         const h = hist[k] || {}, fail = h.total ? h.passed < h.total : false;
         push({ k: 'dwell', mi, at: 5, h: k, fail }, fail ? 6.4 : talk(5, 2.6));
         if (!fail) break;
+        // out of attempts: the module asks a person (pipeline needs_review), and the star waits at Verify
+        const vIdx = evs.filter(e => e.node === 'verify')[k], after = vIdx ? evs.slice(evs.indexOf(vIdx) + 1) : [];
+        const upTo = after.findIndex(e => e.node === 'rewrite'), seg = upTo < 0 ? after : after.slice(0, upTo);
+        const asked = seg.some(e => e.node === 'needs_review' && /^could not verify/.test(e.msg || ''));
+        const answered = seg.some(e => e.node === 'needs_review' && /^feedback received/.test(e.msg || ''));
+        const next = rep.next;  // a replay knows its next real event: the ask is coming
+        if (!asked && !seg.length && next && next.module === m.id && next.node === 'needs_review') { work({ k: 'dwell', mi, at: 5, h: k, asking: true }); stop = true; break; }
+        if (asked && !answered) { work({ k: 'dwell', mi, at: 5, h: k, review: true }); stop = true; break; }
+        if (answered) push({ k: 'dwell', mi, at: 5, h: k, review: true, sent: true }, REVIEW_DUR);
       }
       if (stop) break;
       if (over) continue;
@@ -650,17 +662,21 @@
       const rewrites = mine.filter(e => e.node === 'rewrite' && !/^blocked/.test(e.msg || '')).length;
       const hist = (m.history || []).slice(0, mine.filter(e => e.node === 'verify').length), last = hist[hist.length - 1];
       const src = (m.attempt_sources || []).slice(0, rewrites), golden = has('record') ? m.golden || [] : [];
-      return { ...m, status: n ? 'running' : 'pending', error: null, spec: has('extract_spec') ? m.spec : null, golden,
+      const reviews = mine.filter(e => e.node === 'needs_review'), lastEv = mine[mine.length - 1];
+      const asking = lastEv && lastEv.node === 'needs_review' && /^could not verify/.test(lastEv.msg || '');
+      const answered = reviews.filter(e => /^feedback received/.test(e.msg || '')).length;
+      return { ...m, status: asking ? 'needs_review' : n ? 'running' : 'pending', error: null,
+               human_hints: (m.human_hints || []).slice(0, answered), spec: has('extract_spec') ? m.spec : null, golden,
                python: rewrites ? (src.length ? src[src.length - 1].python : m.python) : '', attempt_sources: src,
                history: hist, attempts: rewrites, tests_passed: last ? last.passed : 0, tests_total: last ? last.total : golden.length,
                heldout: null, divergences: [], unit_tests_status: null, unit_tests_quarantined: [] };
     });
-    return { ...full, events: evs, modules, live: false, sim: true, finished: SIM.n >= full.events.length };
+    return { ...full, events: evs, modules, live: false, sim: true, finished: SIM.n >= full.events.length, next: full.events[SIM.n] };
   }
   function simApply() {
     const rep = simPartial(), prevWork = TL && TL.beats.find(b => b.working);
     R = rep; TL = rep.finished ? buildTimeline(rep) : liveTimeline(rep);
-    if (prevWork && clock > prevWork.t0) {  // the step finished: show its result from the star's arrival
+    if (prevWork && clock > prevWork.t0 && !prevWork.review) {  // the step finished: show its result from the star's arrival
       const nb = beatAt(prevWork.t0 + .01);
       if (!nb.working || nb.mi !== prevWork.mi || nb.at !== prevWork.at || nb.h !== prevWork.h) clock = prevWork.t0;
     }
@@ -669,7 +685,7 @@
     if (w) {
       const ev = SIM.full.events, gap = SIM.n ? evTime(ev[SIM.n]) - evTime(ev[SIM.n - 1]) : 10;
       w.realGap = Math.max(1, isFinite(gap) ? gap : 6);
-      w.workDur = clamp(w.realGap / SIM_SPEED, 1.4, 3.6);
+      w.workDur = w.review ? REVIEW_DUR : clamp(w.realGap / SIM_SPEED, 1.4, 3.6);
     }
   }
   function simTick() {  // each frame while playing: finish the working step once its time is up
@@ -828,7 +844,7 @@
     if (b.blocked && !panel.classList.contains('open')) txt('BLOCKED', 24, 30, 11, .5, 3, 'left');
     const label = R.live ? `LIVE  ·  ${R.mode === 'offline_fixture' ? 'OFFLINE FIXTURE (NO MODEL CALLS)' : 'REAL NEMOTRON RUN'}${R.finished ? '  ·  FINISHED' : ''}`
       : R.kind === 'mutation' ? 'CONTROLLED MUTATION  ·  PLANTED BUG, NOT A MODEL OUTPUT'
-      : R.mode === 'real_model' ? 'REPLAY OF A REAL NEMOTRON RUN' : 'OFFLINE FIXTURE REPLAY';
+      : R.mode === 'real_model' ? `REPLAY OF A REAL NEMOTRON RUN${m && m.run_note ? '  ·  ' + m.run_note.toUpperCase() : ''}` : 'OFFLINE FIXTURE REPLAY';
     // Keep the honest replay disclosure above the toolbar, even when its buttons wrap.
     const footerY = Math.min(H - 22, H - (playBtn.parentElement.offsetHeight + 34) / K);
     const footerLines = wrap(label, W - 48, 9, 2.5);
@@ -1125,6 +1141,8 @@
                              for (let i = 0; i < 90; i++) { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.save(); draw(clock); x.restore(); } }, get t() { return clock; },
                     get beats() { return TL && TL.beats.map(b => [b.k, b.mi, b.at, +b.t0.toFixed(1), b.fail || false]); },
                     runRecording(name) { return load(name, { codebase: null }); },  // the drop path, without a file
+                    // what a recording shows right now (web/hints.js replays a person's hint from it)
+                    view() { return R && TL && !R.live ? { R, TL, full: SIM ? SIM.full : R, beat: beatAt(Math.min(clock, TL.end - 1e-3)), clock } : null; },
                     get sim() { return SIM && { revealed: SIM.n, events: SIM.full.events.length }; },
                     get hits() { return hits.map(h => ({ id: h.id, x: h.x * K, y: h.y * K })); } };  // css px, for rehearsal checks
 })();
