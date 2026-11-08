@@ -154,6 +154,8 @@ def _start(codebase: str, only: str | None = None, quick: bool = False) -> tuple
         tries = _about(ROOT / codebase).get("max_attempts")  # codebase.json: ask a person sooner
         if isinstance(tries, int) and 1 <= tries <= 3:
             env["MAX_ATTEMPTS"] = str(tries)
+        elif quick:  # One program live never stops to wait for a person (samples/review is built to ask)
+            env["REVIEW_WAIT"] = "0"
         proc = subprocess.Popen(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=env)
         session = None
         for _ in range(60):  # isolated_run publishes its session name right after copying the repo
@@ -202,7 +204,9 @@ def _safe_upload(data: bytes, name: str) -> tuple[int, dict]:
     # the same code as a sample we ship? then it is that codebase: same name, same recording
     fp = _fingerprint(dest)
     for folder in sorted(p for p in SAMPLES.iterdir() if p.is_dir() and p.name != "uploads"):
-        if _fingerprint(folder) == fp:
+        known_fp = _fingerprint(folder)
+        optional = {str(n).lower() for n in _about(folder).get("optional") or []}  # e.g. an older zip without them
+        if fp == known_fp or (optional and fp == frozenset(f for f in known_fp if f[0] not in optional)):
             known = _about(folder)
             (dest / "codebase.json").write_text(json.dumps({
                 "title": known.get("title") or folder.name, "about": known.get("about", ""),
@@ -276,6 +280,11 @@ def _feedback(session: str, body: dict) -> tuple[int, dict]:
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=str(WEB), **k)
+
+    def end_headers(self):
+        if not self.path.startswith("/api/"):  # always re-check the page's files: a demo must never run a stale copy
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
 
     def log_message(self, fmt, *args):  # quiet: only API calls
         if self.path.startswith("/api/") and not self.path.endswith("/replay"):

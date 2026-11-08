@@ -94,6 +94,7 @@
         mv(5);
         const fail = h.passed < h.total;
         push({ k: 'dwell', mi, at: 5, h: hi, fail }, fail ? 6.4 : talk(5, 2.6));
+        if (fail && (m.human_hints || []).some(x => x.attempt === hi + 2)) push({ k: 'dwell', mi, at: 5, h: hi, review: true, sent: true }, REVIEW_DUR);
       });
       if (m.status === 'done') { mv(6); push({ k: 'dwell', mi, at: 6, done: true }, talk(6, 3)); }
       else push({ k: 'dwell', mi, at: 5, failedEnd: true }, 3.6);
@@ -102,6 +103,7 @@
     return { beats, end: t };
   }
   const READ = 4.2;  // seconds a narrated stop holds
+  const REVIEW_DUR = 8.5;  // a person reads the failing case, types the hint, sends it (web/hints.js types it)
   function beatAt(t) {
     const b = TL.beats; let lo = 0, hi = b.length - 1;
     while (lo < hi) { const mid = (lo + hi) >> 1; if (b[mid].t1 < t) lo = mid + 1; else hi = mid; }
@@ -109,6 +111,7 @@
   }
 
   // ---------- playback ----------
+  const skipBtn = document.getElementById('skip-review') || { hidden: true };
   let clock = 0, last = performance.now(), speed = 1, playing = false, chase = false, focus = null, resumeAfter = false, focusX = null;  // focusX: world x the open readout is about
   let cam = 0, cs = 0, trail = [], fr = 0, shoot = null, hits = [];
   let travel = null;  // one presenter click: fly to the next stop, then wait there
@@ -144,7 +147,7 @@
     previousBtn.disabled = !R || !!entrance || !!travel || (i === 0 && !betweenStops(list, i));
     const canFinishStep = !!SIM && !!TL && TL.beats.some(q => q.working);  // a replayed run: Next lands the working step's result
     nextBtn.disabled = !R || !!entrance || !!travel || (i >= list.length - 1 && !canFinishStep);
-    const label2 = b ? `${entrance ? 'Arriving → ' : travel ? 'Travelling → ' : ''}${b.k === 'outro' ? 'Summary' : STATIONS[b.at][1]} · ${i + 1}/${list.length}` : '';
+    const label2 = b ? `${entrance ? 'Arriving → ' : travel ? 'Travelling → ' : ''}${b.k === 'outro' ? 'Summary' : b.review ? 'Needs a person' : STATIONS[b.at][1]} · ${i + 1}/${list.length}` : '';
     if (stepStatus.textContent !== label2) stepStatus.textContent = label2;
     stepStatus.dataset.time = clock.toFixed(3);
     stepStatus.dataset.playing = String(playing);
@@ -156,6 +159,7 @@
     chase = false;  // the presenter has taken over
     if (SIM && direction > 0) {  // replay: Next skips the wait and lands this step's real result
       const b = beatAt(Math.min(clock, TL.end - 1e-3));
+      if (b.working && b.review && !SIM.hintSent) { sendHint(null); return; }  // Next sends the run's own hint
       if (b.working) { SIM.n++; simApply(); clock = Math.max(clock, b.t0); syncPlayback(); return; }
     }
     const list = stops(), current = stopIndex(list), between = betweenStops(list, current);
@@ -378,6 +382,7 @@
       const ai = capFocus === 5 ? Math.max(0, hist.findIndex(a => a.passed < a.total)) : Math.max(0, hist.length - 1);
       return { n: capFocus, mi, a: 1, since: 0, ai, clicked: true };
     }
+    if (b.k === 'dwell' && b.review) return null;  // a person is being asked: the Needs-a-person panel has the floor
     if (b.k === 'dwell' && b.working) return { n: b.at, mi: b.mi, a: clamp((t - b.t0 - .35) / .55), since: b.t0 + .35, ai: b.h || 0, working: true, beat: b, t };
     let nb = b, tail = 1;
     if (b.k === 'move' && b.back && lastFail) { nb = lastFail; tail = clamp(1 - (t - b.t0) / 1.1); }  // the reason lingers as the star goes back
@@ -622,6 +627,15 @@
         const h = hist[k] || {}, fail = h.total ? h.passed < h.total : false;
         push({ k: 'dwell', mi, at: 5, h: k, fail }, fail ? 6.4 : talk(5, 2.6));
         if (!fail) break;
+        // out of attempts: the module asks a person (pipeline needs_review), and the star waits at Verify
+        const vIdx = evs.filter(e => e.node === 'verify')[k], after = vIdx ? evs.slice(evs.indexOf(vIdx) + 1) : [];
+        const upTo = after.findIndex(e => e.node === 'rewrite'), seg = upTo < 0 ? after : after.slice(0, upTo);
+        const asked = seg.some(e => e.node === 'needs_review' && /^could not verify/.test(e.msg || ''));
+        const answered = seg.some(e => e.node === 'needs_review' && /^feedback received/.test(e.msg || ''));
+        const next = rep.next;  // a replay knows its next real event: the ask is coming
+        if (!asked && !seg.length && next && next.module === m.id && next.node === 'needs_review') { work({ k: 'dwell', mi, at: 5, h: k, asking: true }); stop = true; break; }
+        if (asked && !answered) { work({ k: 'dwell', mi, at: 5, h: k, review: true }); stop = true; break; }
+        if (answered) push({ k: 'dwell', mi, at: 5, h: k, review: true, sent: true }, REVIEW_DUR);
       }
       if (stop) break;
       if (over) continue;
@@ -650,17 +664,25 @@
       const rewrites = mine.filter(e => e.node === 'rewrite' && !/^blocked/.test(e.msg || '')).length;
       const hist = (m.history || []).slice(0, mine.filter(e => e.node === 'verify').length), last = hist[hist.length - 1];
       const src = (m.attempt_sources || []).slice(0, rewrites), golden = has('record') ? m.golden || [] : [];
-      return { ...m, status: n ? 'running' : 'pending', error: null, spec: has('extract_spec') ? m.spec : null, golden,
+      const reviews = mine.filter(e => e.node === 'needs_review'), lastEv = mine[mine.length - 1];
+      const asking = lastEv && lastEv.node === 'needs_review' && /^could not verify/.test(lastEv.msg || '');
+      const answered = reviews.filter(e => /^feedback received/.test(e.msg || '')).length;
+      return { ...m, status: asking ? 'needs_review' : n ? 'running' : 'pending', error: null,
+               human_hints: (m.human_hints || []).slice(0, answered), spec: has('extract_spec') ? m.spec : null, golden,
                python: rewrites ? (src.length ? src[src.length - 1].python : m.python) : '', attempt_sources: src,
                history: hist, attempts: rewrites, tests_passed: last ? last.passed : 0, tests_total: last ? last.total : golden.length,
                heldout: null, divergences: [], unit_tests_status: null, unit_tests_quarantined: [] };
     });
-    return { ...full, events: evs, modules, live: false, sim: true, finished: SIM.n >= full.events.length };
+    return { ...full, events: evs, modules, live: false, sim: true, finished: SIM.n >= full.events.length, next: full.events[SIM.n] };
   }
   function simApply() {
     const rep = simPartial(), prevWork = TL && TL.beats.find(b => b.working);
     R = rep; TL = rep.finished ? buildTimeline(rep) : liveTimeline(rep);
-    if (prevWork && clock > prevWork.t0) {  // the step finished: show its result from the star's arrival
+    if (prevWork && prevWork.review) {  // the hint was sent: carry on from the end of the ask, the star goes back
+      const rb = TL.beats.find(q => q.review && q.mi === prevWork.mi && q.h === prevWork.h);
+      if (rb && !rb.working) clock = Math.max(clock, rb.t1 - .05);
+    }
+    if (prevWork && clock > prevWork.t0 && !prevWork.review) {  // the step finished: show its result from the star's arrival
       const nb = beatAt(prevWork.t0 + .01);
       if (!nb.working || nb.mi !== prevWork.mi || nb.at !== prevWork.at || nb.h !== prevWork.h) clock = prevWork.t0;
     }
@@ -669,16 +691,41 @@
     if (w) {
       const ev = SIM.full.events, gap = SIM.n ? evTime(ev[SIM.n]) - evTime(ev[SIM.n - 1]) : 10;
       w.realGap = Math.max(1, isFinite(gap) ? gap : 6);
-      w.workDur = clamp(w.realGap / SIM_SPEED, 1.4, 3.6);
+      w.workDur = w.review ? REVIEW_DUR : clamp(w.realGap / SIM_SPEED, 1.4, 3.6);
     }
   }
   function simTick() {  // each frame while playing: finish the working step once its time is up
     if (!SIM || !TL) return;
+    if (!skipBtn.hidden && SIM.n > reviewEvent(SIM.full)) skipBtn.hidden = true;
     const w = TL.beats.find(b => b.working);
+    if (w && w.review) {  // a person is being asked: wait for the presenter's hint, then a beat to read "sent"
+      if (SIM.hintSent && clock >= SIM.sentAt + 2.2) { SIM.n++; simApply(); }
+      return;
+    }
     if (w && clock >= w.t0 + w.workDur) { SIM.n++; simApply(); }
+  }
+  // the presenter's hint at the "Needs a person" stop (web/hints.js); null sends the run's recorded hint
+  function sendHint(text) {
+    if (!SIM || SIM.hintSent) return;
+    SIM.hintSent = true; SIM.typedHint = text; SIM.sentAt = clock;
+    playing = true; syncPlayback();
+  }
+  function reviewEvent(full) {  // the first check of a program that later asked a person, in the recording
+    const m = (full.modules || []).find(q => (q.human_hints || []).length);
+    return m ? full.events.findIndex(e => e.module === m.id && e.node === 'verify') : -1;
+  }
+  function skipToReview() {
+    const i = SIM ? reviewEvent(SIM.full) : -1;
+    if (i < 0) return;
+    travel = null; resumeAfter = false; closePanel(); closeCaption();
+    SIM.n = i; SIM.hintSent = false; simApply();
+    const w = TL.beats.find(b => b.working);
+    if (w) clock = Math.max(0, w.t0 - 1.7);  // arrive at Verify as its result lands
+    cam = 0; cs = 0; trail = []; lastFail = null; playing = true; syncPlayback();
   }
   function startSim(full) {
     SIM = { full, n: 0 }; workSince.clear(); TL = null; simApply();
+    skipBtn.hidden = reviewEvent(full) < 0;
     clock = 3.4; cam = 0; cs = 0; trail = []; lastFail = null;  // past the title: the entrance already set the scene
     playing = true; syncPlayback();
   }
@@ -828,7 +875,7 @@
     if (b.blocked && !panel.classList.contains('open')) txt('BLOCKED', 24, 30, 11, .5, 3, 'left');
     const label = R.live ? `LIVE  ·  ${R.mode === 'offline_fixture' ? 'OFFLINE FIXTURE (NO MODEL CALLS)' : 'REAL NEMOTRON RUN'}${R.finished ? '  ·  FINISHED' : ''}`
       : R.kind === 'mutation' ? 'CONTROLLED MUTATION  ·  PLANTED BUG, NOT A MODEL OUTPUT'
-      : R.mode === 'real_model' ? 'REPLAY OF A REAL NEMOTRON RUN' : 'OFFLINE FIXTURE REPLAY';
+      : R.mode === 'real_model' ? `REPLAY OF A REAL NEMOTRON RUN${m && m.run_note ? '  ·  ' + m.run_note.toUpperCase() : ''}` : 'OFFLINE FIXTURE REPLAY';
     // Keep the honest replay disclosure above the toolbar, even when its buttons wrap.
     const footerY = Math.min(H - 22, H - (playBtn.parentElement.offsetHeight + 34) / K);
     const footerLines = wrap(label, W - 48, 9, 2.5);
@@ -946,6 +993,7 @@
   const sel = document.getElementById('replay'), intake = document.getElementById('intake');
   const fallbackBtn = document.getElementById('fallback'), backBtn = document.getElementById('backlive');
   const runLiveBtn = document.getElementById('run-live-instead'), quickBtn = document.getElementById('quick-live');
+  skipBtn.onclick = () => skipToReview();
   // one standalone program (nothing it calls) migrated live: real Nemotron calls in about 40 seconds
   function offerQuickLive(codebase) {
     const pick = R && (R.modules || []).find(m => m.kind !== 'subprogram' && !(m.depends_on || []).length);
@@ -970,7 +1018,7 @@
   document.getElementById('case-go').onclick = () => { closeCase(); openIntake(); };
   document.getElementById('in-back').onclick = () => { openCase(); };
   function normalize(rep) { (rep.modules || []).forEach(q => { q.depends_on = q.depends_on || []; q.history = q.history || []; }); return rep; }
-  function stopLive() { cancelEntrance(); SIM = null; travel = null; clearTimeout(pollTimer); pollTimer = null; liveSession = null; fallbackBtn.hidden = true; }
+  function stopLive() { skipBtn.hidden = true; cancelEntrance(); SIM = null; travel = null; clearTimeout(pollTimer); pollTimer = null; liveSession = null; fallbackBtn.hidden = true; }
   // a run still going on the server: offer the way back to it from a recording or the intake
   async function runningSession() {
     if (!API) return null;
@@ -1125,6 +1173,14 @@
                              for (let i = 0; i < 90; i++) { x.setTransform(DPR * K, 0, 0, DPR * K, 0, 0); x.save(); draw(clock); x.restore(); } }, get t() { return clock; },
                     get beats() { return TL && TL.beats.map(b => [b.k, b.mi, b.at, +b.t0.toFixed(1), b.fail || false]); },
                     runRecording(name) { return load(name, { codebase: null }); },  // the drop path, without a file
+                    // what a recording shows right now (web/hints.js replays a person's hint from it)
+                    view() { return R && TL && !R.live ? { R, TL, full: SIM ? SIM.full : R, beat: beatAt(Math.min(clock, TL.end - 1e-3)), clock,
+                      sim: !!SIM, hintSent: !!(SIM && SIM.hintSent), typedHint: SIM && SIM.typedHint } : null; },
+                    sendHint(text) { sendHint(text); },
+                    // rehearsal: jump a running replay to just before its n-th real event (e.g. SETTLE's first)
+                    skipToReview() { skipToReview(); },
+                    simTo(n) { if (!SIM) return; SIM.n = Math.max(0, Math.min(n, SIM.full.events.length)); SIM.hintSent = false; simApply();
+                               const w = TL.beats.find(b => b.working); clock = w ? w.t0 : clock; trail = []; lastFail = null; playing = true; syncPlayback(); },
                     get sim() { return SIM && { revealed: SIM.n, events: SIM.full.events.length }; },
                     get hits() { return hits.map(h => ({ id: h.id, x: h.x * K, y: h.y * K })); } };  // css px, for rehearsal checks
 })();

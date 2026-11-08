@@ -30,7 +30,7 @@ def uploads(tmp_path, monkeypatch):
 
 def test_codebases_lists_the_samples_with_titles():
     names = {c["codebase"]: c for c in serve._codebases()}
-    assert names["samples/bank"]["programs"] == 5 and names["samples/bank"]["name"] == "Retail bank"
+    assert names["samples/bank"]["programs"] == 6 and names["samples/bank"]["name"] == "Retail bank"
     assert names["samples/legacy"]["programs"] == 3
 
 
@@ -64,14 +64,23 @@ def test_replay_refuses_bad_session_names():
 
 def test_dropping_the_demo_zip_is_recognised_as_the_bank(uploads):
     code, body = serve._safe_upload((ROOT / "demo" / "retail-bank.zip").read_bytes(), "retail-bank.zip")
-    assert code == 200 and body["files"] == 6
-    assert body['recording'] == 'bank' and body['title'] == 'Retail bank'
+    assert code == 200 and body["files"] == 7
+    assert body['recording'] == 'retail' and body['title'] == 'Retail bank'
     about = serve._about(uploads / body["codebase"])
     assert about["same_as"] == "samples/bank" and about["title"] == "Retail bank"
-    assert serve._recording_for(body["codebase"]) == "bank"  # so "Switch to recording" works after a live drop
+    assert serve._recording_for(body["codebase"]) == "retail"  # so "Switch to recording" works after a live drop
 
 
 def test_a_different_zip_is_its_own_codebase(uploads):
     code, body = serve._safe_upload(_zip({"x/a.cbl": b"       PROGRAM-ID. A.\n"}), "x.zip")
     assert code == 200 and "same_as" not in serve._about(uploads / body["codebase"])
     assert body['recording'] is None and body['title'] == 'x'
+
+
+def test_the_original_five_program_bank_zip_still_plays_the_demo(uploads):
+    """Copies of the demo zip made before SETTLE joined the bank are still the bank."""
+    files = {f"retail-bank/{f.relative_to(ROOT / 'samples' / 'bank')}": f.read_bytes()
+             for f in (ROOT / "samples" / "bank").rglob("*")
+             if f.is_file() and f.suffix.lower() in {".cbl", ".cpy"} and f.name != "settle.cbl"}
+    code, body = serve._safe_upload(_zip(files), "retail-bank.zip")
+    assert code == 200 and body["files"] == 6 and body["recording"] == "retail"
